@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  zoo-ai-engine:
+    build: .
+    container_name: zoo_vision_service
+    restart: unless-stopped
+    network_mode: "host" # Host networking for lowest latency RTSP & REST calls
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # Passes your RTX 3060 / 4070 GPU directly inside
+              capabilities: [ gpu, video ] # Enables CUDA + NVDEC hardware video decoding
+    volumes:
+      - ./configs:/app/configs # Edit camera configs without rebuilding image
+      - ./models:/app/models # Hot-swap new TensorRT .engine files anytime
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1

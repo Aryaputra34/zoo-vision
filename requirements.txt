@@ -1,0 +1,14 @@
+# Core Computer Vision & Deep Learning
+ultralytics>=8.3.0          # YOLOv11, PyTorch, TorchVision, OpenCV, NumPy
+supervision>=0.23.0         # Modern ByteTrack tracker, LineZone (tripwires), PolygonZone (ROI)
+shapely>=2.0.3              # Geometric polygon math for zones & cashier areas
+
+# Networking & Nx Meta VMS Integration
+requests>=2.31.0            # Nx Meta REST API v3 client (HTTP/HTTPS)
+urllib3>=2.2.1
+
+# Configuration & Utilities
+pydantic>=2.7.0             # Data validation for camera configs & event payloads
+pyyaml>=6.0.1               # YAML configuration loader
+python-dotenv>=1.0.1        # Environment variable management
+tqdm>=4.66.2
