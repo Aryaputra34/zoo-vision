@@ -1,0 +1,55 @@
+# Camera Ingest Configuration
+# Sources can be RTSP streams (rtsp://...) or local video files (.mp4) for testing.
+
+cameras:
+  - id: "cam_cashier_01"
+    name: "Loket Mini Train Cashier"
+    nx_camera_id: "00000000-0000-0000-0000-000000000001" # Nx Camera UUID
+    source: "sample_data/kasir.mp4"                        # Or RTSP stream: rtsp://user:pass@192.168.1.50/stream
+    pipeline: "cashier_presence"
+    target_fps: 5                                          # 5 FPS provides smooth responsiveness
+    enabled: true
+    rule_config: "configs/rules/cashier_presence.yaml"
+    roi:
+      clerk_zone:
+        - [0.33, 0.46]
+        - [0.72, 0.46]
+        - [0.72, 1.00]
+        - [0.33, 1.00]
+      visitor_zone:
+        - [0.36, 0.12]
+        - [0.64, 0.12]
+        - [0.64, 0.46]
+        - [0.36, 0.46]
+
+  - id: "cam_cashier_02"
+    name: "Ticket Booth 2 Cashier"
+    nx_camera_id: "00000000-0000-0000-0000-000000000004"
+    source: "sample_data/cashier2.mp4"                     # Or RTSP stream: rtsp://user:pass@192.168.1.51/stream
+    pipeline: "cashier_presence"
+    target_fps: 2
+    enabled: false                                         # Enable when stream 2 is online
+    rule_config: "configs/rules/cashier_presence.yaml"
+    roi:                                                   # Inline ROI polygon for Booth 2
+      - [0.30, 0.15]
+      - [0.75, 0.15]
+      - [0.75, 0.80]
+      - [0.30, 0.80]
+
+  - id: "cam_restaurant_01"
+    name: "Safari Cafe Dining Hall"
+    nx_camera_id: "00000000-0000-0000-0000-000000000002"
+    source: "sample_data/restoran.mp4"                     # Or RTSP stream: rtsp://user:pass@192.168.1.52/stream
+    pipeline: "restaurant_counter"
+    target_fps: 2
+    enabled: true
+    rule_config: "configs/rules/restaurant_counter.yaml"
+
+  - id: "cam_gate_entry_01"
+    name: "Main Vehicle Gate 1"
+    nx_camera_id: "00000000-0000-0000-0000-000000000003"
+    source: "sample_data/cars.mp4"                         # Or RTSP stream: rtsp://user:pass@192.168.1.53/stream
+    pipeline: "vehicle_gate"
+    target_fps: 12
+    enabled: true
+    rule_config: "configs/rules/vehicle_gate.yaml"

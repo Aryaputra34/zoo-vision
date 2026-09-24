@@ -1,0 +1,55 @@
+# Restaurant People Counter & Area Occupancy Rule Configuration
+rule_name: "restaurant_capacity_monitor"
+
+# Mode: "area_occupancy" (direct dining area headcount) or "tripwire" (doorway line-crossing)
+mode: "area_occupancy"
+
+# Model Architecture (yolo11s.onnx, yolo26m.onnx, yolo26s.onnx)
+model_name: "yolo26l.pt"
+imgsz: 1920                 # Native 1080p resolution to resolve distant seated patrons
+confidence_threshold: 0.20
+target_class: "person"
+
+# Anti-Duplicate & Anti-Flickering Enhancements
+deduplication_enabled: true     # Enable/disable containment & stricter NMS deduplication
+iou_threshold: 0.45             # Stricter IoU NMS to suppress duplicate overlapping boxes
+containment_threshold: 0.65     # Suppresses nested detections (e.g. torso inside full body)
+tracking_enabled: false          # Enables ByteTrack + Kalman temporal tracking in area mode
+lost_track_buffer: 30           # Frame memory to preserve tracks during brief occlusions
+smoothing_frames: 5             # Moving-average window length to eliminate box jitter
+
+# Display & Demo Presentation Settings
+show_boxes: false               # false = Clean client demo (HUD only); true = Draw bounding boxes
+show_labels: false              # false = Hide confidence tags
+
+# Dining Area Polygon ROI (normalized coordinates 0.0 - 1.0)
+# Covers the customer dining hall tables while masking out service counter backdoors
+dining_zone:
+  - [0.00, 0.12]
+  - [1.00, 0.12]
+  - [1.00, 0.98]
+  - [0.00, 0.98]
+
+# Enhanced Sensitivity for Difficult Bamboo Wall Shadow Zone
+# Specifically boosts seated patrons behind tall chairs under the mezzanine overhang
+shadow_zone:
+  enabled: true
+  start: [1.00, 0.48]
+  end: [0.82, 0.17]
+  confidence_threshold: 0.11
+
+# Capacity thresholds
+max_capacity: 60
+warning_capacity: 45
+
+# Temporal smoothing (rolling median window in seconds)
+smoothing_window_sec: 4.0
+
+# Alert settings
+debounce_alert_sec: 60
+
+# Nx Meta Event Metadata
+nx_bookmark:
+  tag: "#restaurant_capacity"
+  title: "[CAPACITY ALERT] Restaurant Full"
+  log_periodic_minutes: 15

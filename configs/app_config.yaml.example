@@ -1,0 +1,23 @@
+# Nx Witness / Nx Meta Media Server Connection Settings
+nx_server:
+  host: "127.0.0.1"             # IP address of Nx Meta Media Server (e.g. 192.168.1.100)
+  port: 7001                    # Default Nx Server port
+  use_https: true
+  verify_ssl: false             # Set to false for self-signed certificates in lab
+  auth:
+    username: "admin"
+    password: "YOUR_PASSWORD_HERE" # Change to your Nx server credentials
+    token: ""                   # Bearer token (auto-negotiated if empty)
+  mock_mode: true               # In mock_mode, logs bookmarks/events locally if Nx Server is offline
+
+# Logging & Storage Settings
+logging:
+  level: "INFO"                 # DEBUG, INFO, WARNING, ERROR
+  log_to_file: true
+  log_file_path: "logs/zoo_ai.log"
+
+# Global AI Settings
+ai_engine:
+  device: "cpu"                 # "cpu" for local development; "cuda:0" for production server
+  model_cache_dir: "models"
+  default_confidence: 0.35
