@@ -50,7 +50,9 @@ def test_video(
     rule_path: str = None,
     start_time: str = "00:00",
     camera_name: str = None,
-    save_output: str = None
+    save_output: str = None,
+    infer_fps: float = None,
+    frame_skip: int = 1
 ):
     if not os.path.exists(video_path):
         logger.error(f"Video file not found: '{video_path}'")
@@ -69,6 +71,19 @@ def test_video(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     total_duration_sec = total_frames / fps
     logger.info(f"Video Specs: {width}x{height} @ {fps:.1f} FPS (Duration: {total_duration_sec/60:.1f} min, {total_frames} frames)")
+
+    # Compute frame cadence (how many frames to advance per inference step)
+    if infer_fps is not None and infer_fps > 0:
+        step_frames = max(1, int(round(fps / infer_fps)))
+        effective_infer_fps = fps / step_frames
+        logger.info(f"[CADENCE] Target inference: {infer_fps:.1f} FPS -> Inferencing 1 frame every {step_frames} frames ({effective_infer_fps:.1f} FPS)")
+    elif frame_skip and frame_skip > 1:
+        step_frames = int(frame_skip)
+        effective_infer_fps = fps / step_frames
+        logger.info(f"[CADENCE] Frame skip: {step_frames} -> Inferencing 1 frame every {step_frames} frames ({effective_infer_fps:.1f} FPS)")
+    else:
+        step_frames = 1
+        effective_infer_fps = fps
 
     # 1. Initialize Mock Nx Client
     nx_client = NxClient(mock_mode=True)
@@ -122,8 +137,10 @@ def test_video(
     writer = None
     if save_output:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(save_output, fourcc, min(10.0, fps), (width, height))
-        logger.info(f"[RECORDING] Output will be saved to: {save_output}")
+        # Write at effective FPS so saved demo plays back at natural real-time speed
+        writer_fps = min(effective_infer_fps, 30.0)
+        writer = cv2.VideoWriter(save_output, fourcc, writer_fps, (width, height))
+        logger.info(f"[RECORDING] Output will be saved to: {save_output} (@ {writer_fps:.1f} FPS)")
 
     window_name = f"Zoo Vision - {pipeline.camera_name}"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -178,10 +195,17 @@ def test_video(
                 writer.write(annotated_frame)
 
             # Clean playback status footer
-            time_str = f"Time: {mins:02d}:{secs:02d} | Frame: {current_frame}/{total_frames} | SPACE: Pause | 'd': +10s | 'a': -10s | 'q': Quit"
+            cadence_str = f" | Step: {step_frames}f ({effective_infer_fps:.1f} FPS)" if step_frames > 1 else ""
+            time_str = f"Time: {mins:02d}:{secs:02d} | Frame: {current_frame}/{total_frames}{cadence_str} | SPACE: Pause | 'd': +10s | 'a': -10s | 'q': Quit"
             cv2.putText(annotated_frame, time_str, (20, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1)
 
             cv2.imshow(window_name, annotated_frame)
+
+            # Advance / skip intermediate frames between inferences
+            if step_frames > 1 and not paused:
+                for _ in range(step_frames - 1):
+                    if not cap.grab():
+                        break
 
         key = cv2.waitKey(frame_delay if not paused else 50) & 0xFF
         if key == ord('q'):
@@ -216,6 +240,8 @@ if __name__ == "__main__":
     parser.add_argument("--camera-name", default=None, help="Custom camera name to display on HUD")
     parser.add_argument("--save-output", default=None, help="Optional output .mp4 file path to save demo video")
     parser.add_argument("--rule-config", default=None, help="Custom rule YAML path (optional)")
+    parser.add_argument("--infer-fps", type=float, default=None, help="Target inference rate in FPS (e.g. 2 for 2 inferences/sec). Skips intermediate frames.")
+    parser.add_argument("--frame-skip", type=int, default=1, help="Process every N-th frame (e.g. 5 to evaluate 1 frame every 5 frames)")
     args = parser.parse_args()
 
     test_video(
@@ -224,5 +250,7 @@ if __name__ == "__main__":
         rule_path=args.rule_config,
         start_time=args.start_time,
         camera_name=args.camera_name,
-        save_output=args.save_output
+        save_output=args.save_output,
+        infer_fps=args.infer_fps,
+        frame_skip=args.frame_skip
     )
