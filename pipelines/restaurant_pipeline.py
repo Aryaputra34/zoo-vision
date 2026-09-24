@@ -57,7 +57,7 @@ class RestaurantCounterPipeline(BasePipeline):
         )
 
         self.mode = self.rules.get("mode", "area_occupancy")
-        self.imgsz = self.rules.get("imgsz", 1280)
+        self.imgsz = self.rules.get("imgsz", 1920)
         self.conf_thresh = self.rules.get("confidence_threshold", 0.20)
         self.max_capacity = self.rules.get("max_capacity", 60)
         self.warning_capacity = self.rules.get("warning_capacity", 45)
@@ -69,9 +69,27 @@ class RestaurantCounterPipeline(BasePipeline):
         self.shadow_conf = float(self.shadow_cfg.get("confidence_threshold", 0.11))
         self.shadow_box: Optional[Tuple[int, int, int, int]] = None
 
+        # Anti-Duplicate & Anti-Flicker Settings
+        self.deduplication_enabled = bool(self.rules.get("deduplication_enabled", True))
+        self.iou_threshold = float(self.rules.get("iou_threshold", 0.45))
+        self.containment_threshold = float(self.rules.get("containment_threshold", 0.65))
+        self.tracking_enabled = bool(self.rules.get("tracking_enabled", True))
+        self.lost_track_buffer = int(self.rules.get("lost_track_buffer", 30))
+        self.smoothing_frames = int(self.rules.get("smoothing_frames", 5))
+
         # Annotators
         self.box_annotator = sv.BoxAnnotator(thickness=2)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.45, text_thickness=1)
+
+        # Multi-Object Tracker & Temporal Smoother
+        self.tracker = sv.ByteTrack(
+            track_activation_threshold=self.conf_thresh,
+            lost_track_buffer=self.lost_track_buffer,
+            minimum_matching_threshold=0.8,
+            frame_rate=15,
+            minimum_consecutive_frames=1
+        ) if (self.tracking_enabled or self.mode == "tripwire") else None
+        self.smoother = sv.DetectionsSmoother(length=self.smoothing_frames) if self.tracking_enabled else None
 
         # Area Occupancy Mode State
         self.polygon_zone: Optional[sv.PolygonZone] = None
@@ -83,15 +101,60 @@ class RestaurantCounterPipeline(BasePipeline):
         self.last_alert_time = 0.0
 
         # Tripwire Mode State
-        self.tracker = sv.ByteTrack() if self.mode == "tripwire" else None
         self.line_zone: Optional[sv.LineZone] = None
         self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
 
         self.last_periodic_log = time.time()
         logger.info(
             f"[{self.camera_name}] Initialized Restaurant Pipeline in '{self.mode}' mode "
-            f"using model '{model_name}' (imgsz={self.imgsz}, conf={self.conf_thresh})."
+            f"using model '{model_name}' (imgsz={self.imgsz}, conf={self.conf_thresh}, "
+            f"tracking={self.tracking_enabled}, deduplication={self.deduplication_enabled})."
         )
+
+    def _suppress_duplicates(self, detections: sv.Detections) -> sv.Detections:
+        """
+        Suppresses duplicate person detections caused by part-vs-whole detections
+        (e.g., upper body/torso detected as one person and full body as another):
+        1. Tighter IoU Non-Maximum Suppression (iou_threshold).
+        2. Containment / IoMin suppression (containment_threshold): if a smaller box
+           is largely contained inside a larger box, suppress the lower-confidence box.
+        """
+        if not self.deduplication_enabled or len(detections) <= 1:
+            return detections
+
+        # 1. Stricter IoU Non-Maximum Suppression
+        dets = detections.with_nms(threshold=self.iou_threshold)
+        if len(dets) <= 1:
+            return dets
+
+        # 2. Containment / IoMin suppression (e.g. torso inside full body)
+        boxes = dets.xyxy
+        confs = dets.confidence if dets.confidence is not None else np.ones(len(boxes))
+        order = np.argsort(-confs)
+        keep = []
+
+        for idx in order:
+            box = boxes[idx]
+            area = (box[2] - box[0]) * (box[3] - box[1])
+            discard = False
+            for k in keep:
+                k_box = boxes[k]
+                k_area = (k_box[2] - k_box[0]) * (k_box[3] - k_box[1])
+                xi1 = max(box[0], k_box[0])
+                yi1 = max(box[1], k_box[1])
+                xi2 = min(box[2], k_box[2])
+                yi2 = min(box[3], k_box[3])
+                iw = max(0, xi2 - xi1)
+                ih = max(0, yi2 - yi1)
+                inter = iw * ih
+                min_area = min(area, k_area)
+                if min_area > 0 and (inter / min_area) > self.containment_threshold:
+                    discard = True
+                    break
+            if not discard:
+                keep.append(idx)
+
+        return dets[np.array(sorted(keep), dtype=int)]
 
     # =========================================================================
     # ZONE & TRIPWIRE INITIALIZERS
@@ -171,9 +234,11 @@ class RestaurantCounterPipeline(BasePipeline):
         self._init_area_zone_if_needed(frame.shape)
         now_sec = timestamp_ms / 1000.0 if timestamp_ms > 0 else time.time()
 
-        # 1. Run YOLO26 inference for 'person' (COCO class 0)
-        # Use lower threshold if shadow boost is enabled so shadowed patrons are captured
-        inference_conf = min(self.conf_thresh, self.shadow_conf) if self.shadow_enabled else self.conf_thresh
+        # 1. Run YOLO inference for 'person' (COCO class 0)
+        # When tracking is enabled, use a slightly lower floor so ByteTrack's 2nd association stage
+        # can recover occluded/moving frames without flickering.
+        base_inference_conf = min(self.conf_thresh * 0.75, 0.15) if self.tracking_enabled else self.conf_thresh
+        inference_conf = min(base_inference_conf, self.shadow_conf) if self.shadow_enabled else base_inference_conf
 
         results = self.model(
             frame,
@@ -196,15 +261,27 @@ class RestaurantCounterPipeline(BasePipeline):
                 if in_shadow:
                     keep_mask.append(conf >= self.shadow_conf)
                 else:
-                    keep_mask.append(conf >= self.conf_thresh)
+                    keep_mask.append(conf >= base_inference_conf)
             detections = detections[np.array(keep_mask, dtype=bool)]
 
-        # 3. Filter detections inside dining area polygon
-        is_in_zone = self.polygon_zone.trigger(detections=detections)
-        zone_detections = detections[is_in_zone]
+        # 3. Deduplicate overlapping and nested boxes (prevents 1 person counted as 2)
+        detections = self._suppress_duplicates(detections)
+
+        # 4. Multi-Object Tracking & Smoothing (eliminates flickering across frames)
+        if self.tracking_enabled and self.tracker is not None:
+            tracked_detections = self.tracker.update_with_detections(detections)
+            if self.smoother is not None and len(tracked_detections) > 0:
+                tracked_detections = self.smoother.update_with_detections(tracked_detections)
+            active_detections = tracked_detections
+        else:
+            active_detections = detections
+
+        # 5. Filter detections inside dining area polygon
+        is_in_zone = self.polygon_zone.trigger(detections=active_detections)
+        zone_detections = active_detections[is_in_zone]
         self.raw_occupancy = len(zone_detections)
 
-        # 4. Temporal rolling median smoothing
+        # 6. Temporal rolling median smoothing
         self.count_history.append((now_sec, self.raw_occupancy))
         cutoff = now_sec - self.smoothing_window_sec
         while self.count_history and self.count_history[0][0] < cutoff:
@@ -213,10 +290,10 @@ class RestaurantCounterPipeline(BasePipeline):
         counts = [c for _, c in self.count_history]
         self.current_occupancy = int(round(float(np.median(counts)))) if counts else self.raw_occupancy
 
-        # 5. Check capacity thresholds & dispatch alarms
+        # 7. Check capacity thresholds & dispatch alarms
         self._check_capacity_alerts(self.current_occupancy, timestamp_ms)
 
-        # 6. Render visualizations
+        # 8. Render visualizations
         annotated_frame = frame.copy()
         
         # Color coding for zone & HUD
@@ -255,8 +332,15 @@ class RestaurantCounterPipeline(BasePipeline):
 
         # Annotate detected people in dining zone
         annotated_frame = self.box_annotator.annotate(annotated_frame, detections=zone_detections)
-        labels = [f"person {conf:.2f}" for conf in zone_detections.confidence]
-        annotated_frame = self.label_annotator.annotate(annotated_frame, detections=zone_detections, labels=labels)
+        if len(zone_detections) > 0:
+            if hasattr(zone_detections, "tracker_id") and zone_detections.tracker_id is not None:
+                labels = [
+                    f"#{tid} ({conf:.2f})" if tid is not None else f"person {conf:.2f}"
+                    for tid, conf in zip(zone_detections.tracker_id, zone_detections.confidence)
+                ]
+            else:
+                labels = [f"person {conf:.2f}" for conf in zone_detections.confidence]
+            annotated_frame = self.label_annotator.annotate(annotated_frame, detections=zone_detections, labels=labels)
 
         # Draw Premium HUD
         annotated_frame = self._render_occupancy_hud(
@@ -275,6 +359,7 @@ class RestaurantCounterPipeline(BasePipeline):
         # Detection + ByteTrack
         results = self.model(frame, classes=[0], conf=self.conf_thresh, imgsz=self.imgsz, verbose=False, device=self.device)[0]
         detections = sv.Detections.from_ultralytics(results)
+        detections = self._suppress_duplicates(detections)
         if self.tracker is None:
             self.tracker = sv.ByteTrack()
         detections = self.tracker.update_with_detections(detections)
