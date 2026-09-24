@@ -52,7 +52,9 @@ def test_video(
     camera_name: str = None,
     save_output: str = None,
     infer_fps: float = None,
-    frame_skip: int = 1
+    frame_skip: int = 1,
+    hide_boxes: bool = False,
+    show_boxes: bool = False
 ):
     if not os.path.exists(video_path):
         logger.error(f"Video file not found: '{video_path}'")
@@ -125,6 +127,16 @@ def test_video(
     else:
         logger.error(f"Unknown pipeline: {pipeline_type}")
         return
+
+    # Apply display overrides if requested
+    if hide_boxes and hasattr(pipeline, "show_boxes"):
+        pipeline.show_boxes = False
+        pipeline.show_labels = False
+        logger.info("[DISPLAY] Clean Client Demo Mode: Bounding boxes hidden (HUD only).")
+    elif show_boxes and hasattr(pipeline, "show_boxes"):
+        pipeline.show_boxes = True
+        pipeline.show_labels = True
+        logger.info("[DISPLAY] Debug Mode: Bounding boxes and confidence labels visible.")
 
     # Seek to start time if provided
     start_sec = parse_time_str(start_time)
@@ -242,6 +254,8 @@ if __name__ == "__main__":
     parser.add_argument("--rule-config", default=None, help="Custom rule YAML path (optional)")
     parser.add_argument("--infer-fps", type=float, default=None, help="Target inference rate in FPS (e.g. 2 for 2 inferences/sec). Skips intermediate frames.")
     parser.add_argument("--frame-skip", type=int, default=1, help="Process every N-th frame (e.g. 5 to evaluate 1 frame every 5 frames)")
+    parser.add_argument("--hide-boxes", action="store_true", help="Hide bounding boxes (clean executive HUD view for client demos)")
+    parser.add_argument("--show-boxes", action="store_true", help="Force show bounding boxes and tracking IDs")
     args = parser.parse_args()
 
     test_video(
@@ -252,5 +266,7 @@ if __name__ == "__main__":
         camera_name=args.camera_name,
         save_output=args.save_output,
         infer_fps=args.infer_fps,
-        frame_skip=args.frame_skip
+        frame_skip=args.frame_skip,
+        hide_boxes=args.hide_boxes,
+        show_boxes=args.show_boxes
     )

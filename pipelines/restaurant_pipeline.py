@@ -77,6 +77,10 @@ class RestaurantCounterPipeline(BasePipeline):
         self.lost_track_buffer = int(self.rules.get("lost_track_buffer", 30))
         self.smoothing_frames = int(self.rules.get("smoothing_frames", 5))
 
+        # Visual Display & Presentation Settings
+        self.show_boxes = bool(self.rules.get("show_boxes", True))
+        self.show_labels = bool(self.rules.get("show_labels", True))
+
         # Annotators
         self.box_annotator = sv.BoxAnnotator(thickness=2)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.45, text_thickness=1)
@@ -179,7 +183,8 @@ class RestaurantCounterPipeline(BasePipeline):
         self.zone_annotator = sv.PolygonZoneAnnotator(
             zone=self.polygon_zone,
             color=sv.Color.GREEN,
-            thickness=2
+            thickness=2,
+            display_in_zone_count=False
         )
 
         # Initialize shadow boost zone if configured
@@ -330,17 +335,18 @@ class RestaurantCounterPipeline(BasePipeline):
                 cv2.LINE_AA
             )
 
-        # Annotate detected people in dining zone
-        annotated_frame = self.box_annotator.annotate(annotated_frame, detections=zone_detections)
-        if len(zone_detections) > 0:
-            if hasattr(zone_detections, "tracker_id") and zone_detections.tracker_id is not None:
-                labels = [
-                    f"#{tid} ({conf:.2f})" if tid is not None else f"person {conf:.2f}"
-                    for tid, conf in zip(zone_detections.tracker_id, zone_detections.confidence)
-                ]
-            else:
-                labels = [f"person {conf:.2f}" for conf in zone_detections.confidence]
-            annotated_frame = self.label_annotator.annotate(annotated_frame, detections=zone_detections, labels=labels)
+        # Annotate detected people in dining zone (optional)
+        if self.show_boxes and len(zone_detections) > 0:
+            annotated_frame = self.box_annotator.annotate(annotated_frame, detections=zone_detections)
+            if self.show_labels:
+                if hasattr(zone_detections, "tracker_id") and zone_detections.tracker_id is not None:
+                    labels = [
+                        f"#{tid} ({conf:.2f})" if tid is not None else f"person {conf:.2f}"
+                        for tid, conf in zip(zone_detections.tracker_id, zone_detections.confidence)
+                    ]
+                else:
+                    labels = [f"person {conf:.2f}" for conf in zone_detections.confidence]
+                annotated_frame = self.label_annotator.annotate(annotated_frame, detections=zone_detections, labels=labels)
 
         # Draw Premium HUD
         annotated_frame = self._render_occupancy_hud(
@@ -372,9 +378,11 @@ class RestaurantCounterPipeline(BasePipeline):
 
         annotated_frame = frame.copy()
         annotated_frame = self.line_zone_annotator.annotate(annotated_frame, line_counter=self.line_zone)
-        annotated_frame = self.box_annotator.annotate(annotated_frame, detections=detections)
-        labels = [f"#{tid}" for tid in detections.tracker_id] if detections.tracker_id is not None else []
-        annotated_frame = self.label_annotator.annotate(annotated_frame, detections=detections, labels=labels)
+        if self.show_boxes and len(detections) > 0:
+            annotated_frame = self.box_annotator.annotate(annotated_frame, detections=detections)
+            if self.show_labels:
+                labels = [f"#{tid}" for tid in detections.tracker_id] if detections.tracker_id is not None else []
+                annotated_frame = self.label_annotator.annotate(annotated_frame, detections=detections, labels=labels)
 
         occ_color = (0, 0, 255) if self.current_occupancy >= self.max_capacity else (0, 255, 0)
         cv2.putText(annotated_frame, f"{self.camera_name}", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
