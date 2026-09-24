@@ -16,6 +16,7 @@ yolo26m.pt
 yolo26s.pt
 yolo26x.pt
 rtdetr-l.pt
+*.pt
 *.mp4
 *.jpg
 *.onnx

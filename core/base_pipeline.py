@@ -46,8 +46,11 @@ class BasePipeline(ABC):
         if roi is not None:
             self._apply_inline_roi(roi)
 
+        # 4. Input resolution (supports int 640 or [height, width] e.g. [736, 1280])
+        self.imgsz = self.rules.get("imgsz", 640)
+
         # Load YOLO model
-        logger.info(f"[{self.camera_name}] Loading vision model '{model_name}' on device '{device}'...")
+        logger.info(f"[{self.camera_name}] Loading vision model '{model_name}' (imgsz={self.imgsz}) on device '{device}'...")
         self.model = YOLO(model_name, task="detect")
 
     def _apply_inline_roi(self, roi: Any):

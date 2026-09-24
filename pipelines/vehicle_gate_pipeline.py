@@ -11,6 +11,7 @@ import numpy as np
 import supervision as sv
 
 from core.base_pipeline import BasePipeline
+from core.anpr_engine import AnprEngine
 from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("VehicleGatePipeline")
@@ -81,6 +82,28 @@ class VehicleGatePipeline(BasePipeline):
         self.roi_zone: Optional[sv.PolygonZone] = None
         self.roi_pts: Optional[np.ndarray] = None
 
+        # Indonesian License Plate Recognition (ANPR / LPR) Engine
+        self.anpr_cfg = self.rules.get("anpr", {})
+        self.anpr_enabled = bool(self.anpr_cfg.get("enabled", True))
+        self.anpr_engine: Optional[AnprEngine] = None
+        if self.anpr_enabled:
+            plate_model_path = self.anpr_cfg.get("model_path", "models/license_plate_detector.onnx")
+            min_plate_conf = float(self.anpr_cfg.get("min_plate_confidence", 0.25))
+            try:
+                self.anpr_engine = AnprEngine(
+                    detector_model_path=plate_model_path,
+                    conf_threshold=min_plate_conf,
+                    gpu=(device == "cuda")
+                )
+                logger.info(f"[{self.camera_name}] Indonesian ANPR Engine active (model: {plate_model_path}).")
+            except Exception as e:
+                logger.error(f"[{self.camera_name}] Failed to initialize ANPR Engine: {e}")
+                self.anpr_enabled = False
+
+        # Persistent plate tracking cache: {tracker_id: {"plate_text": ..., "confidence": ..., "is_valid": ...}}
+        self.vehicle_plates: Dict[int, Dict[str, Any]] = {}
+        self.recent_audits: list = []
+
     def _init_zones_if_needed(self, frame_shape):
         if self.line_zone is not None:
             return
@@ -131,7 +154,14 @@ class VehicleGatePipeline(BasePipeline):
         self._init_zones_if_needed(frame.shape)
 
         # 1. Detect vehicles
-        results = self.model(frame, classes=VEHICLE_CLASS_IDS, conf=self.conf_thresh, verbose=False, device=self.device)[0]
+        results = self.model(
+            frame,
+            classes=VEHICLE_CLASS_IDS,
+            conf=self.conf_thresh,
+            imgsz=self.imgsz,
+            verbose=False,
+            device=self.device
+        )[0]
         detections = sv.Detections.from_ultralytics(results)
 
         # 2. Filter detections within Roadway ROI (ignoring building walls & background)
@@ -144,10 +174,35 @@ class VehicleGatePipeline(BasePipeline):
         if len(detections) > 0:
             detections = self.smoother.update_with_detections(detections)
 
-        # 4. Line crossing trigger
+        # 4. Perform ANPR on active vehicles in ROI (cache plate text per tracker_id)
+        current_plates_to_draw = []
+        if self.anpr_engine and detections.tracker_id is not None and len(detections) > 0:
+            boxes = detections.xyxy
+            tracker_ids = detections.tracker_id
+            for tid, box in zip(tracker_ids, boxes):
+                if tid is None:
+                    continue
+                # Only scan if not yet verified or if plate was empty
+                cached = self.vehicle_plates.get(tid)
+                if cached is None or not cached.get("is_valid", False):
+                    v_box = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
+                    # Only attempt if vehicle is sufficiently large (>80px wide)
+                    if (v_box[2] - v_box[0]) >= 80 and (v_box[3] - v_box[1]) >= 40:
+                        plate_data = self.anpr_engine.process_vehicle(frame, v_box)
+                        if plate_data and plate_data.get("plate_text"):
+                            # Update if better confidence or valid
+                            if cached is None or plate_data.get("is_valid", False) or plate_data.get("ocr_confidence", 0) > cached.get("ocr_confidence", 0):
+                                self.vehicle_plates[tid] = plate_data
+
+                # Collect plate boxes to draw
+                active_plate = self.vehicle_plates.get(tid)
+                if active_plate and active_plate.get("plate_bbox"):
+                    current_plates_to_draw.append(active_plate)
+
+        # 5. Line crossing trigger
         crossed_in, crossed_out = self.line_zone.trigger(detections=detections)
 
-        # 4. Handle audit logging for newly crossed vehicles
+        # Handle audit logging for newly crossed vehicles
         if np.any(crossed_in) or np.any(crossed_out):
             for i in range(len(detections)):
                 is_in = crossed_in[i] if i < len(crossed_in) else False
@@ -159,43 +214,80 @@ class VehicleGatePipeline(BasePipeline):
                     tracker_id = detections.tracker_id[i] if detections.tracker_id is not None else "N/A"
                     direction = "ENTRY" if is_in else "EXIT"
 
+                    # Retrieve recognized plate number from cache
+                    plate_info = self.vehicle_plates.get(tracker_id, {})
+                    plate_number = plate_info.get("plate_text", "UNIDENTIFIED")
+
                     self._dispatch_gate_audit(
                         vehicle_type=vehicle_type,
                         direction=direction,
                         tracker_id=tracker_id,
+                        plate_number=plate_number,
                         timestamp_ms=timestamp_ms
                     )
 
-        # 5. Annotations
+        # 6. Annotations
         annotated_frame = frame.copy()
         annotated_frame = self.line_zone_annotator.annotate(annotated_frame, line_counter=self.line_zone)
         annotated_frame = self.trace_annotator.annotate(annotated_frame, detections=detections)
         annotated_frame = self.box_annotator.annotate(annotated_frame, detections=detections)
 
+        # Draw vehicle labels with detected license plate numbers
         labels = []
         if detections.tracker_id is not None:
             for tracker_id, class_id in zip(detections.tracker_id, detections.class_id):
                 v_name = CLASS_NAMES.get(class_id, "vehicle")
-                labels.append(f"#{tracker_id} {v_name}")
+                plate_info = self.vehicle_plates.get(tracker_id, {})
+                plate_txt = plate_info.get("plate_text", "")
+                if plate_txt:
+                    labels.append(f"#{tracker_id} {v_name} [{plate_txt}]")
+                else:
+                    labels.append(f"#{tracker_id} {v_name}")
         annotated_frame = self.label_annotator.annotate(annotated_frame, detections=detections, labels=labels)
 
-        # Top banner stats
-        cv2.putText(annotated_frame, f"{self.camera_name}", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        # Draw detected license plate bounding boxes & texts
+        for p in current_plates_to_draw:
+            px1, py1, px2, py2 = p["plate_bbox"]
+            txt = p["plate_text"]
+            is_val = p.get("is_valid", False)
+            box_color = (0, 255, 255) if is_val else (0, 165, 255)
+            cv2.rectangle(annotated_frame, (px1, py1), (px2, py2), box_color, 2)
+            cv2.putText(annotated_frame, txt, (px1, max(20, py1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2, cv2.LINE_AA)
+
+        # Top banner stats & recent audits
+        anpr_status = "ANPR: ACTIVE" if self.anpr_enabled else "ANPR: OFF"
+        cv2.putText(annotated_frame, f"{self.camera_name} | {anpr_status}", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         cv2.putText(annotated_frame, f"TOTAL IN: {self.line_zone.in_count} | TOTAL OUT: {self.line_zone.out_count}", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+        if self.recent_audits:
+            last = self.recent_audits[-1]
+            last_text = f"LAST: {last['plate']} ({last['direction']})"
+            cv2.putText(annotated_frame, last_text, (20, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
         return annotated_frame
 
-    def _dispatch_gate_audit(self, vehicle_type: str, direction: str, tracker_id: Any, timestamp_ms: int):
-        title = f"[GATE AUDIT] Vehicle {direction} ({vehicle_type.upper()})"
-        description = f"{direction}: {vehicle_type.capitalize()} #{tracker_id} crossed {self.camera_name}."
+    def _dispatch_gate_audit(self, vehicle_type: str, direction: str, tracker_id: Any, plate_number: str, timestamp_ms: int):
+        title = f"[GATE AUDIT] Vehicle {direction} - {vehicle_type.upper()} ({plate_number})"
+        description = f"{direction}: {vehicle_type.capitalize()} #{tracker_id} with License Plate [{plate_number}] crossed {self.camera_name}."
 
         logger.info(f"[{self.camera_name}] {title} - {description}")
+
+        self.recent_audits.append({
+            "direction": direction,
+            "plate": plate_number,
+            "vehicle_type": vehicle_type,
+            "timestamp": timestamp_ms
+        })
+        if len(self.recent_audits) > 10:
+            self.recent_audits.pop(0)
+
+        clean_tag = f"#{plate_number.replace(' ', '_').lower()}" if plate_number != "UNIDENTIFIED" else "#unidentified"
+        tags = ["#vehicle_audit", f"#{direction.lower()}", f"#{vehicle_type.lower()}", clean_tag]
 
         self.nx_client.create_bookmark(
             camera_id=self.nx_camera_id,
             title=title,
             description=description,
-            tags=["#vehicle_audit", f"#{direction.lower()}", f"#{vehicle_type.lower()}"],
+            tags=tags,
             start_time_ms=timestamp_ms,
             duration_ms=10000
         )

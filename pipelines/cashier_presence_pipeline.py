@@ -139,6 +139,7 @@ class CashierPresencePipeline(BasePipeline):
             frame,
             classes=[0],
             conf=self.conf_thresh,
+            imgsz=self.imgsz,
             verbose=False,
             device=self.device
         )[0]

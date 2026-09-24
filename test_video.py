@@ -54,7 +54,9 @@ def test_video(
     infer_fps: float = None,
     frame_skip: int = 1,
     hide_boxes: bool = False,
-    show_boxes: bool = False
+    show_boxes: bool = False,
+    no_gui: bool = False,
+    no_anpr: bool = False
 ):
     if not os.path.exists(video_path):
         logger.error(f"Video file not found: '{video_path}'")
@@ -94,13 +96,15 @@ def test_video(
     if pipeline_type == "gate":
         rule_cfg = rule_path or "configs/rules/vehicle_gate.yaml"
         c_name = camera_name or "Main Vehicle Gate 1"
+        gate_rules = {"anpr": {"enabled": False}} if no_anpr else None
         pipeline = VehicleGatePipeline(
             camera_id="cam_gate_test",
             camera_name=c_name,
             nx_camera_id="00000000-0000-0000-0000-000000000003",
             rule_config_path=rule_cfg,
             nx_client=nx_client,
-            device="cpu"
+            device="cpu",
+            rules=gate_rules
         )
     elif pipeline_type == "cashier":
         rule_cfg = rule_path or "configs/rules/cashier_presence.yaml"
@@ -154,32 +158,43 @@ def test_video(
         writer = cv2.VideoWriter(save_output, fourcc, writer_fps, (width, height))
         logger.info(f"[RECORDING] Output will be saved to: {save_output} (@ {writer_fps:.1f} FPS)")
 
+    gui_enabled = not no_gui
     window_name = f"Zoo Vision - {pipeline.camera_name}"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, 1280, 720)
-
-    # Mouse callback for tripwire adjustment (if in tripwire mode)
     clicked_points = []
-    def on_mouse_click(event, x, y, flags, param):
-        nonlocal clicked_points
-        if event == cv2.EVENT_LBUTTONDOWN and hasattr(pipeline, "set_tripwire"):
-            norm_x = round(x / width, 3)
-            norm_y = round(y / height, 3)
-            clicked_points.append((norm_x, norm_y))
-            if len(clicked_points) == 1:
-                logger.info(f"[COORDINATE PICKER] Point 1 (START): [{norm_x}, {norm_y}]")
-            elif len(clicked_points) >= 2:
-                p1 = clicked_points[-2]
-                p2 = clicked_points[-1]
-                logger.info(f"[COORDINATE PICKER] Point 2 (END): [{norm_x}, {norm_y}]")
-                pipeline.set_tripwire(p1, p2, (height, width))
-                logger.info("[LIVE UPDATE] Tripwire updated on the video in real-time!")
 
-    cv2.setMouseCallback(window_name, on_mouse_click)
+    if gui_enabled:
+        try:
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(window_name, 1280, 720)
+
+            # Mouse callback for tripwire adjustment (if in tripwire mode)
+            def on_mouse_click(event, x, y, flags, param):
+                nonlocal clicked_points
+                if event == cv2.EVENT_LBUTTONDOWN and hasattr(pipeline, "set_tripwire"):
+                    norm_x = round(x / width, 3)
+                    norm_y = round(y / height, 3)
+                    clicked_points.append((norm_x, norm_y))
+                    if len(clicked_points) == 1:
+                        logger.info(f"[COORDINATE PICKER] Point 1 (START): [{norm_x}, {norm_y}]")
+                    elif len(clicked_points) >= 2:
+                        p1 = clicked_points[-2]
+                        p2 = clicked_points[-1]
+                        logger.info(f"[COORDINATE PICKER] Point 2 (END): [{norm_x}, {norm_y}]")
+                        pipeline.set_tripwire(p1, p2, (height, width))
+                        logger.info("[LIVE UPDATE] Tripwire updated on the video in real-time!")
+
+            cv2.setMouseCallback(window_name, on_mouse_click)
+        except Exception as e:
+            logger.warning(f"Could not open GUI window ({e}). Running in headless mode.")
+            gui_enabled = False
 
     logger.info("=" * 60)
     logger.info(f"Starting playback for [{pipeline.camera_name}]")
-    logger.info("Controls: SPACE=Pause | 'd'=Forward 10s | 'a'=Back 10s | 'q'=Quit")
+    if gui_enabled:
+        controls_hint = "Controls: SPACE=Pause | 'd'=+10s | 'a'=-10s | 'q'=Quit"
+        if hasattr(pipeline, "anpr_enabled"):
+            controls_hint += " | 'p'=Toggle ANPR"
+        logger.info(controls_hint)
     logger.info("=" * 60)
 
     frame_delay = max(1, int(1000 / fps))
@@ -211,7 +226,8 @@ def test_video(
             time_str = f"Time: {mins:02d}:{secs:02d} | Frame: {current_frame}/{total_frames}{cadence_str} | SPACE: Pause | 'd': +10s | 'a': -10s | 'q': Quit"
             cv2.putText(annotated_frame, time_str, (20, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1)
 
-            cv2.imshow(window_name, annotated_frame)
+            if gui_enabled:
+                cv2.imshow(window_name, annotated_frame)
 
             # Advance / skip intermediate frames between inferences
             if step_frames > 1 and not paused:
@@ -219,22 +235,27 @@ def test_video(
                     if not cap.grab():
                         break
 
-        key = cv2.waitKey(frame_delay if not paused else 50) & 0xFF
-        if key == ord('q'):
-            break
-        elif key == ord(' '):
-            paused = not paused
-            logger.info("PAUSED" if paused else "RESUMED")
-        elif key in [ord('d'), 83]: # 'd' or right arrow
-            # Fast-forward 10 seconds
-            curr = cap.get(cv2.CAP_PROP_POS_FRAMES)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, min(curr + int(10 * fps), total_frames - 1))
-            logger.info(">> Fast-forwarded 10s")
-        elif key in [ord('a'), 81]: # 'a' or left arrow
-            # Rewind 10 seconds
-            curr = cap.get(cv2.CAP_PROP_POS_FRAMES)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, curr - int(10 * fps)))
-            logger.info("<< Rewound 10s")
+        if gui_enabled:
+            key = cv2.waitKey(frame_delay if not paused else 50) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord(' '):
+                paused = not paused
+                logger.info("PAUSED" if paused else "RESUMED")
+            elif key in [ord('d'), 83]: # 'd' or right arrow
+                # Fast-forward 10 seconds
+                curr = cap.get(cv2.CAP_PROP_POS_FRAMES)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, min(curr + int(10 * fps), total_frames - 1))
+                logger.info(">> Fast-forwarded 10s")
+            elif key in [ord('a'), 81]: # 'a' or left arrow
+                # Rewind 10 seconds
+                curr = cap.get(cv2.CAP_PROP_POS_FRAMES)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, curr - int(10 * fps)))
+                logger.info("<< Rewound 10s")
+            elif key in [ord('p'), ord('P')] and hasattr(pipeline, "anpr_enabled"):
+                pipeline.anpr_enabled = not pipeline.anpr_enabled
+                state_str = "ACTIVE" if pipeline.anpr_enabled else "OFF"
+                logger.info(f"[ANPR TOGGLE] ANPR is now {state_str}")
 
     cap.release()
     if writer:
@@ -256,6 +277,8 @@ if __name__ == "__main__":
     parser.add_argument("--frame-skip", type=int, default=1, help="Process every N-th frame (e.g. 5 to evaluate 1 frame every 5 frames)")
     parser.add_argument("--hide-boxes", action="store_true", help="Hide bounding boxes (clean executive HUD view for client demos)")
     parser.add_argument("--show-boxes", action="store_true", help="Force show bounding boxes and tracking IDs")
+    parser.add_argument("--no-gui", action="store_true", help="Run without opening GUI window (ideal for headless or background execution)")
+    parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     args = parser.parse_args()
 
     test_video(
@@ -268,5 +291,7 @@ if __name__ == "__main__":
         infer_fps=args.infer_fps,
         frame_skip=args.frame_skip,
         hide_boxes=args.hide_boxes,
-        show_boxes=args.show_boxes
+        show_boxes=args.show_boxes,
+        no_gui=args.no_gui,
+        no_anpr=args.no_anpr
     )

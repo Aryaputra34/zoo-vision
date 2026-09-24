@@ -163,6 +163,9 @@ model.export(
 )
 ```
 
+> [!TIP]
+> **Universal Model Exporter**: You can also use [`export_model.py`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/export_model.py) for interactive or scripted exports to ONNX, OpenVINO, and TensorRT with automatic 16:9 widescreen CCTV aspect ratio handling. See the full [Model Export Guide](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/05_MODEL_EXPORT_GUIDE.md).
+
 ---
 
 ## 4. Production Inference Engine (How Models Run in Production)

@@ -184,7 +184,7 @@ class RestaurantCounterPipeline(BasePipeline):
             zone=self.polygon_zone,
             color=sv.Color.GREEN,
             thickness=2,
-            display_in_zone_count=False
+            display_in_zone_count=False # RAW COUNT
         )
 
         # Initialize shadow boost zone if configured

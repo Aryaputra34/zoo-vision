@@ -27,6 +27,15 @@ All project documentation is structured inside the [`docs/`](file:///c:/Users/Ma
    * Bill of Materials: Workstation Build ($1,400–$1,850) vs. 4U Rackmount Server ($3,200–$4,500) vs. OEM (Dell/Lenovo/HPE).
    * Single-NIC Nx-proxied network topology & UPS battery backup recommendations.
 
+4. **[04_ARCHITECTURE_DECISION_RECORDS.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/04_ARCHITECTURE_DECISION_RECORDS.md)** & **[ADR Index](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/adr/README.md)**
+   * Formal records of architectural choices (Multi-camera ROI, cashier dual-zone, model selection, queue filtering, Indonesian ANPR).
+
+5. **[05_MODEL_EXPORT_GUIDE.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/05_MODEL_EXPORT_GUIDE.md)**
+   * Universal Model Exporter CLI & Wizard (`export_model.py`).
+   * Exporting PyTorch (`.pt`) to ONNX, Intel OpenVINO, and NVIDIA TensorRT.
+   * 16:9 Widescreen CCTV aspect ratio optimization (`736x1280`) vs. square letterboxing.
+   * Dynamic shapes, FP16 half precision, and pipeline YAML configuration.
+
 ---
 
 ## 🎯 The 5 Core Use Cases
