@@ -35,14 +35,14 @@ class CashierPresencePipeline(BasePipeline):
         rules: Optional[Dict[str, Any]] = None
     ):
         # Pre-read model_name from rules config if available
-        model_name = "yolo11s.pt"
+        model_name = "yolo11s.onnx"
         if rules and "model_name" in rules:
             model_name = rules["model_name"]
         elif rule_config_path:
             try:
                 with open(rule_config_path, "r") as f:
                     cfg = yaml.safe_load(f) or {}
-                    model_name = cfg.get("model_name", "yolo11s.pt")
+                    model_name = cfg.get("model_name", "yolo11s.onnx")
             except Exception:
                 pass
 

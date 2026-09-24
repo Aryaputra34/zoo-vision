@@ -23,7 +23,7 @@ class BasePipeline(ABC):
         nx_camera_id: str,
         rule_config_path: Optional[str] = None,
         nx_client: Optional[NxClient] = None,
-        model_name: str = "yolo11n.pt",
+        model_name: str = "yolo11n.onnx",
         device: str = "cpu",
         roi: Optional[Any] = None,
         rules: Optional[Dict[str, Any]] = None
@@ -48,7 +48,7 @@ class BasePipeline(ABC):
 
         # Load YOLO model
         logger.info(f"[{self.camera_name}] Loading vision model '{model_name}' on device '{device}'...")
-        self.model = YOLO(model_name)
+        self.model = YOLO(model_name, task="detect")
 
     def _apply_inline_roi(self, roi: Any):
         """Applies inline ROI to rules configuration."""

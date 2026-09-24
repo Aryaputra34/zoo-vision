@@ -32,7 +32,7 @@ class VehicleGatePipeline(BasePipeline):
         roi: Optional[Any] = None,
         rules: Optional[dict] = None
     ):
-        model_name = "yolo11s.pt"
+        model_name = "yolo26s.onnx"
         if rules and "model_name" in rules:
             model_name = rules["model_name"]
         elif rule_config_path:
@@ -40,7 +40,7 @@ class VehicleGatePipeline(BasePipeline):
                 with open(rule_config_path, "r") as f:
                     import yaml
                     cfg = yaml.safe_load(f) or {}
-                    model_name = cfg.get("model_name", "yolo11s.pt")
+                    model_name = cfg.get("model_name", "yolo26s.onnx")
             except Exception:
                 pass
 
