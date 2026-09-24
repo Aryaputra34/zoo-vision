@@ -87,7 +87,7 @@ def test_video(
         )
     elif pipeline_type == "cashier":
         rule_cfg = rule_path or "configs/rules/cashier_presence.yaml"
-        c_name = camera_name or "Ticket Booth 1 Cashier"
+        c_name = camera_name or "Loket Mini Train Cashier"
         pipeline = CashierPresencePipeline(
             camera_id="cam_cashier_test",
             camera_name=c_name,
@@ -168,7 +168,7 @@ def test_video(
             current_sec = current_frame / fps
             mins = int(current_sec // 60)
             secs = int(current_sec % 60)
-            timestamp_ms = int(time.time() * 1000)
+            timestamp_ms = int(current_sec * 1000)
 
             # Process frame through the active pipeline
             annotated_frame = pipeline.process_frame(frame, timestamp_ms)

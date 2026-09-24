@@ -53,6 +53,10 @@ class BasePipeline(ABC):
     def _apply_inline_roi(self, roi: Any):
         """Applies inline ROI to rules configuration."""
         if isinstance(roi, dict):
+            if "clerk_zone" in roi:
+                self.rules["clerk_zone"] = roi["clerk_zone"]
+            if "visitor_zone" in roi:
+                self.rules["visitor_zone"] = roi["visitor_zone"]
             if "tripwire" in roi:
                 self.rules["tripwire"] = roi["tripwire"]
             elif "start" in roi and "end" in roi:
@@ -63,7 +67,7 @@ class BasePipeline(ABC):
                 self.rules["dining_zone"] = roi["dining_zone"]
             elif "roi_polygon" in roi:
                 self.rules["roi_polygon"] = roi["roi_polygon"]
-            else:
+            elif "clerk_zone" not in roi and "visitor_zone" not in roi:
                 self.rules["zone_polygon"] = roi
         elif isinstance(roi, list):
             # List of polygon points [[x, y], ...]
