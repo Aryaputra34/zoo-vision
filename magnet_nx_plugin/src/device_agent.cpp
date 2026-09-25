@@ -31,6 +31,7 @@ const std::string DeviceAgent::kVisitorUnservedEventType = "magnet.event.visitor
 const std::string DeviceAgent::kOccupancyExceededEventType = "magnet.event.occupancy_exceeded";
 const std::string DeviceAgent::kVehicleEntryEventType = "magnet.event.vehicle_entry";
 const std::string DeviceAgent::kHorseDepartureEventType = "magnet.event.horse_departure";
+const std::string DeviceAgent::kHorseReturnEventType = "magnet.event.horse_return";
 
 DeviceAgent::DeviceAgent(const IDeviceInfo* deviceInfo):
     ConsumingDeviceAgent(deviceInfo, /*enableOutput*/ true)
@@ -63,7 +64,8 @@ std::string DeviceAgent::manifestString() const
         { "eventTypeId": "magnet.event.visitor_unserved" },
         { "eventTypeId": "magnet.event.occupancy_exceeded" },
         { "eventTypeId": "magnet.event.vehicle_entry" },
-        { "eventTypeId": "magnet.event.horse_departure" }
+        { "eventTypeId": "magnet.event.horse_departure" },
+        { "eventTypeId": "magnet.event.horse_return" }
     ],
     "typeLibrary":
     {
@@ -110,7 +112,11 @@ std::string DeviceAgent::manifestString() const
             },
             {
                 "id": "magnet.event.horse_departure",
-                "name": "Magnet: Horse Departure Count"
+                "name": "Magnet: Horse Ride Departure"
+            },
+            {
+                "id": "magnet.event.horse_return",
+                "name": "Magnet: Horse Ride Return"
             }
         ]
     }

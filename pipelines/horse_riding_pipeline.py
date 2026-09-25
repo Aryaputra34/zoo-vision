@@ -174,16 +174,19 @@ class HorseRidingPipeline(BasePipeline):
         start_pt = sv.Point(x=int(start_norm[0] * w), y=int(start_norm[1] * h))
         end_pt = sv.Point(x=int(end_norm[0] * w), y=int(end_norm[1] * h))
 
-        old_in = self.line_zone.in_count if self.line_zone else 0
-        old_out = self.line_zone.out_count if self.line_zone else 0
+        # Preserve previous counts if available
+        old_in = self.line_zone._in_count_per_class.copy() if self.line_zone else None
+        old_out = self.line_zone._out_count_per_class.copy() if self.line_zone else None
 
         self.line_zone = sv.LineZone(
             start=start_pt,
             end=end_pt,
             triggering_anchors=[sv.Position.BOTTOM_CENTER]
         )
-        self.line_zone.in_count = old_in
-        self.line_zone.out_count = old_out
+        if old_in is not None:
+            self.line_zone._in_count_per_class = old_in
+        if old_out is not None:
+            self.line_zone._out_count_per_class = old_out
         self.tripwire_enabled = True
 
         if self.line_zone_annotator is None:

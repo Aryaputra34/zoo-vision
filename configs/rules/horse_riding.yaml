@@ -31,9 +31,9 @@ smoothing_frames: 4
 # Virtual Choke Point Tripwire (normalized coordinates 0.0 - 1.0)
 # Enable if counting departures/returns across a specific dock/corridor line
 tripwire:
-  enabled: false
-  start: [0.20, 0.60]
-  end: [0.80, 0.60]
+  enabled: true
+  start: [0.76, 0.62]
+  end: [0.13, 0.97]
 
 # Direction vectors: "down", "up", "left", "right"
 departure_direction: "down"

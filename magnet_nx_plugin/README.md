@@ -22,11 +22,14 @@ graph LR
   * `magnet.person.visitor` — Magnet: Visitor / Queue Member
   * `magnet.vehicle` — Magnet: Audited Vehicle
   * `magnet.plate` — Magnet: License Plate (ANPR)
+  * `magnet.animal.horse` — Magnet: Riding Horse
 * **Supported Events**:
   * `magnet.event.cashier_unattended` — Cashier Desk Unattended Alert
   * `magnet.event.visitor_unserved` — Customer Waiting Alert
   * `magnet.event.occupancy_exceeded` — Area Capacity Exceeded
   * `magnet.event.vehicle_entry` — Gate Vehicle Entry Crossing
+  * `magnet.event.horse_departure` — Horse Ride Departure Audit
+  * `magnet.event.horse_return` — Horse Ride Return Audit
 
 ---
 

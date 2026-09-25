@@ -53,6 +53,7 @@ private:
     static const std::string kOccupancyExceededEventType;
     static const std::string kVehicleEntryEventType;
     static const std::string kHorseDepartureEventType;
+    static const std::string kHorseReturnEventType;
 
 private:
     nx::sdk::Uuid m_trackId = nx::sdk::UuidHelper::randomUuid();

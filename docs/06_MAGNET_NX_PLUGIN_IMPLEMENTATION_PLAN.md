@@ -66,6 +66,7 @@ graph TD
 | `magnet.person.visitor` | **Magnet: Visitor / Customer** | `Zone` (Queue, Dining, General), `WaitSeconds` |
 | `magnet.vehicle` | **Magnet: Audited Vehicle** | `Direction` (Entry, Exit), `Speed` |
 | `magnet.plate` | **Magnet: License Plate (ANPR)** | `PlateNumber`, `Confidence` |
+| `magnet.animal.horse` | **Magnet: Riding Horse** | `TrackId`, `MotionDirection` |
 
 ### Event Types (Nx Event Rules & Alarm Dispatch)
 | Event Type ID | Display Name | Trigger Condition |
@@ -74,6 +75,8 @@ graph TD
 | `magnet.event.visitor_unserved` | **Magnet: Customer Waiting Alert** | Customer queue waiting time exceeds threshold (e.g. 60s) |
 | `magnet.event.occupancy_exceeded` | **Magnet: Area Capacity Exceeded** | Headcount exceeds dining/zone limit for > 10s |
 | `magnet.event.vehicle_entry` | **Magnet: Vehicle Entry Gate Crossing** | Vehicle crosses entry tripwire in forward direction |
+| `magnet.event.horse_departure` | **Magnet: Horse Ride Departure** | Horse crosses choke-point tripwire into riding circuit |
+| `magnet.event.horse_return` | **Magnet: Horse Ride Return** | Horse crosses choke-point tripwire back into paddock/station |
 
 ---
 
