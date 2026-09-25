@@ -37,11 +37,11 @@ graph LR
 
 ### 1. Copy Files to the Server
 
-From your development machine, copy this `magnet_nx_plugin/` folder and the SDK zip archive to your Linux server (e.g., `172.31.254.130`):
+From your development machine, copy this `magnet_nx_plugin/` folder, the SDK zip archive, and your exported ONNX model (`yolo11m.onnx` or `yolo11s.onnx`) to your Linux server (e.g., `172.31.254.130`):
 
 ```bash
 # Using SCP (replace user and server IP with your credentials)
-scp -r magnet_nx_plugin/ "C:/Users/Magnet Busdev-2/Downloads/metavms-server_plugin_sdk-6.1.2.42921-universal.zip" user@172.31.254.130:~/
+scp -r magnet_nx_plugin/ yolo11m.onnx "C:/Users/Magnet Busdev-2/Downloads/metavms-server_plugin_sdk-6.1.2.42921-universal.zip" user@172.31.254.130:~/
 ```
 
 ### 2. Run the One-Command Build Script
@@ -55,11 +55,13 @@ chmod +x build_on_server.sh
 ```
 
 The script will automatically:
-1. Verify / install `cmake`, `g++`, `make`, and `unzip`.
+1. Verify / install `cmake`, `g++`, `make`, `wget`, `tar`, and `unzip`.
 2. Extract the Nx Meta SDK if needed.
-3. Compile `libmagnet_analytics_plugin.so`.
-4. Copy the `.so` binary to `/opt/networkoptix-metavms/mediaserver/bin/plugins/`.
-5. Restart `networkoptix-metavms-mediaserver`.
+3. Automatically download and configure **ONNX Runtime C++ Linux x64 (v1.18.0)**.
+4. Compile `libmagnet_analytics_plugin.so` with YOLO ONNX C++ inference and vectorized NMS.
+5. Deploy `libmagnet_analytics_plugin.so` and `libonnxruntime.so` to `/opt/networkoptix-metavms/mediaserver/bin/plugins/`.
+6. Deploy `yolo11m.onnx` to `/opt/networkoptix-metavms/mediaserver/bin/plugins/models/`.
+7. Restart `networkoptix-metavms-mediaserver`.
 
 ---
 

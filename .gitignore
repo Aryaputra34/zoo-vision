@@ -25,3 +25,5 @@ rtdetr-l.pt
 *.bin
 scratch
 yolo11s_openvino_model
+
+metavms-server_plugin_sdk-6.1.2.42921-universal/server_plugin_sdk/*

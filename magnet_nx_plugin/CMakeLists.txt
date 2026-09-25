@@ -56,14 +56,39 @@ endif()
 set(src_dir ${CMAKE_CURRENT_LIST_DIR}/src)
 file(GLOB_RECURSE src_files CONFIGURE_DEPENDS ${src_dir}/*)
 
+# Locate ONNX Runtime C++
+set(onnxRuntimeDir "" CACHE PATH "Path to unpacked onnxruntime-linux-x64 directory.")
+if(onnxRuntimeDir STREQUAL "")
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/onnxruntime-linux-x64")
+        set(onnxRuntimeDir "${CMAKE_CURRENT_LIST_DIR}/onnxruntime-linux-x64")
+    elseif(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/onnxruntime-linux-x64")
+        set(onnxRuntimeDir "${CMAKE_CURRENT_BINARY_DIR}/onnxruntime-linux-x64")
+    elseif(EXISTS "$ENV{HOME}/onnxruntime-linux-x64")
+        set(onnxRuntimeDir "$ENV{HOME}/onnxruntime-linux-x64")
+    endif()
+endif()
+
 # Helper static library
 add_library(magnet_analytics_plugin_integration STATIC ${src_files})
 target_include_directories(magnet_analytics_plugin_integration PUBLIC ${src_dir})
 target_link_libraries(magnet_analytics_plugin_integration PUBLIC nx_sdk)
 
+if(NOT onnxRuntimeDir STREQUAL "" AND EXISTS "${onnxRuntimeDir}/include")
+    message(STATUS "Using ONNX Runtime at: ${onnxRuntimeDir}")
+    target_include_directories(magnet_analytics_plugin_integration PUBLIC "${onnxRuntimeDir}/include")
+    find_library(ONNXRUNTIME_LIB onnxruntime PATHS "${onnxRuntimeDir}/lib" REQUIRED)
+    target_include_directories(magnet_analytics_plugin_integration PUBLIC "${onnxRuntimeDir}/include")
+else()
+    message(WARNING "ONNX Runtime directory not specified. Pass -DonnxRuntimeDir=/path/to/onnxruntime-linux-x64")
+endif()
+
 # Output shared plugin library: libmagnet_analytics_plugin.so
 add_library(magnet_analytics_plugin SHARED "${CMAKE_CURRENT_LIST_DIR}/plugin.cpp")
 target_link_libraries(magnet_analytics_plugin PRIVATE magnet_analytics_plugin_integration)
+
+if(ONNXRUNTIME_LIB)
+    target_link_libraries(magnet_analytics_plugin PRIVATE ${ONNXRUNTIME_LIB})
+endif()
 
 set_target_properties(magnet_analytics_plugin PROPERTIES
     PREFIX "lib"
