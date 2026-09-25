@@ -17,6 +17,7 @@ from core.stream_manager import StreamManager
 from pipelines.cashier_presence_pipeline import CashierPresencePipeline
 from pipelines.restaurant_pipeline import RestaurantCounterPipeline
 from pipelines.vehicle_gate_pipeline import VehicleGatePipeline
+from pipelines.horse_riding_pipeline import HorseRidingPipeline
 
 # Configure Logging
 logging.basicConfig(
@@ -91,6 +92,10 @@ def main():
             )
         elif pipeline_type == "vehicle_gate":
             pipeline = VehicleGatePipeline(
+                cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
+            )
+        elif pipeline_type in ["horse_riding", "horse_tracking", "horse"]:
+            pipeline = HorseRidingPipeline(
                 cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
             )
         else:

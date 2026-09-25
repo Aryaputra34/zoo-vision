@@ -1,0 +1,52 @@
+# Horse Riding Attraction Tracking & Ride Audit Configuration
+rule_name: "horse_riding_tracking"
+
+# Model Selection (yolo11m.pt, yolo11s.pt, yolo26m.pt, yolo11n.pt)
+# yolo11m provides superior precision for distinguishing horses at CCTV distances
+model_name: "yolo11m.onnx"
+imgsz: [736, 1280]
+confidence_threshold: 0.25
+
+# best i test manually (need more checking), yolo11m.onnx, imgz 736, 1280
+
+# Target Selection: "horse" (COCO class 17)
+# When track_horses_only is true, staff handlers on foot and general bystanders are ignored
+track_horses_only: true
+target_classes:
+  - "horse"
+
+# Tracking Algorithm: ByteTrack tuned for horse motion
+track_activation_thresh: 0.25
+lost_track_buffer: 60       # 4 seconds memory at 15 FPS to maintain stable ID during pauses/turns
+matching_thresh: 0.70       # Resilient IoU matching through animal orientation changes
+frame_rate: 15
+
+# Trajectory & Visual Presentation for Client Demos
+show_boxes: true
+show_labels: true
+show_traces: true
+trace_length: 45            # Length of past motion path trail (frames)
+smoothing_frames: 4
+
+# Virtual Choke Point Tripwire (normalized coordinates 0.0 - 1.0)
+# Enable if counting departures/returns across a specific dock/corridor line
+tripwire:
+  enabled: false
+  start: [0.20, 0.60]
+  end: [0.80, 0.60]
+
+# Direction vectors: "down", "up", "left", "right"
+departure_direction: "down"
+
+# Optional Region of Interest (ROI) polygon (normalized 0.0 - 1.0)
+# Leave empty [] to monitor the full camera view
+roi_polygon: []
+
+# Alert & Audit Settings
+debounce_alert_sec: 15
+
+# Nx Meta Event & Bookmark Metadata
+nx_bookmark:
+  tag: "#horse_audit"
+  title: "[RIDE AUDIT] Horse Departure Logged"
+  duration_ms: 10000

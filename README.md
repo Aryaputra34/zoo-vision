@@ -36,6 +36,12 @@ All project documentation is structured inside the [`docs/`](file:///c:/Users/Ma
    * 16:9 Widescreen CCTV aspect ratio optimization (`736x1280`) vs. square letterboxing.
    * Dynamic shapes, FP16 half precision, and pipeline YAML configuration.
 
+6. **[06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md)**
+   * Native C++ Analytics Plugin for Network Optix MetaVMS (`metavms-server`).
+   * Direct in-process execution, zero-copy YUV420 frame ingestion, and ONNX Runtime C++.
+   * Native Nx Desktop bounding box overlays, timeline bookmarks, and alarm rules.
+   * Automated Linux server build and deployment scripts ([`magnet_nx_plugin/`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/magnet_nx_plugin)).
+
 ---
 
 ## 🎯 The 5 Core Use Cases

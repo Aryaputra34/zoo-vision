@@ -21,6 +21,7 @@ from nx_integration.nx_client import NxClient
 from pipelines.vehicle_gate_pipeline import VehicleGatePipeline
 from pipelines.cashier_presence_pipeline import CashierPresencePipeline
 from pipelines.restaurant_pipeline import RestaurantCounterPipeline
+from pipelines.horse_riding_pipeline import HorseRidingPipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -124,6 +125,17 @@ def test_video(
             camera_id="cam_restaurant_test",
             camera_name=c_name,
             nx_camera_id="00000000-0000-0000-0000-000000000002",
+            rule_config_path=rule_cfg,
+            nx_client=nx_client,
+            device="cpu"
+        )
+    elif pipeline_type in ["horse", "horse_riding"]:
+        rule_cfg = rule_path or "configs/rules/horse_riding.yaml"
+        c_name = camera_name or "Horse Riding Attraction"
+        pipeline = HorseRidingPipeline(
+            camera_id="cam_horse_test",
+            camera_name=c_name,
+            nx_camera_id="00000000-0000-0000-0000-000000000005",
             rule_config_path=rule_cfg,
             nx_client=nx_client,
             device="cpu"
@@ -268,7 +280,7 @@ def test_video(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Zoo Vision Pipelines on an MP4 video file")
     parser.add_argument("--video", required=True, help="Path to .mp4 video file")
-    parser.add_argument("--pipeline", choices=["gate", "cashier", "restaurant"], default="restaurant", help="Pipeline type (default: restaurant)")
+    parser.add_argument("--pipeline", choices=["gate", "cashier", "restaurant", "horse", "horse_riding"], default="horse", help="Pipeline type (default: horse)")
     parser.add_argument("--start-time", default="00:00", help="Start time e.g. '26:50' or '1610'")
     parser.add_argument("--camera-name", default=None, help="Custom camera name to display on HUD")
     parser.add_argument("--save-output", default=None, help="Optional output .mp4 file path to save demo video")
