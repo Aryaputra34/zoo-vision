@@ -13,6 +13,7 @@
 #include <nx/sdk/helpers/uuid_helper.h>
 #include <nx/sdk/analytics/i_uncompressed_video_frame.h>
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -96,6 +97,14 @@ private:
     std::vector<nx::sdk::Ptr<nx::sdk::analytics::IMetadataPacket>> collectBestShotPackets(
         int64_t timestampUs);
 
+    /**
+     * Adds one inference pass to the current stats window and, once kStatsInterval has elapsed,
+     * prints a single "[Magnet AI Stats]" line to stdout and starts a new window. This is the
+     * Phase 3A measurement: the real inference rate against kInferenceIntervalUs, and track churn
+     * against the number of objects actually in the scene.
+     */
+    void recordPassAndMaybeLogStats(int64_t inferenceUs, size_t bestShotCount);
+
 private:
     void workerLoop();
 
@@ -125,12 +134,15 @@ private:
     int64_t m_lastVideoFrameTimestampUs = 0;
     int64_t m_lastInferenceTimestampUs = 0;
 
-    /// Frames skipped because the inference worker was still busy. A rising count means the
-    /// effective analytics frame rate is below what kInferenceIntervalUs implies, which is the
-    /// leading cause of unstable IoU track matching. See ADR-006.
-    int64_t m_droppedFrameCount = 0;
-
     bool m_startupDiagnosticSent = false;
+
+    /// Frames that passed the kInferenceIntervalUs throttle but never reached inference, almost
+    /// always because a newer frame replaced them in the queue while the worker was busy. A rising
+    /// count means the effective analytics frame rate is below what kInferenceIntervalUs implies,
+    /// which is the leading cause of unstable IoU track matching. See ADR-006. Written on the
+    /// frame-push thread but read by the worker for the stats log, hence atomic rather than in the
+    /// group above.
+    std::atomic<int64_t> m_droppedFrameCount{0};
 
     static constexpr int64_t kInferenceIntervalUs = 200000; // 5 FPS throttle
 
@@ -146,6 +158,22 @@ private:
     // exclusively inside workerLoop().
     std::vector<TrackedObject> m_trackedObjects;
     int64_t m_inferenceIndex = 0;
+
+    /// Counters for the periodic stats log (see recordPassAndMaybeLogStats). Worker-thread only,
+    /// under the same rule as m_trackedObjects.
+    struct StatsWindow
+    {
+        std::chrono::steady_clock::time_point start; ///< First pass, then each log line.
+        int64_t passes = 0;
+        int64_t inferenceUsTotal = 0;
+        int64_t inferenceUsMax = 0;
+        int64_t tracksCreated = 0;
+        int64_t tracksExpired = 0;
+        int64_t bestShotsSent = 0;
+        int64_t droppedFramesAtStart = 0;
+    };
+    StatsWindow m_stats;
+    static constexpr auto kStatsInterval = std::chrono::seconds(30);
 
     // Background worker thread for non-blocking AI inference
     std::thread m_workerThread;

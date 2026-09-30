@@ -174,6 +174,43 @@ gantt
   1. **Measure before changing.** Surface per-pass inference latency, effective inference interval,
      `m_droppedFrameCount`, and tracks-created-vs-expired per 30 s. The `try_to_lock` frame drop in
      `pushUncompressedVideoFrame` was silent and is the leading suspect.
+     * *🚧 In progress (2026-09-30).* Every ~30 s, each device agent prints one line to the
+       mediaserver's stdout. Follow it with
+       `journalctl -u networkoptix-metavms-mediaserver -f | grep "Magnet AI Stats"`:
+       ```
+       [Magnet AI Stats] device=<id> window=30.0s passes=42 rate=1.40/s target=5.00/s infer_avg=612ms infer_max=890ms dropped=180 tracks_created=3 tracks_expired=2 live_tracks=2 best_shots=3
+       ```
+       * `rate` against `target` is the headline number: the effective inference rate against the
+         `kInferenceIntervalUs` throttle.
+       * `infer_*` includes any wait on the detector mutex that all cameras share.
+       * `dropped` counts frames that passed the throttle but were never inferred, because a
+         newer frame replaced them while the worker was busy. So `passes + dropped` ≈
+         `target × window`. The first build counted only frame-lock contention and always showed
+         0; this was fixed on 2026-09-30.
+       * `tracks_created` should be close to the number of objects that entered the scene in the
+         window.
+     * Observation so far: on Nx testcamera, each object showed up as about **one** record in the
+       Objects tab.
+     * **First measurement (2026-09-30), DEVELOPMENT server `prsmx`: not representative of
+       production.**
+       * **Hardware:** 4 vCPUs of an Intel Xeon X5650 (2010, no AVX/AVX2) and no NVIDIA driver.
+         ONNX Runtime falls back to its slow SSE kernels on this CPU.
+       * **Results:** `yolo11m`, one camera, 2 intra-op threads: `rate=0.39–0.40/s` against
+         `target=5.00/s`, `infer_avg≈2.5 s`, and 7–17 tracks created per 30 s.
+       * **Effect:** the pass-counted constants stretch about 13×. The Best Shot delay becomes
+         ~7.5 s and track expiry ~25 s.
+       * **Conclusion:** do **not** use these numbers to decide tasks 2–4. Repeat the measurement
+         on production-class hardware (docs/03).
+       * **Hardware-independent point:** `YoloDetector::m_inferenceMutex` serializes every camera,
+         so per-camera rate = single-camera rate ÷ camera count. At the ~10 cameras in docs/03,
+         that needs ~20 ms per pass. That realistically means the GPU, and the plugin is
+         CPU-only today, because `build_on_server.sh` fetches the CPU build of ONNX Runtime.
+     * **Decision rule once measured:**
+       * `rate` near `target` and `tracks_created` ≈ real objects → skip tasks 2–3 on this
+         hardware.
+       * `rate` well below `target` → do task 2 first.
+       * Repeat with two or more cameras before multi-camera rollout, because contention on the
+         shared mutex shows up as a higher `infer_avg`.
   2. **Close the cadence gap.** Either raise throughput (`SetIntraOpNumThreads` is pinned at 2;
      consider `yolo11s`/`yolo11n` or a smaller `imgsz`) or set `kInferenceIntervalUs` to the
      measured rate so it stops misrepresenting reality.
@@ -185,6 +222,10 @@ gantt
   5. **Re-evaluate Best Shots** once tracks are stable. If thumbnails still fail, attach the JPEG
      directly via `setImage("image/jpeg", ...)` to remove the Server's frame-cropping dependency
      (requires a vendored encoder such as `stb_image_write.h`).
+     * *✅ Done (2026-09-30).* The remaining missing thumbnails were environmental: recording was
+       off on the dev camera. The Server crops rectangle-only Best Shots from the archive. With
+       Nx testcamera every record got a thumbnail, and production cameras record continuously, so
+       the JPEG option is deferred. See ADR-006, Known Open Items #6.
 * **Verification** (replaces the Phase 3 criterion):
   * A stationary object holds a **single** Nx track ID for ≥ 10 seconds continuously.
   * An object occluded for less than the track expiry window keeps its original track ID.

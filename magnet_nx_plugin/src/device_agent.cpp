@@ -5,7 +5,9 @@
 
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <algorithm>
 
 #include <nx/sdk/analytics/rect.h>
@@ -235,6 +237,7 @@ std::vector<nx::sdk::Uuid> DeviceAgent::updateTrackedObjects(
         newTrack.lastSeenInference = m_inferenceIndex;
         m_trackedObjects.push_back(newTrack);
         trackForDetection[di] = static_cast<int>(m_trackedObjects.size()) - 1;
+        ++m_stats.tracksCreated;
     }
 
     // 3. Resolve track Uuids BEFORE expiry below invalidates the indices. Returning ids by value
@@ -247,12 +250,15 @@ std::vector<nx::sdk::Uuid> DeviceAgent::updateTrackedObjects(
     }
 
     // 4. Remove stale tracks that haven't been seen for too long
+    const size_t trackCountBeforeExpiry = m_trackedObjects.size();
     m_trackedObjects.erase(
         std::remove_if(m_trackedObjects.begin(), m_trackedObjects.end(),
             [this](const TrackedObject& t) {
                 return (m_inferenceIndex - t.lastSeenInference) > kTrackExpiryInferences;
             }),
         m_trackedObjects.end());
+    m_stats.tracksExpired +=
+        static_cast<int64_t>(trackCountBeforeExpiry - m_trackedObjects.size());
 
     return trackIds;
 }
@@ -303,6 +309,13 @@ bool DeviceAgent::pushUncompressedVideoFrame(Ptr<const IUncompressedVideoFrame> 
             std::unique_lock<std::mutex> lock(m_frameMutex, std::try_to_lock);
             if (lock.owns_lock())
             {
+                // The worker does not hold m_frameMutex while it runs inference, so a busy worker
+                // shows up HERE, as a queued frame it never picked up. Replacing that frame drops
+                // it; this is the drop that matters when inference is slower than
+                // kInferenceIntervalUs, and it destabilises IoU track matching.
+                if (m_hasNewFrame)
+                    ++m_droppedFrameCount;
+
                 m_pendingFrame = videoFrame;
                 m_hasNewFrame = true;
                 m_lastInferenceTimestampUs = m_lastVideoFrameTimestampUs;
@@ -310,10 +323,8 @@ bool DeviceAgent::pushUncompressedVideoFrame(Ptr<const IUncompressedVideoFrame> 
             }
             else
             {
-                // The worker is still busy with the previous frame. Returning immediately keeps
-                // the mediaserver's decoder queue from backing up, but a high drop count means
-                // inference is slower than kInferenceIntervalUs and the effective analytics frame
-                // rate is well below the intended one -- which destabilises IoU track matching.
+                // Rare: the worker is taking the queued frame at this very instant. Skip this one
+                // rather than block the Server's frame-push thread.
                 ++m_droppedFrameCount;
             }
         }
@@ -345,6 +356,9 @@ void DeviceAgent::workerLoop()
 
         if (frame && m_detector && m_detector->isLoaded())
         {
+            // Includes any wait on YoloDetector's inference mutex, which is shared by every camera,
+            // so on a multi-camera server this is the real per-pass cost, contention included.
+            const auto inferenceStart = std::chrono::steady_clock::now();
             const auto detections = m_detector->detectFromYuv420(
                 reinterpret_cast<const uint8_t*>(frame->data(0)),
                 reinterpret_cast<const uint8_t*>(frame->data(1)),
@@ -354,6 +368,8 @@ void DeviceAgent::workerLoop()
                 frame->lineSize(2),
                 frame->width(),
                 frame->height());
+            const int64_t inferenceUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - inferenceStart).count();
 
             // Advance the inference clock before tracking, so tracks created or matched in this
             // pass carry the current value.
@@ -373,7 +389,8 @@ void DeviceAgent::workerLoop()
                     detections, trackIds, frame->timestampUs()));
             }
 
-            for (auto& bestShot: collectBestShotPackets(frame->timestampUs()))
+            const auto bestShots = collectBestShotPackets(frame->timestampUs());
+            for (auto& bestShot: bestShots)
                 outgoing.push_back(bestShot);
 
             if (!outgoing.empty())
@@ -382,6 +399,8 @@ void DeviceAgent::workerLoop()
                 for (auto& packet: outgoing)
                     m_pendingResults.push_back(packet);
             }
+
+            recordPassAndMaybeLogStats(inferenceUs, bestShots.size());
         }
     }
 }
@@ -483,6 +502,54 @@ std::vector<Ptr<IMetadataPacket>> DeviceAgent::collectBestShotPackets(int64_t ti
     }
 
     return packets;
+}
+
+void DeviceAgent::recordPassAndMaybeLogStats(int64_t inferenceUs, size_t bestShotCount)
+{
+    const auto now = std::chrono::steady_clock::now();
+
+    // Windows are back-to-back: only the very first one starts at a pass, every later one starts
+    // where the previous log line ended, so idle time between passes is counted against the rate.
+    if (m_stats.start == std::chrono::steady_clock::time_point())
+    {
+        m_stats.start = now;
+        m_stats.droppedFramesAtStart = m_droppedFrameCount.load();
+    }
+
+    ++m_stats.passes;
+    m_stats.inferenceUsTotal += inferenceUs;
+    m_stats.inferenceUsMax = std::max(m_stats.inferenceUsMax, inferenceUs);
+    m_stats.bestShotsSent += static_cast<int64_t>(bestShotCount);
+
+    const auto elapsed = now - m_stats.start;
+    if (elapsed < kStatsInterval)
+        return;
+
+    const double elapsedS = std::chrono::duration<double>(elapsed).count();
+    const int64_t droppedFrames = m_droppedFrameCount.load();
+
+    // "dropped" counts frames that passed the kInferenceIntervalUs throttle but were never
+    // inferred, so passes + dropped ~= target x window. "rate" against "target" is the headline.
+    std::ostringstream line;
+    line << std::fixed
+        << "[Magnet AI Stats] device=" << m_deviceId
+        << " window=" << std::setprecision(1) << elapsedS << "s"
+        << std::setprecision(2)
+        << " passes=" << m_stats.passes
+        << " rate=" << (m_stats.passes / elapsedS) << "/s"
+        << " target=" << (1e6 / kInferenceIntervalUs) << "/s"
+        << " infer_avg=" << (m_stats.inferenceUsTotal / m_stats.passes / 1000) << "ms"
+        << " infer_max=" << (m_stats.inferenceUsMax / 1000) << "ms"
+        << " dropped=" << (droppedFrames - m_stats.droppedFramesAtStart)
+        << " tracks_created=" << m_stats.tracksCreated
+        << " tracks_expired=" << m_stats.tracksExpired
+        << " live_tracks=" << m_trackedObjects.size()
+        << " best_shots=" << m_stats.bestShotsSent;
+    std::cout << line.str() << std::endl;
+
+    m_stats = StatsWindow();
+    m_stats.start = now;
+    m_stats.droppedFramesAtStart = droppedFrames;
 }
 
 Ptr<IMetadataPacket> DeviceAgent::generateEventMetadataPacket(
