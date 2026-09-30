@@ -57,7 +57,8 @@ def test_video(
     hide_boxes: bool = False,
     show_boxes: bool = False,
     no_gui: bool = False,
-    no_anpr: bool = False
+    no_anpr: bool = False,
+    duration: str = None
 ):
     if not os.path.exists(video_path):
         logger.error(f"Video file not found: '{video_path}'")
@@ -131,7 +132,7 @@ def test_video(
         )
     elif pipeline_type in ["horse", "horse_riding"]:
         rule_cfg = rule_path or "configs/rules/horse_riding.yaml"
-        c_name = camera_name or "Horse Riding Attraction"
+        c_name = camera_name or "Pony Riding Attraction"
         pipeline = HorseRidingPipeline(
             camera_id="cam_horse_test",
             camera_name=c_name,
@@ -160,6 +161,15 @@ def test_video(
         start_frame = int(start_sec * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, min(start_frame, total_frames - 1))
         logger.info(f"Jumped to start time: {start_time} (Frame #{start_frame})")
+
+    # Optional stop time, so a short window can be rendered out of a long recording
+    end_sec = None
+    if duration:
+        end_sec = start_sec + parse_time_str(duration)
+        logger.info(
+            f"[WINDOW] Stopping at {int(end_sec // 60):02d}:{int(end_sec % 60):02d} "
+            f"({parse_time_str(duration):.0f}s after start)"
+        )
 
     # Setup VideoWriter if recording output
     writer = None
@@ -216,12 +226,22 @@ def test_video(
         if not paused:
             ret, frame = cap.read()
             if not ret:
+                # Only loop for interactive preview. Headless runs have no 'q' key to break out
+                # with, so looping there would spin forever.
+                if not gui_enabled:
+                    logger.info("Video ended. Stopping.")
+                    break
                 logger.info("Video ended. Looping back to start...")
                 cap.set(cv2.CAP_PROP_POS_FRAMES, int(start_sec * fps))
                 continue
 
             current_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
             current_sec = current_frame / fps
+
+            if end_sec is not None and current_sec >= end_sec:
+                logger.info(f"Reached end of requested window at {int(current_sec // 60):02d}:"
+                            f"{int(current_sec % 60):02d}. Stopping.")
+                break
             mins = int(current_sec // 60)
             secs = int(current_sec % 60)
             timestamp_ms = int(current_sec * 1000)
@@ -291,6 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--show-boxes", action="store_true", help="Force show bounding boxes and tracking IDs")
     parser.add_argument("--no-gui", action="store_true", help="Run without opening GUI window (ideal for headless or background execution)")
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
+    parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
     args = parser.parse_args()
 
     test_video(
@@ -305,5 +326,6 @@ if __name__ == "__main__":
         hide_boxes=args.hide_boxes,
         show_boxes=args.show_boxes,
         no_gui=args.no_gui,
-        no_anpr=args.no_anpr
+        no_anpr=args.no_anpr,
+        duration=args.duration
     )

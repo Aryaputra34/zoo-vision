@@ -125,6 +125,13 @@ private:
     int64_t m_lastVideoFrameTimestampUs = 0;
     int64_t m_lastInferenceTimestampUs = 0;
 
+    /// Frames skipped because the inference worker was still busy. A rising count means the
+    /// effective analytics frame rate is below what kInferenceIntervalUs implies, which is the
+    /// leading cause of unstable IoU track matching. See ADR-006.
+    int64_t m_droppedFrameCount = 0;
+
+    bool m_startupDiagnosticSent = false;
+
     static constexpr int64_t kInferenceIntervalUs = 200000; // 5 FPS throttle
 
     // Track lifetimes are counted in INFERENCE passes, not pushed frames. At 5 FPS inference on a

@@ -9,12 +9,24 @@ BUILD_DIR="${SCRIPT_DIR}/build"
 PLUGIN_TARGET_DIR="/opt/networkoptix-metavms/mediaserver/bin/plugins"
 SERVICE_NAME="networkoptix-metavms-mediaserver"
 
+# Parse flags out of the arguments, leaving any positional SDK path in "$@" untouched.
+DO_RESTART="${MAGNET_AUTO_RESTART:-0}"
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --restart) DO_RESTART=1 ;;
+        --no-restart) DO_RESTART=0 ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
 echo "================================================================="
 echo "🧲 MAGNET AI VISION ANALYTICS - LINUX BUILD & DEPLOY"
 echo "================================================================="
 
 # 1. Check or install build dependencies
-echo "[1/5] Checking build dependencies..."
+echo "[1/6] Checking build dependencies..."
 MISSING_PKGS=""
 for pkg in cmake g++ make unzip wget tar; do
     if ! command -v "$pkg" >/dev/null 2>&1; then
@@ -31,7 +43,7 @@ else
 fi
 
 # 2. Locate Nx Meta Analytics SDK
-echo "[2/5] Locating Nx Meta Server Plugin SDK..."
+echo "[2/6] Locating Nx Meta Server Plugin SDK..."
 SDK_DIR=""
 
 # Check if SDK path provided via env or argument
@@ -146,15 +158,28 @@ for model in \
 done
 
 # 6. Restart MetaVMS service
-echo "[6/6] Restarting ${SERVICE_NAME}..."
-if systemctl list-unit-files | grep -q "${SERVICE_NAME}"; then
+#
+# Restarting the mediaserver interrupts recording on EVERY camera it serves, so this is opt-in.
+# Pass --restart, or set MAGNET_AUTO_RESTART=1, to restart automatically. Without either, the
+# command is printed for you to run during a maintenance window.
+echo "[6/6] Reloading plugin into ${SERVICE_NAME}..."
+if ! systemctl list-unit-files | grep -q "${SERVICE_NAME}"; then
+    echo "  Warning: ${SERVICE_NAME} not found in systemd. If running under a different name, restart manually."
+elif [ "${DO_RESTART}" = "1" ]; then
+    echo "  Restarting (requested explicitly)..."
     sudo systemctl restart "${SERVICE_NAME}"
     echo "  Service restarted successfully."
     echo ""
     echo "Checking service status:"
     sudo systemctl --no-pager status "${SERVICE_NAME}" | head -n 12 || true
 else
-    echo "  Warning: ${SERVICE_NAME} not found in systemd. If running under a different name, restart manually."
+    echo "  SKIPPED - the plugin binary is deployed but not yet loaded."
+    echo "  A restart interrupts recording on every camera this server handles, so run it"
+    echo "  yourself when that is acceptable:"
+    echo ""
+    echo "      sudo systemctl restart ${SERVICE_NAME}"
+    echo ""
+    echo "  Or re-run this script with --restart to do it automatically."
 fi
 
 echo ""

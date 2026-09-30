@@ -76,6 +76,17 @@ The script will automatically:
 
 ---
 
+## Troubleshooting
+
+### Object records appear in the right panel, but thumbnails are missing
+
+**The camera must be recording.** The plugin's Best Shot carries only a track ID, a timestamp and a bounding box, with no image. The Server builds the thumbnail by cropping that box out of the **recorded** video at that timestamp. If recording is off, there is usually no frame to crop, so records show up without a thumbnail.
+
+* Set the camera to record **Always** (Camera Settings -> **Recording**), or test with Nx **testcamera**. In a test on 2026-09-30, every record got a thumbnail with testcamera.
+* If a deployment must run cameras without continuous recording, the fallback is to attach a JPEG crop to the Best Shot from the plugin. See [ADR-006](../docs/adr/ADR-006-nx-best-shot-ordering-and-inference-clock-track-lifetimes.md), Known Open Items.
+
+---
+
 ## Directory Structure
 
 ```

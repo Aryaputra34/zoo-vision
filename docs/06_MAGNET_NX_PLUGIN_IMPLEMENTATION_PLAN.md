@@ -82,27 +82,40 @@ graph TD
 
 ## 4. Phase-by-Phase Roadmap
 
+**Status as of 2026-09-25**: Phases 1-2 complete. Phase 3 delivers detections end-to-end but is
+**blocked** on object-track stability (see Phase 3A below and
+[ADR-006](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/adr/ADR-006-nx-best-shot-ordering-and-inference-clock-track-lifetimes.md)).
+Phases 4-6 not started.
+
 ```mermaid
 gantt
     title Magnet Nx Plugin Implementation Milestones
     dateFormat  YYYY-MM-DD
     section Phase 1
-    C++ Skeleton & Server Build Harness   :active, p1, 2026-09-25, 2d
+    C++ Skeleton & Server Build Harness   :done, p1, 2026-09-24, 1d
     section Phase 2
-    Manifest Registration & Nx UI Verification :p2, after p1, 2d
+    Manifest Registration & Nx UI Verification :done, p2, after p1, 1d
     section Phase 3
-    Frame Ingestion & ONNX Runtime C++ Runner  :p3, after p2, 4d
+    Frame Ingestion & ONNX Runtime C++ Runner  :done, p3, after p2, 1d
+    section Phase 3A
+    Object Track Stability & Best Shot Lifecycle :active, crit, p3a, 2026-09-25, 4d
     section Phase 4
-    Porting Business Rules & State Machines    :p4, after p3, 4d
+    Porting Business Rules & State Machines    :p4, after p3a, 4d
     section Phase 5
     Desktop ROI & Polygon Drawing Controls     :p5, after p4, 3d
     section Phase 6
     Packaging & Multi-Stream Production Test  :p6, after p5, 3d
 ```
 
+> **Note on sequencing**: Phase 3A was not in the original roadmap. Object track identity, track
+> lifetimes and Best Shot thumbnails fall between "run inference" (Phase 3) and "apply business
+> rules" (Phase 4), so they were built ad hoc and their defects surfaced only in the Nx UI. Phase 4
+> depends on stable tracks — a tripwire crossing or a dwell timer is meaningless if track IDs churn
+> every frame — so Phase 3A is a hard prerequisite, not a polish pass.
+
 ---
 
-### Phase 1: Build Harness & Minimal Plugin Skeleton (MVP)
+### Phase 1: Build Harness & Minimal Plugin Skeleton (MVP) — ✅ COMPLETE
 * **Goal**: Generate a minimal `libmagnet_analytics_plugin.so` on the Linux server that compiles cleanly and links against `metavms-server_plugin_sdk`.
 * **Tasks**:
   1. Create directory `magnet_nx_plugin/` in this repository.
@@ -115,7 +128,7 @@ gantt
 
 ---
 
-### Phase 2: Manifest Registration & VMS Discovery
+### Phase 2: Manifest Registration & VMS Discovery — ✅ COMPLETE
 * **Goal**: Ensure the plugin loads into `networkoptix-metavms-mediaserver` and appears in the Nx Desktop Client GUI.
 * **Tasks**:
   1. Implement `Integration::manifestString()` declaring `magnet.analytics`, vendor, version, and description.
@@ -129,7 +142,7 @@ gantt
 
 ---
 
-### Phase 3: Video Frame Ingestion & ONNX Runtime C++
+### Phase 3: Video Frame Ingestion & ONNX Runtime C++ — ⚠️ FUNCTIONALLY COMPLETE, SUPERSEDED BY 3A
 * **Goal**: Ingest decoded camera frames and run inference with `yolo11s.onnx` or `yolo26s.onnx`.
 * **Tasks**:
   1. Download prebuilt **ONNX Runtime C++ Linux x64** library (`libonnxruntime.so`).
@@ -139,12 +152,53 @@ gantt
      * Throttle processing to target analytics FPS (e.g., 5 FPS) to conserve server CPU.
   3. Load `.onnx` session in `Engine` (shared across device agents) and run inference.
   4. Implement vectorized NMS (Non-Maximum Suppression) in C++.
+     * *Delivered as scalar class-aware NMS in `YoloDetector::postprocess`. Vectorization deferred;
+       it is not the bottleneck — see Phase 3A.*
 * **Verification**:
-  * Verify bounding boxes appear overlaid on live camera stream in Nx Desktop.
+  * ~~Verify bounding boxes appear overlaid on live camera stream in Nx Desktop.~~ **Met, but
+    insufficient.** This criterion is satisfied by boxes that flicker uselessly, because it says
+    nothing about track identity persisting between frames. Superseded by the Phase 3A criteria.
 
 ---
 
-### Phase 4: Porting Domain Rules & State Machines
+### Phase 3A: Object Track Stability & Best Shot Lifecycle — 🚧 IN PROGRESS (BLOCKING)
+
+* **Goal**: Produce object tracks that hold a stable Nx track ID across frames, so overlays stop
+  flickering and Best Shot thumbnails render reliably.
+* **Context**: Detections are correct; their *identity over time* is not. Greedy IoU matching at
+  `kIoUMatchThreshold = 0.3` cannot hold a track when the effective analytics frame rate falls well
+  below the configured throttle. For two equal boxes of width `w` offset by `d`,
+  `IoU = (w−d)/(w+d)`, so a 0.3 threshold requires displacement under ~54% of box width — which a
+  walking person exceeds at ~1.5 FPS. Every miss mints a new track UUID.
+* **Tasks**:
+  1. **Measure before changing.** Surface per-pass inference latency, effective inference interval,
+     `m_droppedFrameCount`, and tracks-created-vs-expired per 30 s. The `try_to_lock` frame drop in
+     `pushUncompressedVideoFrame` was silent and is the leading suspect.
+  2. **Close the cadence gap.** Either raise throughput (`SetIntraOpNumThreads` is pinned at 2;
+     consider `yolo11s`/`yolo11n` or a smaller `imgsz`) or set `kInferenceIntervalUs` to the
+     measured rate so it stops misrepresenting reality.
+  3. **Make matching survive the real cadence.** Lower the IoU threshold and add a
+     centroid-distance fallback for when IoU is 0 but the object is plainly the same. IoU alone is
+     the wrong tool below ~5 FPS; the Python pipelines use ByteTrack's Kalman prediction at 15 FPS.
+  4. **Add track confirmation** — require N consecutive detections before a track is published,
+     mirroring `minimum_consecutive_frames` in the `supervision` pipelines.
+  5. **Re-evaluate Best Shots** once tracks are stable. If thumbnails still fail, attach the JPEG
+     directly via `setImage("image/jpeg", ...)` to remove the Server's frame-cropping dependency
+     (requires a vendored encoder such as `stb_image_write.h`).
+* **Verification** (replaces the Phase 3 criterion):
+  * A stationary object holds a **single** Nx track ID for ≥ 10 seconds continuously.
+  * An object occluded for less than the track expiry window keeps its original track ID.
+  * Every published track acquires a Best Shot thumbnail within ~1 s, and no thumbnail shows
+    background instead of the object.
+  * Tracks created per 30 s is within ~2x of the number of real objects that entered the scene.
+* **Decision point**: If items 3-4 amount to reimplementing ByteTrack in C++, stop and reconsider
+  the architecture. The Python pipelines already carry a tuned tracking stack (ByteTrack +
+  `DetectionsSmoother` + containment dedup + temporal median). A hybrid — plugin as a thin metadata
+  bridge, Python retaining analytics — is a legitimate outcome of this phase, not a failure.
+
+---
+
+### Phase 4: Porting Domain Rules & State Machines — ❌ NOT STARTED
 * **Goal**: Port the Python zoo pipelines to native C++:
   1. **Cashier Presence & Dwell**:
      * Point-in-polygon math for Clerk and Visitor zones.
@@ -159,7 +213,7 @@ gantt
 
 ---
 
-### Phase 5: Interactive Nx Desktop ROI Configuration
+### Phase 5: Interactive Nx Desktop ROI Configuration — ❌ NOT STARTED
 * **Goal**: Allow operators to draw zones directly in the Nx Desktop Client.
 * **Tasks**:
   1. Implement `DeviceAgentSettingsModel` JSON with `PolygonFigure` and `LineFigure`.
@@ -173,7 +227,7 @@ gantt
 
 ---
 
-### Phase 6: Packaging, Multi-Stream Optimization & Deployment
+### Phase 6: Packaging, Multi-Stream Optimization & Deployment — ❌ NOT STARTED
 * **Goal**: Deploy ready-to-run package for 24/7 park operations.
 * **Tasks**:
   1. Add systemd service integration and automated update scripts.

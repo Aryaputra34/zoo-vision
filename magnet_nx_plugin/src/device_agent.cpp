@@ -262,7 +262,40 @@ bool DeviceAgent::pushUncompressedVideoFrame(Ptr<const IUncompressedVideoFrame> 
     ++m_frameIndex;
     m_lastVideoFrameTimestampUs = videoFrame->timestampUs();
 
-    // 1. Non-blocking frame enqueue to background inference worker
+    // 1. Report startup state exactly once, through the Server's diagnostic channel rather than
+    //    stderr. A model that fails to load otherwise leaves the plugin visible in Nx, silently
+    //    producing nothing, with the only trace buried in the mediaserver's stdout.
+    if (!m_startupDiagnosticSent)
+    {
+        m_startupDiagnosticSent = true;
+
+        if (!m_detector)
+        {
+            pushIntegrationDiagnosticEvent(
+                IIntegrationDiagnosticEvent::Level::error,
+                "Magnet AI: no detector",
+                "No YOLO detector was supplied to the device agent for " + m_deviceId
+                    + ". No analytics will be produced on this stream.");
+        }
+        else if (!m_detector->isLoaded())
+        {
+            pushIntegrationDiagnosticEvent(
+                IIntegrationDiagnosticEvent::Level::error,
+                "Magnet AI: model failed to load",
+                "The ONNX model could not be loaded, so no analytics will be produced on "
+                    + m_deviceId + ". Verify the model exists under the mediaserver plugins "
+                    "directory or set MAGNET_MODEL_PATH.");
+        }
+        else
+        {
+            pushIntegrationDiagnosticEvent(
+                IIntegrationDiagnosticEvent::Level::info,
+                "Magnet AI: inference active",
+                "YOLO inference started on " + m_deviceId + ".");
+        }
+    }
+
+    // 2. Non-blocking frame enqueue to background inference worker
     if (m_detector && m_detector->isLoaded())
     {
         if (m_lastVideoFrameTimestampUs - m_lastInferenceTimestampUs >= kInferenceIntervalUs)
@@ -275,19 +308,15 @@ bool DeviceAgent::pushUncompressedVideoFrame(Ptr<const IUncompressedVideoFrame> 
                 m_lastInferenceTimestampUs = m_lastVideoFrameTimestampUs;
                 m_frameCv.notify_one();
             }
-            // If lock was not acquired, background worker is still processing previous frame.
-            // Returning immediately prevents decoder frame queue overflow in Nx Mediaserver.
+            else
+            {
+                // The worker is still busy with the previous frame. Returning immediately keeps
+                // the mediaserver's decoder queue from backing up, but a high drop count means
+                // inference is slower than kInferenceIntervalUs and the effective analytics frame
+                // rate is well below the intended one -- which destabilises IoU track matching.
+                ++m_droppedFrameCount;
+            }
         }
-    }
-
-    // 2. Periodic heartbeat audit event
-    if (m_frameIndex % 300 == 0)
-    {
-        auto eventPacket = generateEventMetadataPacket(
-            kCashierUnattendedEventType,
-            "Magnet: AI Vision Active",
-            "Real-time stream inference running on " + m_deviceId);
-        pushMetadataPacket(eventPacket);
     }
 
     return true;

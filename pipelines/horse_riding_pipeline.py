@@ -57,6 +57,14 @@ class HorseRidingPipeline(BasePipeline):
         self.conf_thresh = float(self.rules.get("confidence_threshold", 0.35))
         self.track_horses_only = bool(self.rules.get("track_horses_only", True))
 
+        # Display wording. The COCO class is "horse", but the attraction may be signed otherwise
+        # (e.g. "KUDA PONI TUNGGANG" = pony riding), and clients read the overlay, not the class id.
+        self.label_singular = str(self.rules.get("display_label", "Horse"))
+        self.label_plural = str(self.rules.get("display_label_plural", self.label_singular + "s"))
+        self.attraction_title = str(
+            self.rules.get("attraction_title", f"{self.label_singular} Riding Attraction")
+        )
+
         # 2. Resolve class IDs from loaded YOLO model
         # Target 'horse' dynamically to support both COCO and custom fine-tuned weights
         self.horse_class_ids = [
@@ -278,11 +286,12 @@ class HorseRidingPipeline(BasePipeline):
             if self.show_labels:
                 if detections.tracker_id is not None:
                     labels = [
-                        f"Horse #{tid} ({conf:.0%})" if tid is not None else f"Horse ({conf:.0%})"
+                        f"{self.label_singular} #{tid} ({conf:.0%})" if tid is not None
+                        else f"{self.label_singular} ({conf:.0%})"
                         for tid, conf in zip(detections.tracker_id, detections.confidence)
                     ]
                 else:
-                    labels = [f"Horse ({conf:.0%})" for conf in detections.confidence]
+                    labels = [f"{self.label_singular} ({conf:.0%})" for conf in detections.confidence]
                 annotated_frame = self.label_annotator.annotate(annotated_frame, detections=detections, labels=labels)
 
         # 6. Render Executive Glassmorphic HUD
@@ -293,7 +302,7 @@ class HorseRidingPipeline(BasePipeline):
     def _on_horse_crossed(self, tracker_id: Any, direction: str, timestamp_ms: int):
         """Dispatches an audit bookmark to Nx Meta when a horse crosses the departure line."""
         now = time.time()
-        desc = f"Horse #{tracker_id} {direction} recorded at {self.camera_name}."
+        desc = f"{self.label_singular} #{tracker_id} {direction} recorded at {self.camera_name}."
         logger.info(f"[{self.camera_name}] [CHOKE CROSSING] {desc}")
 
         self.recent_departures.append({
@@ -349,7 +358,7 @@ class HorseRidingPipeline(BasePipeline):
         # Header Title: Attraction Name & Pipeline Tag
         cv2.putText(
             frame,
-            f"HORSE RIDING ATTRACTION",
+            self.attraction_title.upper(),
             (card_x + 15, card_y + 26),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.62,
@@ -379,7 +388,7 @@ class HorseRidingPipeline(BasePipeline):
         active_color = (0, 255, 200) if self.active_horse_count > 0 else (200, 200, 200)
         cv2.putText(
             frame,
-            f"ACTIVE HORSES IN VIEW:  {self.active_horse_count}",
+            f"ACTIVE {self.label_plural.upper()} IN VIEW:  {self.active_horse_count}",
             (card_x + 15, card_y + 56),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.72,
@@ -387,11 +396,16 @@ class HorseRidingPipeline(BasePipeline):
             2
         )
 
-        # Secondary Metric: Unique horses tracked & model info
-        total_unique = len(self.total_unique_horses)
+        # Secondary Metric: model info.
+        #
+        # NOTE: the count of distinct tracker IDs is deliberately NOT shown as a headline figure.
+        # ByteTrack issues a fresh ID whenever a track is lost and reacquired, so one animal making
+        # several round trips (and every occlusion along the way) inflates it badly -- 8 IDs for a
+        # single pony in 60s during testing. Presenting that next to a ticket count invites exactly
+        # the wrong comparison. Line crossings below are the auditable number.
         cv2.putText(
             frame,
-            f"CUMULATIVE DETECTED: {total_unique}   |   MODEL: YOLO11 + ByteTrack",
+            "MODEL: YOLO11 + ByteTrack",
             (card_x + 15, card_y + 80),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.44,
@@ -399,7 +413,8 @@ class HorseRidingPipeline(BasePipeline):
             1
         )
 
-        # Optional Tertiary Metric: Tripwire Departures & Returns
+        # Primary Audit Metric: Tripwire Departures & Returns. This is the revenue-reconcilable
+        # figure -- one crossing per ride, independent of how many track IDs were consumed.
         if self.tripwire_enabled and self.line_zone is not None:
             dep_str = f"RIDE DEPARTURES: {self.line_zone.in_count}   |   RETURNS: {self.line_zone.out_count}"
             cv2.putText(

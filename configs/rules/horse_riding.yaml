@@ -3,8 +3,8 @@ rule_name: "horse_riding_tracking"
 
 # Model Selection (yolo11m.pt, yolo11s.pt, yolo26m.pt, yolo11n.pt)
 # yolo11m provides superior precision for distinguishing horses at CCTV distances
-model_name: "yolo11m.onnx"
-imgsz: [736, 1280]
+model_name: "yolo26s.onnx"
+imgsz: 640
 confidence_threshold: 0.25
 
 # best i test manually (need more checking), yolo11m.onnx, imgz 736, 1280
@@ -20,6 +20,12 @@ track_activation_thresh: 0.25
 lost_track_buffer: 60       # 4 seconds memory at 15 FPS to maintain stable ID during pauses/turns
 matching_thresh: 0.70       # Resilient IoU matching through animal orientation changes
 frame_rate: 15
+
+# Display wording. The COCO class is "horse", but this attraction is signed "KUDA PONI TUNGGANG"
+# (pony riding), and the client reads the overlay rather than the class id.
+display_label: "Pony"
+display_label_plural: "Ponies"
+attraction_title: "Pony Riding Attraction"
 
 # Trajectory & Visual Presentation for Client Demos
 show_boxes: true
