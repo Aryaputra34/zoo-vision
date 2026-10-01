@@ -54,7 +54,12 @@ endif()
 # Define Magnet Analytics Plugin Target
 
 set(src_dir ${CMAKE_CURRENT_LIST_DIR}/src)
-file(GLOB_RECURSE src_files CONFIGURE_DEPENDS ${src_dir}/*)
+# Sources only: src/third_party also carries README.md and LICENSE files.
+file(GLOB_RECURSE src_files CONFIGURE_DEPENDS ${src_dir}/*.cpp ${src_dir}/*.h)
+
+# Eigen (header-only) for the vendored ByteTrack in src/third_party/bytetrack.
+# Ubuntu/Debian: sudo apt-get install libeigen3-dev (build_on_server.sh does this).
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 # Locate ONNX Runtime C++
 set(onnxRuntimeDir "" CACHE PATH "Path to unpacked onnxruntime-linux-x64 directory.")
@@ -71,7 +76,7 @@ endif()
 # Helper static library
 add_library(magnet_analytics_plugin_integration STATIC ${src_files})
 target_include_directories(magnet_analytics_plugin_integration PUBLIC ${src_dir})
-target_link_libraries(magnet_analytics_plugin_integration PUBLIC nx_sdk)
+target_link_libraries(magnet_analytics_plugin_integration PUBLIC nx_sdk Eigen3::Eigen)
 
 if(NOT onnxRuntimeDir STREQUAL "" AND EXISTS "${onnxRuntimeDir}/include")
     message(STATUS "Using ONNX Runtime at: ${onnxRuntimeDir}")

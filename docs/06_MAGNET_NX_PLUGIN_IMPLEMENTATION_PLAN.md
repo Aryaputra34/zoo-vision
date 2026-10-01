@@ -219,6 +219,18 @@ gantt
      the wrong tool below ~5 FPS; the Python pipelines use ByteTrack's Kalman prediction at 15 FPS.
   4. **Add track confirmation** — require N consecutive detections before a track is published,
      mirroring `minimum_consecutive_frames` in the `supervision` pipelines.
+     * *🚧 Tasks 3–4 implemented, pending on-server verification (2026-09-30), see
+       [ADR-007](adr/ADR-007-vendored-bytetrack-per-camera-tracker-toggle.md).*
+       * The vendored ByteTrack reference tracker brings Kalman prediction, optimal assignment, a
+         low-confidence second association, and two-frame confirmation.
+       * It is available per camera through a **"ByteTrack tracking"** switch in Camera Settings →
+         Plugins (default off). The IoU tracker is unchanged.
+       * Compare the two with `tracker=` in the stats line.
+       * Known limit: at low pass rates ByteTrack cannot confirm objects that move more than about
+         half their width per pass, so fast cross-traffic stays on IoU.
+* **Decision point resolved (2026-09-30):** tasks 3–4 *were* ByteTrack, so it was vendored rather
+  than reimplemented (ADR-007). The hybrid architecture stays open if the per-camera results
+  disappoint.
   5. **Re-evaluate Best Shots** once tracks are stable. If thumbnails still fail, attach the JPEG
      directly via `setImage("image/jpeg", ...)` to remove the Server's frame-cropping dependency
      (requires a vendored encoder such as `stb_image_write.h`).

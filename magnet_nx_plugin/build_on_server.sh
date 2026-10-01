@@ -34,12 +34,18 @@ for pkg in cmake g++ make unzip wget tar; do
     fi
 done
 
+# Eigen is header-only, so check for its headers rather than a command. Needed by the vendored
+# ByteTrack tracker (src/third_party/bytetrack).
+if [ ! -f /usr/include/eigen3/Eigen/Core ]; then
+    MISSING_PKGS="$MISSING_PKGS libeigen3-dev"
+fi
+
 if [ -n "$MISSING_PKGS" ]; then
     echo "  Installing missing packages:${MISSING_PKGS}..."
     sudo apt-get update -qq
     sudo apt-get install -y --no-install-recommends $MISSING_PKGS
 else
-    echo "  All build dependencies (cmake, g++, make) are installed."
+    echo "  All build dependencies (cmake, g++, make, Eigen) are installed."
 fi
 
 # 2. Locate Nx Meta Analytics SDK

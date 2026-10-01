@@ -19,7 +19,13 @@ Engine::Engine():
     std::cout << "[Magnet AI Engine] Selected ONNX model path: " << modelPath << std::endl;
     // Target resolution: 640x640 for fast inference. Dynamic ONNX input accepts any resolution.
     // Using 640x640 instead of 1280x736 reduces pixel count ~4x, preventing frame queue overflow.
-    m_yoloDetector = std::make_shared<YoloDetector>(modelPath, 640, 640, 0.25f, 0.45f);
+    //
+    // Confidence floor 0.1, not the 0.25 the trackers report at: ByteTrack's second association
+    // needs the 0.1-0.25 band to keep tracks alive through confidence dips, and the IoU tracker
+    // drops anything below 0.25 itself. NMS is class-aware and runs highest-confidence first, so a
+    // low-confidence box can never suppress a higher one: every detection >= 0.25 is exactly what
+    // a 0.25 floor would have produced.
+    m_yoloDetector = std::make_shared<YoloDetector>(modelPath, 640, 640, 0.1f, 0.45f);
 }
 
 Engine::~Engine()
@@ -68,10 +74,25 @@ void Engine::doObtainDeviceAgent(Result<IDeviceAgent*>* outResult, const IDevice
 
 std::string Engine::manifestString() const
 {
-    // Request YUV420 uncompressed video frames for high-performance zero-copy inference
+    // Request YUV420 uncompressed video frames for high-performance zero-copy inference.
+    // deviceAgentSettingsModel appears per camera under Camera Settings -> Plugins.
     return /*suppress newline*/ 1 + (const char*) R"json(
 {
-    "capabilities": "needUncompressedVideoFrames_yuv420"
+    "capabilities": "needUncompressedVideoFrames_yuv420",
+    "deviceAgentSettingsModel":
+    {
+        "type": "Settings",
+        "items":
+        [
+            {
+                "type": "SwitchButton",
+                "name": ")json" + DeviceAgent::kByteTrackSetting + R"json(",
+                "caption": "ByteTrack tracking",
+                "description": "Track objects with ByteTrack (motion prediction; keeps IDs through fast movement and brief misses) instead of the simple overlap tracker. Changing it restarts tracking on this camera.",
+                "defaultValue": false
+            }
+        ]
+    }
 }
 )json";
 }

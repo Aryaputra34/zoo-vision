@@ -19,28 +19,28 @@
 #include <thread>
 #include <atomic>
 #include <condition_variable>
+#include "tracker.h"
 #include "yolo_detector.h"
 
 namespace magnet {
 namespace analytics {
 
 /**
- * Tracked object state: maintains a persistent Nx track UUID for an object
- * across consecutive frames, enabling the Nx Meta Client to display continuous
- * bounding box overlays.
+ * Nx-side state of one reported track, keyed by Tracker::trackKey: the persistent Nx track UUID
+ * that lets the Nx Meta Client display continuous bounding box overlays, and the Best Shot state.
+ * Independent of which Tracker produced the track.
  */
-struct TrackedObject
+struct TrackRecord
 {
-    nx::sdk::Uuid trackId;
-    Detection lastDetection;
+    nx::sdk::Uuid uuid;
 
-    /// Value of m_inferenceIndex when this track was created. Best Shots are withheld until the
-    /// Server has had a few passes to register the track (see kBestShotDelayInferences).
-    int64_t firstSeenInference = 0;
+    /// Value of m_inferenceIndex when this track was first reported. Best Shots are withheld until
+    /// the Server has had a few passes to register the track (see kBestShotDelayInferences).
+    int64_t firstReportedInference = 0;
 
-    /// Value of m_inferenceIndex when this track was last matched to a detection. Counted in
-    /// inference passes, NOT pushed frames, because tracking only advances when inference runs.
-    int64_t lastSeenInference = 0;
+    /// Value of m_inferenceIndex when this track was last reported. Counted in inference passes,
+    /// NOT pushed frames, because tracking only advances when inference runs.
+    int64_t lastReportedInference = 0;
 
     bool bestShotSent = false;  ///< Whether a best shot packet has been sent for this track
 };
@@ -48,6 +48,10 @@ struct TrackedObject
 class DeviceAgent: public nx::sdk::analytics::ConsumingDeviceAgent
 {
 public:
+    /// Device Agent setting (a SwitchButton declared in Engine::manifestString()): when true, track
+    /// with ByteTrack instead of the greedy IoU tracker.
+    static const std::string kByteTrackSetting;
+
     DeviceAgent(
         const nx::sdk::IDeviceInfo* deviceInfo,
         std::shared_ptr<YoloDetector> detector = nullptr);
@@ -55,6 +59,8 @@ public:
 
 protected:
     virtual std::string manifestString() const override;
+
+    virtual nx::sdk::Result<const nx::sdk::ISettingsResponse*> settingsReceived() override;
 
     virtual bool pushUncompressedVideoFrame(
         nx::sdk::Ptr<const nx::sdk::analytics::IUncompressedVideoFrame> videoFrame) override;
@@ -66,9 +72,9 @@ protected:
         std::vector<nx::sdk::Ptr<nx::sdk::analytics::IMetadataPacket>>* metadataPackets) override;
 
 private:
-    nx::sdk::Ptr<nx::sdk::analytics::IMetadataPacket> generateObjectMetadataPacketFromDetections(
-        const std::vector<Detection>& detections,
-        const std::vector<nx::sdk::Uuid>& trackIds,
+    nx::sdk::Ptr<nx::sdk::analytics::IMetadataPacket> generateObjectMetadataPacket(
+        const std::vector<TrackedDetection>& tracked,
+        const std::vector<nx::sdk::Uuid>& uuids,
         int64_t timestampUs);
     nx::sdk::Ptr<nx::sdk::analytics::IMetadataPacket> generateEventMetadataPacket(
         const std::string& eventTypeId,
@@ -78,13 +84,26 @@ private:
     std::string mapClassToObjectType(int classId) const;
 
     /**
-     * Match new detections to existing tracked objects using IoU, assigning persistent track IDs
-     * for stable bounding box display.
-     *
-     * @return One track Uuid per input detection, positionally aligned with `detections`. A null
-     *     Uuid means the detection has no Nx object type and must not be reported.
+     * Keeps only detections the plugin can report: a class with an Nx object type, and a box that
+     * is not degenerate. Applied before tracking, so no tracker can create a track the object
+     * packet would then have to drop.
      */
-    std::vector<nx::sdk::Uuid> updateTrackedObjects(const std::vector<Detection>& detections);
+    std::vector<Detection> filterReportableDetections(
+        const std::vector<Detection>& detections) const;
+
+    /**
+     * Makes m_tracker the tracker the settings ask for. Switching discards every track: the new
+     * tracker starts from scratch, so objects in view get a new Nx track once.
+     */
+    void ensureRequestedTracker();
+
+    /**
+     * Records this pass's reported tracks in m_trackRecords, minting an Nx Uuid for new ones, and
+     * expires records whose track the tracker can no longer report.
+     *
+     * @return One Nx track Uuid per entry of `tracked`, positionally aligned with it.
+     */
+    std::vector<nx::sdk::Uuid> updateTrackRecords(const std::vector<TrackedDetection>& tracked);
 
     /**
      * Collects Best Shot packets for tracks that are ready for one. This tells the Nx Meta Server
@@ -95,6 +114,8 @@ private:
      * the Server silently discards a Best Shot for a track it has not registered yet.
      */
     std::vector<nx::sdk::Ptr<nx::sdk::analytics::IMetadataPacket>> collectBestShotPackets(
+        const std::vector<TrackedDetection>& tracked,
+        const std::vector<nx::sdk::Uuid>& uuids,
         int64_t timestampUs);
 
     /**
@@ -144,6 +165,10 @@ private:
     /// group above.
     std::atomic<int64_t> m_droppedFrameCount{0};
 
+    /// Tracker the settings ask for. Written by settingsReceived() on a Server thread, read by the
+    /// worker at the start of each pass (see ensureRequestedTracker).
+    std::atomic<bool> m_byteTrackRequested{false};
+
     static constexpr int64_t kInferenceIntervalUs = 200000; // 5 FPS throttle
 
     // Track lifetimes are counted in INFERENCE passes, not pushed frames. At 5 FPS inference on a
@@ -152,15 +177,21 @@ private:
     static constexpr int64_t kTrackExpiryInferences = 10;   // ~2s at 5 FPS
     static constexpr int64_t kBestShotDelayInferences = 3;  // ~0.6s for the Server to register it
     static constexpr float kIoUMatchThreshold = 0.3f;       // IoU threshold for track matching
+
+    /// Confidence the IoU tracker requires. The detector's own floor is lower (see engine.cpp) so
+    /// that ByteTrack's second association has low-confidence detections to work with.
+    static constexpr float kIoUTrackerMinConfidence = 0.25f;
     std::string m_deviceId;
 
-    // Persistent object tracking state. Worker-thread only: created, matched, expired and read
-    // exclusively inside workerLoop().
-    std::vector<TrackedObject> m_trackedObjects;
+    // Tracking state. Worker-thread only: created, updated and read exclusively inside
+    // workerLoop().
+    std::unique_ptr<Tracker> m_tracker;
+    bool m_trackerIsByteTrack = false;
+    std::map<int64_t, TrackRecord> m_trackRecords;
     int64_t m_inferenceIndex = 0;
 
     /// Counters for the periodic stats log (see recordPassAndMaybeLogStats). Worker-thread only,
-    /// under the same rule as m_trackedObjects.
+    /// under the same rule as m_trackRecords.
     struct StatsWindow
     {
         std::chrono::steady_clock::time_point start; ///< First pass, then each log line.

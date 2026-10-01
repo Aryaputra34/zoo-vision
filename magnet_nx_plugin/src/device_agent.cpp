@@ -10,17 +10,23 @@
 #include <sstream>
 #include <algorithm>
 
+#include <nx/kit/utils.h>
 #include <nx/sdk/analytics/rect.h>
 #include <nx/sdk/analytics/helpers/event_metadata.h>
 #include <nx/sdk/analytics/helpers/event_metadata_packet.h>
 #include <nx/sdk/analytics/helpers/object_metadata.h>
 #include <nx/sdk/analytics/helpers/object_metadata_packet.h>
 
+#include "byte_track_tracker.h"
+#include "iou_tracker.h"
+
 namespace magnet {
 namespace analytics {
 
 using namespace nx::sdk;
 using namespace nx::sdk::analytics;
+
+const std::string DeviceAgent::kByteTrackSetting = "useByteTrack";
 
 // Object Type Identifiers
 const std::string DeviceAgent::kCashierObjectType = "magnet.person.cashier";
@@ -159,108 +165,102 @@ std::string DeviceAgent::mapClassToObjectType(int classId) const
     }
 }
 
-/**
- * Calculate IoU between a tracked object and a new detection for matching.
- */
-static float computeIoU(const Detection& a, const Detection& b)
+Result<const ISettingsResponse*> DeviceAgent::settingsReceived()
 {
-    const float x1 = std::max(a.x, b.x);
-    const float y1 = std::max(a.y, b.y);
-    const float x2 = std::min(a.x + a.width, b.x + b.width);
-    const float y2 = std::min(a.y + a.height, b.y + b.height);
-
-    const float interW = std::max(0.0f, x2 - x1);
-    const float interH = std::max(0.0f, y2 - y1);
-    const float intersection = interW * interH;
-
-    const float areaA = a.width * a.height;
-    const float areaB = b.width * b.height;
-    const float unionArea = areaA + areaB - intersection;
-
-    return (unionArea <= 0.0f) ? 0.0f : (intersection / unionArea);
+    // Runs on a Server thread, not the worker: only record the request here. The worker swaps
+    // trackers at the start of its next pass (ensureRequestedTracker).
+    bool useByteTrack = false;
+    nx::kit::utils::fromString(settingValue(kByteTrackSetting), &useByteTrack);
+    m_byteTrackRequested = useByteTrack;
+    return nullptr;
 }
 
-std::vector<nx::sdk::Uuid> DeviceAgent::updateTrackedObjects(
-    const std::vector<Detection>& detections)
+std::vector<Detection> DeviceAgent::filterReportableDetections(
+    const std::vector<Detection>& detections) const
 {
-    // Index of the track each detection belongs to, or -1 for "no track" (unmappable class).
-    std::vector<int> trackForDetection(detections.size(), -1);
-    std::vector<bool> trackMatched(m_trackedObjects.size(), false);
-
-    // 1. Greedy IoU matching: for each detection, find the best matching track of the same class
-    for (size_t di = 0; di < detections.size(); ++di)
+    std::vector<Detection> reportable;
+    reportable.reserve(detections.size());
+    for (const auto& det: detections)
     {
-        float bestIoU = kIoUMatchThreshold;
-        int bestTrack = -1;
-
-        for (size_t ti = 0; ti < m_trackedObjects.size(); ++ti)
-        {
-            if (trackMatched[ti])
-                continue;
-
-            // Only match objects of the same class type
-            if (m_trackedObjects[ti].lastDetection.classId != detections[di].classId)
-                continue;
-
-            const float iou = computeIoU(m_trackedObjects[ti].lastDetection, detections[di]);
-            if (iou > bestIoU)
-            {
-                bestIoU = iou;
-                bestTrack = static_cast<int>(ti);
-            }
-        }
-
-        if (bestTrack >= 0)
-        {
-            // Update existing track with new detection position
-            m_trackedObjects[bestTrack].lastDetection = detections[di];
-            m_trackedObjects[bestTrack].lastSeenInference = m_inferenceIndex;
-            trackMatched[bestTrack] = true;
-            trackForDetection[di] = bestTrack;
-        }
-    }
-
-    // 2. Create new tracks for unmatched detections
-    for (size_t di = 0; di < detections.size(); ++di)
-    {
-        if (trackForDetection[di] >= 0)
+        if (det.width <= 0.001f || det.height <= 0.001f)
             continue;
 
-        const std::string objectTypeId = mapClassToObjectType(detections[di].classId);
-        if (objectTypeId.empty())
+        if (mapClassToObjectType(det.classId).empty())
             continue;
 
-        TrackedObject newTrack;
-        newTrack.trackId = nx::sdk::UuidHelper::randomUuid();
-        newTrack.lastDetection = detections[di];
-        newTrack.firstSeenInference = m_inferenceIndex;
-        newTrack.lastSeenInference = m_inferenceIndex;
-        m_trackedObjects.push_back(newTrack);
-        trackForDetection[di] = static_cast<int>(m_trackedObjects.size()) - 1;
-        ++m_stats.tracksCreated;
+        reportable.push_back(det);
     }
+    return reportable;
+}
 
-    // 3. Resolve track Uuids BEFORE expiry below invalidates the indices. Returning ids by value
-    //    is what lets the caller stop re-deriving them by comparing detection floats for equality.
-    std::vector<nx::sdk::Uuid> trackIds(detections.size());
-    for (size_t di = 0; di < detections.size(); ++di)
+void DeviceAgent::ensureRequestedTracker()
+{
+    const bool wantByteTrack = m_byteTrackRequested.load();
+    if (m_tracker && wantByteTrack == m_trackerIsByteTrack)
+        return;
+
+    const bool isSwitch = (m_tracker != nullptr);
+
+    if (wantByteTrack)
     {
-        if (trackForDetection[di] >= 0)
-            trackIds[di] = m_trackedObjects[trackForDetection[di]].trackId;
+        ByteTrackTracker::Params params;
+        // Lost tracks live exactly as long as IoU tracks do, so the two trackers' tracks_created
+        // and tracks_expired figures are directly comparable on the same clip.
+        params.lostPasses = static_cast<int>(kTrackExpiryInferences);
+        m_tracker = std::make_unique<ByteTrackTracker>(params);
+    }
+    else
+    {
+        m_tracker = std::make_unique<IouTracker>(
+            kIoUTrackerMinConfidence, kIoUMatchThreshold, kTrackExpiryInferences);
+    }
+    m_trackerIsByteTrack = wantByteTrack;
+
+    // The new tracker's keys mean nothing to the old records.
+    m_trackRecords.clear();
+
+    std::cout << "[Magnet AI] device=" << m_deviceId << " tracker=" << m_tracker->name()
+        << (isSwitch ? " (switched by settings; all tracks restarted)" : "") << std::endl;
+}
+
+std::vector<nx::sdk::Uuid> DeviceAgent::updateTrackRecords(
+    const std::vector<TrackedDetection>& tracked)
+{
+    std::vector<nx::sdk::Uuid> uuids;
+    uuids.reserve(tracked.size());
+
+    for (const auto& item: tracked)
+    {
+        auto found = m_trackRecords.find(item.trackKey);
+        if (found == m_trackRecords.end())
+        {
+            TrackRecord record;
+            record.uuid = nx::sdk::UuidHelper::randomUuid();
+            record.firstReportedInference = m_inferenceIndex;
+            found = m_trackRecords.emplace(item.trackKey, record).first;
+            ++m_stats.tracksCreated;
+        }
+
+        found->second.lastReportedInference = m_inferenceIndex;
+        uuids.push_back(found->second.uuid);
     }
 
-    // 4. Remove stale tracks that haven't been seen for too long
-    const size_t trackCountBeforeExpiry = m_trackedObjects.size();
-    m_trackedObjects.erase(
-        std::remove_if(m_trackedObjects.begin(), m_trackedObjects.end(),
-            [this](const TrackedObject& t) {
-                return (m_inferenceIndex - t.lastSeenInference) > kTrackExpiryInferences;
-            }),
-        m_trackedObjects.end());
-    m_stats.tracksExpired +=
-        static_cast<int64_t>(trackCountBeforeExpiry - m_trackedObjects.size());
+    // Both trackers drop a track once it has gone unreported for more than kTrackExpiryInferences
+    // passes, after which its key can never be reported again.
+    for (auto it = m_trackRecords.begin(); it != m_trackRecords.end();)
+    {
+        if (m_inferenceIndex - it->second.lastReportedInference > kTrackExpiryInferences)
+        {
+            it = m_trackRecords.erase(it);
+            ++m_stats.tracksExpired;
+        }
+        else
+        {
+            ++it;
+        }
+    }
 
-    return trackIds;
+    return uuids;
 }
 
 bool DeviceAgent::pushUncompressedVideoFrame(Ptr<const IUncompressedVideoFrame> videoFrame)
@@ -375,7 +375,12 @@ void DeviceAgent::workerLoop()
             // pass carry the current value.
             ++m_inferenceIndex;
 
-            const auto trackIds = updateTrackedObjects(detections);
+            // Called every pass, even with no detections: that is how trackers age and expire
+            // tracks.
+            ensureRequestedTracker();
+            const auto tracked = m_tracker->update(
+                filterReportableDetections(detections), frame->width(), frame->height());
+            const auto uuids = updateTrackRecords(tracked);
 
             // ORDER IS LOAD-BEARING. The object metadata packet is what registers a track with the
             // Server; a Best Shot naming a track the Server has not seen yet is discarded without
@@ -383,13 +388,13 @@ void DeviceAgent::workerLoop()
             // object packet first, Best Shots after.
             std::vector<Ptr<IMetadataPacket>> outgoing;
 
-            if (!detections.empty())
+            if (!tracked.empty())
             {
-                outgoing.push_back(generateObjectMetadataPacketFromDetections(
-                    detections, trackIds, frame->timestampUs()));
+                outgoing.push_back(generateObjectMetadataPacket(
+                    tracked, uuids, frame->timestampUs()));
             }
 
-            const auto bestShots = collectBestShotPackets(frame->timestampUs());
+            const auto bestShots = collectBestShotPackets(tracked, uuids, frame->timestampUs());
             for (auto& bestShot: bestShots)
                 outgoing.push_back(bestShot);
 
@@ -427,34 +432,24 @@ bool DeviceAgent::pullMetadataPackets(std::vector<Ptr<IMetadataPacket>>* metadat
     return true;
 }
 
-Ptr<IMetadataPacket> DeviceAgent::generateObjectMetadataPacketFromDetections(
-    const std::vector<Detection>& detections,
-    const std::vector<nx::sdk::Uuid>& trackIds,
+Ptr<IMetadataPacket> DeviceAgent::generateObjectMetadataPacket(
+    const std::vector<TrackedDetection>& tracked,
+    const std::vector<nx::sdk::Uuid>& uuids,
     int64_t timestampUs)
 {
     const auto objectMetadataPacket = makePtr<ObjectMetadataPacket>();
     objectMetadataPacket->setTimestampUs(timestampUs);
     objectMetadataPacket->setDurationUs(0);
 
-    for (size_t i = 0; i < detections.size(); ++i)
+    for (size_t i = 0; i < tracked.size() && i < uuids.size(); ++i)
     {
-        const Detection& det = detections[i];
+        const Detection& det = tracked[i].detection;
 
-        if (det.width <= 0.001f || det.height <= 0.001f)
-            continue;
-
-        const std::string objectTypeId = mapClassToObjectType(det.classId);
-        if (objectTypeId.empty())
-            continue;
-
-        // A null Uuid means updateTrackedObjects() assigned no track to this detection, so there
-        // is nothing for a Best Shot to attach to and the object must not be reported.
-        if (i >= trackIds.size() || trackIds[i].isNull())
-            continue;
-
+        // Trackers only see detections that passed filterReportableDetections(), so every class
+        // here maps to an object type.
         const auto obj = makePtr<ObjectMetadata>();
-        obj->setTypeId(objectTypeId);
-        obj->setTrackId(trackIds[i]);
+        obj->setTypeId(mapClassToObjectType(det.classId));
+        obj->setTrackId(uuids[i]);
         obj->setBoundingBox(Rect(det.x, det.y, det.width, det.height));
         obj->setConfidence(det.confidence);
 
@@ -464,41 +459,37 @@ Ptr<IMetadataPacket> DeviceAgent::generateObjectMetadataPacketFromDetections(
     return objectMetadataPacket;
 }
 
-std::vector<Ptr<IMetadataPacket>> DeviceAgent::collectBestShotPackets(int64_t timestampUs)
+std::vector<Ptr<IMetadataPacket>> DeviceAgent::collectBestShotPackets(
+    const std::vector<TrackedDetection>& tracked,
+    const std::vector<nx::sdk::Uuid>& uuids,
+    int64_t timestampUs)
 {
     std::vector<Ptr<IMetadataPacket>> packets;
 
-    for (auto& tracked: m_trackedObjects)
+    // Only tracks reported in THIS pass are candidates: their box describes the frame at
+    // timestampUs. Emitting for a track not seen this pass would pair a stale box with a fresh
+    // timestamp, and the Server would then crop background instead of the object.
+    for (size_t i = 0; i < tracked.size() && i < uuids.size(); ++i)
     {
-        if (tracked.bestShotSent)
+        const auto record = m_trackRecords.find(tracked[i].trackKey);
+        if (record == m_trackRecords.end() || record->second.bestShotSent)
             continue;
 
-        // Only a track matched in THIS pass has a bounding box that describes the frame at
-        // timestampUs. Emitting for an unmatched track pairs a stale box with a fresh timestamp,
-        // and the Server then crops background instead of the object.
-        if (tracked.lastSeenInference != m_inferenceIndex)
+        // Withhold the Best Shot for a few passes after the track is first reported (ADR-006
+        // decision 3; ADR-006 open item 6 notes the SDK does not strictly require the delay).
+        if (m_inferenceIndex - record->second.firstReportedInference < kBestShotDelayInferences)
             continue;
 
-        // Give the Server a few passes to register the track before attaching a Best Shot to it.
-        // The SDK's own stub sample does the same via a countdown; emitting on a track's first
-        // frame is a race that the Best Shot loses silently.
-        if (m_inferenceIndex - tracked.firstSeenInference < kBestShotDelayInferences)
-            continue;
-
-        if (mapClassToObjectType(tracked.lastDetection.classId).empty())
-            continue;
+        const Detection& det = tracked[i].detection;
 
         // No image data attached, so the Server crops this rectangle out of the frame at
         // timestampUs itself. IObjectTrackBestShotPacket0 requires a positive timestamp.
         packets.push_back(makePtr<ObjectTrackBestShotPacket>(
-            tracked.trackId,
+            uuids[i],
             timestampUs,
-            Rect(tracked.lastDetection.x,
-                 tracked.lastDetection.y,
-                 tracked.lastDetection.width,
-                 tracked.lastDetection.height)));
+            Rect(det.x, det.y, det.width, det.height)));
 
-        tracked.bestShotSent = true;
+        record->second.bestShotSent = true;
     }
 
     return packets;
@@ -533,6 +524,7 @@ void DeviceAgent::recordPassAndMaybeLogStats(int64_t inferenceUs, size_t bestSho
     std::ostringstream line;
     line << std::fixed
         << "[Magnet AI Stats] device=" << m_deviceId
+        << " tracker=" << (m_tracker ? m_tracker->name() : "none")
         << " window=" << std::setprecision(1) << elapsedS << "s"
         << std::setprecision(2)
         << " passes=" << m_stats.passes
@@ -543,7 +535,7 @@ void DeviceAgent::recordPassAndMaybeLogStats(int64_t inferenceUs, size_t bestSho
         << " dropped=" << (droppedFrames - m_stats.droppedFramesAtStart)
         << " tracks_created=" << m_stats.tracksCreated
         << " tracks_expired=" << m_stats.tracksExpired
-        << " live_tracks=" << m_trackedObjects.size()
+        << " live_tracks=" << m_trackRecords.size()
         << " best_shots=" << m_stats.bestShotsSent;
     std::cout << line.str() << std::endl;
 

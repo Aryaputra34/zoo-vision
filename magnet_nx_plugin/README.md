@@ -74,6 +74,19 @@ The script will automatically:
 5. Toggle the plugin **ON** and click **Apply**.
 6. View the camera tile: you will see the live circulating demo bounding box and periodic test events on the right-side notification panel!
 
+### Per-camera setting: ByteTrack tracking
+
+On the same **Plugins** tab, the **"ByteTrack tracking"** switch (default **off**) picks the tracker for that camera:
+
+| Tracker | Good for | Weak at |
+| :--- | :--- | :--- |
+| **Off: IoU** (original) | Fast cross-traffic at low inference rates. Objects keep being shown, but get a new ID when they jump far between passes | Occlusions, confidence dips, one-pass false positives (each becomes a record) |
+| **On: ByteTrack** | Slow scenes (horse riding, vehicle gate, people): holds IDs through occlusions and confidence dips, and hides one-pass false positives | Objects moving more than about half their width per pass can't be confirmed, so they may not be shown at all |
+
+Switching restarts tracking on that camera, so objects in view get a new record once. Every ~30 s the mediaserver log shows which tracker is active (`[Magnet AI Stats] ... tracker=bytetrack ...`), so you can compare `tracks_created` for the same clip under each setting. See [ADR-007](../docs/adr/ADR-007-vendored-bytetrack-per-camera-tracker-toggle.md).
+
+To compare the two trackers on synthetic scenes without Nx, run `tests/tracker_compare.cpp`. Its header has the one-line build command.
+
 ---
 
 ## Troubleshooting
@@ -95,11 +108,19 @@ magnet_nx_plugin/
 ├── build_on_server.sh     # One-command server build & deploy script
 ├── plugin.cpp             # Nx 6.1 entry point (createNxPlugin)
 ├── README.md              # This guide
+├── tests/
+│   └── tracker_compare.cpp  # IoU vs ByteTrack on synthetic scenes (no Nx needed)
 └── src/
     ├── integration.h      # Plugin Manifest & Metadata
     ├── integration.cpp
-    ├── engine.h           # Engine singleton & frame capabilities
+    ├── engine.h           # Engine singleton, frame capabilities & per-camera settings model
     ├── engine.cpp
     ├── device_agent.h     # Per-stream analytics worker
-    └── device_agent.cpp   # Frame ingestion & metadata packets
+    ├── device_agent.cpp   # Frame ingestion, Nx track records & metadata packets
+    ├── detection.h        # Detection record shared by detector and trackers
+    ├── yolo_detector.h/.cpp        # ONNX Runtime YOLO inference
+    ├── tracker.h                   # Tracker interface
+    ├── iou_tracker.h/.cpp          # Original greedy IoU tracker
+    ├── byte_track_tracker.h/.cpp   # ByteTrack adapter
+    └── third_party/bytetrack/      # Vendored ByteTrack (MIT), see its README
 ```
