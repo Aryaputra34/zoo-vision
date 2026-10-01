@@ -22,6 +22,8 @@ CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 
 
 class VehicleGatePipeline(BasePipeline):
+    use_case = "vehicle_gate"
+
     def __init__(
         self,
         camera_id: str,
@@ -263,6 +265,11 @@ class VehicleGatePipeline(BasePipeline):
             last_text = f"LAST: {last['plate']} ({last['direction']})"
             cv2.putText(annotated_frame, last_text, (20, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
+        self.emit_status({
+            "inCount": self.line_zone.in_count,
+            "outCount": self.line_zone.out_count,
+            "anprEnabled": self.anpr_enabled,
+        })
         return annotated_frame
 
     def _dispatch_gate_audit(self, vehicle_type: str, direction: str, tracker_id: Any, plate_number: str, timestamp_ms: int):
@@ -279,6 +286,16 @@ class VehicleGatePipeline(BasePipeline):
         })
         if len(self.recent_audits) > 10:
             self.recent_audits.pop(0)
+
+        plate_info = self.vehicle_plates.get(tracker_id, {})
+        self.emit("vehicle_crossing", {
+            "direction": direction,
+            "vehicleType": vehicle_type,
+            "plate": plate_number,
+            "plateValid": bool(plate_info.get("is_valid", False)),
+            "ocrConfidence": plate_info.get("ocr_confidence"),
+            "trackerId": tracker_id,
+        })
 
         clean_tag = f"#{plate_number.replace(' ', '_').lower()}" if plate_number != "UNIDENTIFIED" else "#unidentified"
         tags = ["#vehicle_audit", f"#{direction.lower()}", f"#{vehicle_type.lower()}", clean_tag]

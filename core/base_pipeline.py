@@ -5,6 +5,7 @@ Standardizes YOLO model loading, frame processing, and Nx Event dispatching.
 
 from abc import ABC, abstractmethod
 import logging
+import time
 from typing import Dict, Any, Optional
 import numpy as np
 import yaml
@@ -14,8 +15,15 @@ from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("BasePipeline")
 
+# Live-state heartbeat interval for the web dashboard (zoo-analytics-web src/lib/util.ts STATUS_SEC must match).
+STATUS_INTERVAL_SEC = 30
+
 
 class BasePipeline(ABC):
+    use_case = ""       # dashboard use case id, set by each subclass
+    analytics = None    # AnalyticsDispatcher, assigned by main.py / test_video.py; None = dashboard disabled
+    _last_status = 0.0
+
     def __init__(
         self,
         camera_id: str,
@@ -88,6 +96,19 @@ class BasePipeline(ABC):
         except Exception as e:
             logger.error(f"Failed to load rule config {config_path}: {e}")
             return {}
+
+    def emit(self, event_type: str, data: Dict[str, Any], severity: str = "info"):
+        """Sends an event to the web dashboard (no-op when analytics is not configured)."""
+        if self.analytics:
+            self.analytics.dispatch(
+                self.use_case, event_type, self.camera_id, self.camera_name, data, severity, self.nx_camera_id
+            )
+
+    def emit_status(self, data: Dict[str, Any]):
+        """Live state + heartbeat, at most once per STATUS_INTERVAL_SEC (wall clock)."""
+        if self.analytics and time.time() - self._last_status >= STATUS_INTERVAL_SEC:
+            self._last_status = time.time()
+            self.emit("status", data)
 
     @abstractmethod
     def process_frame(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:

@@ -13,6 +13,7 @@ import yaml
 import cv2
 
 from nx_integration.nx_client import NxClient
+from core.analytics_dispatcher import AnalyticsDispatcher
 from core.stream_manager import StreamManager
 from pipelines.cashier_presence_pipeline import CashierPresencePipeline
 from pipelines.restaurant_pipeline import RestaurantCounterPipeline
@@ -61,6 +62,13 @@ def main():
         mock_mode=nx_cfg.get("mock_mode", True)
     )
 
+    # Web analytics dashboard (zoo-analytics-web)
+    an_cfg = app_cfg.get("analytics", {})
+    analytics = AnalyticsDispatcher(
+        api_url=an_cfg.get("api_url", "http://localhost:3000/api/events"),
+        api_key=an_cfg.get("api_key") or None,
+    ) if an_cfg.get("enabled") else None
+
     device = app_cfg.get("ai_engine", {}).get("device", "cpu")
 
     # 2. Build Pipeline Registry
@@ -101,6 +109,7 @@ def main():
         else:
             logger.warning(f"Unknown pipeline type '{pipeline_type}' for camera '{name}'. Skipping.")
             continue
+        pipeline.analytics = analytics
 
         # Ingest stream
         stream = StreamManager(source=source, camera_id=cam_id, target_fps=target_fps)
@@ -124,12 +133,16 @@ def main():
 
     signal.signal(signal.SIGINT, sigint_handler)
 
+    last_ts = {}
     try:
         while running:
             for cam_id, name, stream, pipeline in active_pipelines:
                 frame, timestamp_ms = stream.get_frame()
-                if frame is None:
+                # A dead stream keeps returning its last frame: skip it so we don't re-run YOLO
+                # or keep sending dashboard heartbeats for a camera that is actually down.
+                if frame is None or last_ts.get(cam_id) == timestamp_ms:
                     continue
+                last_ts[cam_id] = timestamp_ms
 
                 # Run inference & business logic
                 annotated = pipeline.process_frame(frame, timestamp_ms)
@@ -149,6 +162,8 @@ def main():
         logger.info("Cleaning up resources...")
         for stream in active_streams:
             stream.stop()
+        if analytics:
+            analytics.stop()
         if args.preview:
             cv2.destroyAllWindows()
         logger.info("Zoo Vision Service successfully stopped.")

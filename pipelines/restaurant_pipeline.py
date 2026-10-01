@@ -21,6 +21,8 @@ logger = logging.getLogger("RestaurantPipeline")
 
 
 class RestaurantCounterPipeline(BasePipeline):
+    use_case = "restaurant_counter"
+
     def __init__(
         self,
         camera_id: str,
@@ -231,9 +233,17 @@ class RestaurantCounterPipeline(BasePipeline):
 
     def process_frame(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         if self.mode == "area_occupancy":
-            return self._process_area_occupancy(frame, timestamp_ms)
+            out = self._process_area_occupancy(frame, timestamp_ms)
         else:
-            return self._process_tripwire(frame, timestamp_ms)
+            out = self._process_tripwire(frame, timestamp_ms)
+        self.emit_status({
+            "occupancy": self.current_occupancy,
+            "rawOccupancy": self.raw_occupancy,
+            "maxCapacity": self.max_capacity,
+            "warningCapacity": self.warning_capacity,
+            "mode": self.mode,
+        })
+        return out
 
     def _process_area_occupancy(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         self._init_area_zone_if_needed(frame.shape)
@@ -408,6 +418,16 @@ class RestaurantCounterPipeline(BasePipeline):
     def _dispatch_capacity_alert(self, current_occupancy: int, timestamp_ms: int, is_full: bool):
         title = "[CAPACITY ALERT] Restaurant Full!" if is_full else "[CAPACITY NOTICE] Restaurant Near Limit"
         desc = f"Occupancy reached {current_occupancy}/{self.max_capacity} at {self.camera_name}."
+        self.emit(
+            "capacity_alert",
+            {
+                "occupancy": current_occupancy,
+                "maxCapacity": self.max_capacity,
+                "warningCapacity": self.warning_capacity,
+                "level": "full" if is_full else "near_limit",
+            },
+            "critical" if is_full else "warning",
+        )
 
         logger.warning(f"[{self.camera_name}] DISPATCHING CAPACITY ALERT: {desc}")
         self.nx_client.create_bookmark(

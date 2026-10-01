@@ -23,6 +23,8 @@ logger = logging.getLogger("CashierPipeline")
 
 
 class CashierPresencePipeline(BasePipeline):
+    use_case = "cashier_presence"
+
     def __init__(
         self,
         camera_id: str,
@@ -244,10 +246,17 @@ class CashierPresencePipeline(BasePipeline):
             2
         )
 
+        self.emit_status({
+            "state": self.current_state,
+            "clerkPresent": self.clerk_present,
+            "clerkCount": clerk_count,
+            "visitorCount": visitor_count,
+        })
         return annotated_frame
 
     def _dispatch_absence_alert(self, absent_duration: int, timestamp_ms: int):
         """Pushes an Nx Bookmark and Event when cashier desk is empty too long."""
+        self.emit("cashier_unattended", {"absentSec": absent_duration}, "warning")
         if not self.nx_client:
             return
 
@@ -275,6 +284,7 @@ class CashierPresencePipeline(BasePipeline):
 
     def _dispatch_customer_waiting_alert(self, waiting_duration: int, timestamp_ms: int):
         """Pushes high-priority alert when customer is waiting while desk is empty."""
+        self.emit("customer_waiting", {"waitingSec": waiting_duration}, "critical")
         if not self.nx_client:
             return
 

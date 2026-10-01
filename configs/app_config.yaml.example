@@ -21,3 +21,9 @@ ai_engine:
   device: "cpu"                 # "cpu" for local development; "cuda:0" for production server
   model_cache_dir: "models"
   default_confidence: 0.35
+
+# Web Analytics Dashboard (zoo-analytics-web)
+analytics:
+  enabled: true
+  api_url: "http://localhost:3000/api/events"
+  api_key: ""                   # = INGEST_API_KEY in the dashboard's .env.local; empty = no auth

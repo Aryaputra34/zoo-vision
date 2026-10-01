@@ -16,7 +16,9 @@ import time
 import argparse
 import logging
 import cv2
+import yaml
 
+from core.analytics_dispatcher import AnalyticsDispatcher
 from nx_integration.nx_client import NxClient
 from pipelines.vehicle_gate_pipeline import VehicleGatePipeline
 from pipelines.cashier_presence_pipeline import CashierPresencePipeline
@@ -58,7 +60,8 @@ def test_video(
     show_boxes: bool = False,
     no_gui: bool = False,
     no_anpr: bool = False,
-    duration: str = None
+    duration: str = None,
+    analytics: bool = False
 ):
     if not os.path.exists(video_path):
         logger.error(f"Video file not found: '{video_path}'")
@@ -154,6 +157,19 @@ def test_video(
         pipeline.show_boxes = True
         pipeline.show_labels = True
         logger.info("[DISPLAY] Debug Mode: Bounding boxes and confidence labels visible.")
+
+    # Optionally send events to the web dashboard (api_url/api_key from app_config.yaml; its 'enabled' flag is ignored here)
+    dispatcher = None
+    if analytics:
+        an_cfg = {}
+        if os.path.exists("configs/app_config.yaml"):
+            with open("configs/app_config.yaml", "r") as f:
+                an_cfg = (yaml.safe_load(f) or {}).get("analytics", {})
+        dispatcher = AnalyticsDispatcher(
+            api_url=an_cfg.get("api_url", "http://localhost:3000/api/events"),
+            api_key=an_cfg.get("api_key") or None,
+        )
+        pipeline.analytics = dispatcher
 
     # Seek to start time if provided
     start_sec = parse_time_str(start_time)
@@ -290,6 +306,8 @@ def test_video(
                 logger.info(f"[ANPR TOGGLE] ANPR is now {state_str}")
 
     cap.release()
+    if dispatcher:
+        dispatcher.stop()
     if writer:
         writer.release()
         logger.info(f"[SAVED] Client demo video saved to {save_output}")
@@ -312,6 +330,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-gui", action="store_true", help="Run without opening GUI window (ideal for headless or background execution)")
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
+    parser.add_argument("--analytics", action="store_true", help="Send events to the web dashboard (api_url/api_key from configs/app_config.yaml)")
     args = parser.parse_args()
 
     test_video(
@@ -327,5 +346,6 @@ if __name__ == "__main__":
         show_boxes=args.show_boxes,
         no_gui=args.no_gui,
         no_anpr=args.no_anpr,
-        duration=args.duration
+        duration=args.duration,
+        analytics=args.analytics
     )

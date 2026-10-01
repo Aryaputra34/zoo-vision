@@ -19,6 +19,8 @@ logger = logging.getLogger("HorseRidingPipeline")
 
 
 class HorseRidingPipeline(BasePipeline):
+    use_case = "horse_riding"
+
     def __init__(
         self,
         camera_id: str,
@@ -297,6 +299,12 @@ class HorseRidingPipeline(BasePipeline):
         # 6. Render Executive Glassmorphic HUD
         annotated_frame = self._render_executive_hud(annotated_frame)
 
+        line = self.line_zone if self.tripwire_enabled else None
+        self.emit_status({
+            "activeHorses": self.active_horse_count,
+            "departures": line.in_count if line else None,
+            "returns": line.out_count if line else None,
+        })
         return annotated_frame
 
     def _on_horse_crossed(self, tracker_id: Any, direction: str, timestamp_ms: int):
@@ -312,6 +320,9 @@ class HorseRidingPipeline(BasePipeline):
         })
         if len(self.recent_departures) > 10:
             self.recent_departures.pop(0)
+
+        # The dashboard counts every crossing (the Nx bookmark below is debounced).
+        self.emit("horse_crossing", {"direction": direction, "trackerId": tracker_id})
 
         # Debounce alerts sent to Nx Meta
         if self.nx_client and (now - self.last_alert_time >= self.debounce_alert_sec):
