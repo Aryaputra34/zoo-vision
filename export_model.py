@@ -7,16 +7,19 @@ Usage Examples:
     # 1. Interactive wizard (prompts you for model, format, resolution, etc.):
     python export_model.py
 
-    # 2. Direct CLI export (Square 1280):
+    # 2. Setup / Download License Plate Detector for ANPR (Auto-Healing):
+    python export_model.py --setup-plate-model
+
+    # 3. Direct CLI export (Square 1280):
     python export_model.py --model yolo26s.pt --format onnx --imgsz 1280 --dynamic
 
-    # 3. Direct CLI export (16:9 Widescreen CCTV 736x1280 - zero letterbox bars):
+    # 4. Direct CLI export (16:9 Widescreen CCTV 736x1280 - zero letterbox bars):
     python export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
 
-    # 4. Export to OpenVINO:
+    # 5. Export to OpenVINO:
     python export_model.py --model yolo11s.pt --format openvino --imgsz 640
 
-    # 5. List available local models:
+    # 6. List available local models:
     python export_model.py --list
 """
 
@@ -95,20 +98,20 @@ def export_model(
     simplify: bool = True
 ):
     if not os.path.exists(model_path):
-        print(f"\n❌ Error: Model file '{model_path}' not found!")
+        print(f"\n[ERROR] Model file '{model_path}' not found!")
         sys.exit(1)
 
     print("\n" + "=" * 65)
-    print(f"🚀 EXPORTING MODEL: {model_path}")
+    print(f"[*] EXPORTING MODEL: {model_path}")
     print("=" * 65)
-    print(f"  • Source Model:    {model_path} ({format_size(os.path.getsize(model_path))})")
-    print(f"  • Target Format:   {export_format.upper()}")
-    print(f"  • Input Size:      {imgsz} {'(Rectangular 16:9)' if isinstance(imgsz, list) else '(Square)'}")
-    print(f"  • Dynamic Shapes:  {dynamic}")
-    print(f"  • Half Precision:  {half} (FP16)")
+    print(f"  * Source Model:    {model_path} ({format_size(os.path.getsize(model_path))})")
+    print(f"  * Target Format:   {export_format.upper()}")
+    print(f"  * Input Size:      {imgsz} {'(Rectangular 16:9)' if isinstance(imgsz, list) else '(Square)'}")
+    print(f"  * Dynamic Shapes:  {dynamic}")
+    print(f"  * Half Precision:  {half} (FP16)")
     if export_format.lower() == "onnx":
-        print(f"  • ONNX Opset:      {opset}")
-        print(f"  • Simplify/Slim:   {simplify}")
+        print(f"  * ONNX Opset:      {opset}")
+        print(f"  * Simplify/Slim:   {simplify}")
     print("-" * 65)
 
     try:
@@ -130,61 +133,93 @@ def export_model(
         elapsed = time.time() - t0
 
         print("\n" + "=" * 65)
-        print("✅ EXPORT COMPLETED SUCCESSFULLY!")
+        print("[OK] EXPORT COMPLETED SUCCESSFULLY!")
         print("=" * 65)
-        print(f"  • Output Path:     {exported_path}")
+        print(f"  * Output Path:     {exported_path}")
         if os.path.exists(exported_path):
             if os.path.isfile(exported_path):
-                print(f"  • Output Size:     {format_size(os.path.getsize(exported_path))}")
+                print(f"  * Output Size:     {format_size(os.path.getsize(exported_path))}")
             elif os.path.isdir(exported_path):
                 total_bytes = sum(
                     os.path.getsize(os.path.join(root, f))
                     for root, _, files in os.walk(exported_path)
                     for f in files
                 )
-                print(f"  • Directory Size:  {format_size(total_bytes)}")
-        print(f"  • Export Duration: {elapsed:.2f} seconds")
+                print(f"  * Directory Size:  {format_size(total_bytes)}")
+        print(f"  * Export Duration: {elapsed:.2f} seconds")
         print("=" * 65)
 
         # Quick validation check
-        print("\n🔍 Validating exported model load...")
+        print("\n[*] Validating exported model load...")
         val_model = YOLO(exported_path, task="detect")
-        print(f"✅ Verified: Model successfully loaded into memory via {export_format.upper()} runtime.")
+        print(f"[OK] Verified: Model successfully loaded into memory via {export_format.upper()} runtime.")
 
     except Exception as e:
-        print(f"\n❌ Export Failed: {e}")
+        print(f"\n[ERROR] Export Failed: {e}")
         sys.exit(1)
+
+
+def setup_license_plate_model(export_format: str = "onnx", force: bool = False):
+    """
+    Downloads and verifies the Indonesian TNKB License Plate Detector ONNX model.
+    Optionally exports the model to OpenVINO or TensorRT if requested.
+    """
+    try:
+        from core.model_downloader import ensure_license_plate_detector
+        model_path = ensure_license_plate_detector(force=force)
+        print(f"[OK] License plate detector ready at: {model_path} ({format_size(os.path.getsize(model_path))})")
+    except Exception as e:
+        print(f"\n[ERROR] Failed to set up license plate detector: {e}")
+        sys.exit(1)
+
+    if export_format.lower() != "onnx":
+        print(f"\n[*] Exporting plate detector to {export_format.upper()} format...")
+        try:
+            plate_model = YOLO(model_path, task="detect")
+            exported = plate_model.export(format=export_format)
+            print(f"[OK] Plate detector exported to: {exported}")
+            return exported
+        except Exception as e:
+            print(f"[!] Warning: Could not export ONNX plate detector to {export_format}: {e}")
+            print(f"    You can continue using the ONNX model at: {model_path}")
+
+    return model_path
 
 
 def interactive_wizard():
     """Interactive CLI wizard for step-by-step model export."""
     print("\n" + "=" * 65)
-    print("🧙 UNIVERSAL MODEL EXPORT WIZARD")
+    print("[*] UNIVERSAL MODEL EXPORT WIZARD")
     print("=" * 65)
 
     local_models = get_local_models()
-    if not local_models:
-        print("❌ No .pt model files found in the current directory.")
-        sys.exit(1)
 
-    print("\nStep 1: Select a PyTorch model to export:")
+    print("\nStep 1: Select a PyTorch model to export or ANPR setup:")
     for idx, m in enumerate(local_models, 1):
         size_str = format_size(os.path.getsize(m))
         print(f"  [{idx}] {m:<30} ({size_str})")
+    print(f"  [P] Setup/Download License Plate Detector (models/license_plate_detector.onnx)")
 
     while True:
         try:
-            choice = input(f"\nSelect model [1-{len(local_models)}] (default: 1): ").strip()
+            choice = input(f"\nSelect option [1-{len(local_models)}, P] (default: 1): ").strip()
             if not choice:
-                selected_model = local_models[0]
-                break
+                if local_models:
+                    selected_model = local_models[0]
+                    break
+                else:
+                    setup_license_plate_model()
+                    return
+            if choice.upper() == "P":
+                setup_license_plate_model()
+                return
             idx = int(choice)
             if 1 <= idx <= len(local_models):
                 selected_model = local_models[idx - 1]
                 break
-            print(f"Please enter a number between 1 and {len(local_models)}.")
+            print(f"Please enter a number between 1 and {len(local_models)} or 'P'.")
         except ValueError:
-            print("Invalid input. Please enter a valid number.")
+            print("Invalid input. Please enter a valid number or 'P'.")
 
     print(f"\n--> Selected: {selected_model}")
 
@@ -257,6 +292,8 @@ def main():
     parser.add_argument("--opset", type=int, default=19, help="ONNX opset version (default: 19)")
     parser.add_argument("--no-simplify", dest="simplify", action="store_false", default=True, help="Disable ONNX simplification")
     parser.add_argument("--list", action="store_true", help="List all local .pt models in the workspace and exit")
+    parser.add_argument("--setup-plate-model", action="store_true", help="Download and set up Indonesian TNKB License Plate Detector (models/license_plate_detector.onnx)")
+    parser.add_argument("--force", action="store_true", help="Force re-download even if model already exists locally")
 
     args = parser.parse_args()
 
@@ -268,6 +305,10 @@ def main():
         for idx, m in enumerate(models, 1):
             print(f"  [{idx}] {m:<30} ({format_size(os.path.getsize(m))})")
         print("=" * 50)
+        return
+
+    if args.setup_plate_model:
+        setup_license_plate_model(export_format=args.format, force=args.force)
         return
 
     # If no model is specified via CLI, launch interactive wizard

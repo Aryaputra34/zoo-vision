@@ -51,10 +51,13 @@ cp configs/cameras.yaml.example configs/cameras.yaml
 # 1. Run offline smoke test (no cameras needed):
 python test_synthetic_demo.py
 
-# 2. Test a video file with live preview:
+# 2. Verify or pre-fetch ANPR plate detector (auto-heals if missing):
+python export_model.py --setup-plate-model
+
+# 3. Test a video file with live preview:
 python test_video.py --video sample_data/cars.mp4 --pipeline vehicle_gate --preview
 
-# 3. Launch full master multi-camera service:
+# 4. Launch full master multi-camera service:
 python main.py --preview
 ```
 

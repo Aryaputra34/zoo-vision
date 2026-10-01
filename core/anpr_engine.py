@@ -64,7 +64,12 @@ class AnprEngine:
         self.gpu = gpu
 
         if not os.path.exists(detector_model_path):
-            logger.warning(f"Plate detector model not found at '{detector_model_path}'.")
+            logger.warning(f"Plate detector model not found at '{detector_model_path}'. Attempting automated self-healing download...")
+            try:
+                from core.model_downloader import ensure_license_plate_detector
+                detector_model_path = ensure_license_plate_detector(detector_model_path)
+            except Exception as e:
+                logger.error(f"Could not auto-download plate detector model: {e}")
 
         logger.info(f"Loading YOLO License Plate Detector from '{detector_model_path}'...")
         self.detector = YOLO(detector_model_path, task="detect")
