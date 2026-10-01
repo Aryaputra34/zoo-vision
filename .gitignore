@@ -25,5 +25,6 @@ rtdetr-l.pt
 *.bin
 scratch
 yolo11s_openvino_model
+!models/license_plate_detector.onnx
 
 metavms-server_plugin_sdk-6.1.2.42921-universal/server_plugin_sdk/*
