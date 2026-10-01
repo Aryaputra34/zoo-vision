@@ -30,7 +30,7 @@ def test_pipelines():
         nx_camera_id="test-uuid-001",
         rule_config_path="configs/rules/cashier_presence.yaml",
         nx_client=nx_client,
-        device="cpu"
+        device="cuda:0"
     )
 
     # Generate a blank frame (simulating an empty desk)

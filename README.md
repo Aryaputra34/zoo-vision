@@ -6,41 +6,91 @@ An intelligent video analytics (IVA) and revenue assurance system integrated wit
 
 ## 📚 Complete Project Documentation
 
-All project documentation is structured inside the [`docs/`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/) folder:
+All project documentation is structured inside the [`docs/`](docs/) folder:
 
-1. **[01_IMPLEMENTATION_PLAN.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/01_IMPLEMENTATION_PLAN.md)**
+1. **[01_IMPLEMENTATION_PLAN.md](docs/01_IMPLEMENTATION_PLAN.md)**
    * Executive scope across the 300-camera estate.
    * Full 5 Use Case Matrix (Difficulty, Technical Approach, Dependencies).
    * 4-Phase Delivery Schedule & Milestones (Phase 1 Quick Wins $\to$ Phase 4 Feeding Classifier).
    * System Architecture, Nx Clustered Server Topology, and Project Directory Structure.
 
-2. **[02_MODEL_BUILDING_GUIDE.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/02_MODEL_BUILDING_GUIDE.md)**
+2. **[02_MODEL_BUILDING_GUIDE.md](docs/02_MODEL_BUILDING_GUIDE.md)**
    * Framework selection rationale: **Why PyTorch (and why NOT TensorFlow)**.
    * Transfer Learning Breakdown by Use Case (Tier 1 Zero Training vs. Tier 2 Fine-Tuning vs. Tier 3 Custom).
    * Step-by-step Jupyter Notebook training workflow (Ultralytics YOLOv11 + ByteTrack).
    * 1-Click NVIDIA TensorRT FP16 export guide (`model.export(format='engine')`).
-   * Indonesian License Plate OCR (PaddleOCR PP-OCRv4 + regex validation).
+   * Indonesian License Plate OCR (PaddleOCR / EasyOCR + regex validation).
 
-3. **[03_HARDWARE_SPECIFICATIONS.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/03_HARDWARE_SPECIFICATIONS.md)**
+3. **[03_HARDWARE_SPECIFICATIONS.md](docs/03_HARDWARE_SPECIFICATIONS.md)**
    * Workload compute sizing for 5–10 cameras (~70 to 100 aggregate FPS).
    * VRAM sizing breakdown (~6.0 GB required, 12GB GPU recommended).
    * Bill of Materials: Workstation Build ($1,400–$1,850) vs. 4U Rackmount Server ($3,200–$4,500) vs. OEM (Dell/Lenovo/HPE).
    * Single-NIC Nx-proxied network topology & UPS battery backup recommendations.
 
-4. **[04_ARCHITECTURE_DECISION_RECORDS.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/04_ARCHITECTURE_DECISION_RECORDS.md)** & **[ADR Index](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/adr/README.md)**
+4. **[04_ARCHITECTURE_DECISION_RECORDS.md](docs/04_ARCHITECTURE_DECISION_RECORDS.md)** & **[ADR Index](docs/adr/README.md)**
    * Formal records of architectural choices (Multi-camera ROI, cashier dual-zone, model selection, queue filtering, Indonesian ANPR).
 
-5. **[05_MODEL_EXPORT_GUIDE.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/05_MODEL_EXPORT_GUIDE.md)**
+5. **[05_MODEL_EXPORT_GUIDE.md](docs/05_MODEL_EXPORT_GUIDE.md)**
    * Universal Model Exporter CLI & Wizard (`export_model.py`).
    * Exporting PyTorch (`.pt`) to ONNX, Intel OpenVINO, and NVIDIA TensorRT.
    * 16:9 Widescreen CCTV aspect ratio optimization (`736x1280`) vs. square letterboxing.
    * Dynamic shapes, FP16 half precision, and pipeline YAML configuration.
 
-6. **[06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md)**
+6. **[06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md](docs/06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md)**
    * Native C++ Analytics Plugin for Network Optix MetaVMS (`metavms-server`).
    * Direct in-process execution, zero-copy YUV420 frame ingestion, and ONNX Runtime C++.
    * Native Nx Desktop bounding box overlays, timeline bookmarks, and alarm rules.
-   * Automated Linux server build and deployment scripts ([`magnet_nx_plugin/`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/magnet_nx_plugin)).
+   * Automated Linux server build and deployment scripts ([`magnet_nx_plugin/`](magnet_nx_plugin/)).
+
+7. **[07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md)** ⭐
+   * End-to-end setup across bare-metal Python (Ubuntu & Windows), Docker GPU containers, and native C++ plugin.
+   * Configuration setup for `app_config.yaml` and `cameras.yaml`.
+   * Testing suite (`test_synthetic_demo.py`, `pick_coordinates.py`, `test_video.py`).
+   * Production systemd daemon configuration and troubleshooting FAQ.
+
+---
+
+## ⚡ Quick Start & Installation
+
+Detailed instructions are available in [INSTALLATION.md](INSTALLATION.md) and [docs/07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md).
+
+### 1. Python Environment Setup
+```bash
+# Clone and enter repo
+cd zoo-vision
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate       # On Windows: .\.venv\Scripts\Activate.ps1
+
+# Install PyTorch with CUDA 12 & project requirements
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
+```
+
+### 2. Configure Settings
+```bash
+cp configs/app_config.yaml.example configs/app_config.yaml
+cp configs/cameras.yaml.example configs/cameras.yaml
+```
+
+### 3. Verify & Run
+```bash
+# Run smoke test without cameras:
+python test_synthetic_demo.py
+
+# Test video pipeline with live preview:
+python test_video.py --video sample_data/cars.mp4 --pipeline vehicle_gate --preview
+
+# Run master multi-camera service:
+python main.py --preview
+```
+
+### 🐳 Docker Deployment
+```bash
+docker compose up -d --build
+docker compose logs -f zoo-ai-engine
+```
 
 ---
 

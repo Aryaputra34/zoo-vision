@@ -2,6 +2,8 @@
 ultralytics>=8.3.0          # YOLOv11, PyTorch, TorchVision, OpenCV, NumPy
 supervision>=0.23.0         # Modern ByteTrack tracker, LineZone (tripwires), PolygonZone (ROI)
 shapely>=2.0.3              # Geometric polygon math for zones & cashier areas
+easyocr>=1.7.0              # Deep learning OCR for vehicle license plate recognition (ANPR)
+
 
 # Networking & Nx Meta VMS Integration
 requests>=2.31.0            # Nx Meta REST API v3 client (HTTP/HTTPS)
