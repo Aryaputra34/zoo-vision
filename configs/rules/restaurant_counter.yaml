@@ -5,8 +5,8 @@ rule_name: "restaurant_capacity_monitor"
 mode: "area_occupancy"
 
 # Model Architecture (yolo11s.onnx, yolo26m.onnx, yolo26s.onnx)
-model_name: "yolo26l.pt"
-imgsz: 1920                 # Native 1080p resolution to resolve distant seated patrons
+model_name: "yolo11s.pt"
+imgsz: 640                 # Native 1080p resolution to resolve distant seated patrons
 confidence_threshold: 0.20
 target_class: "person"
 
@@ -53,3 +53,99 @@ nx_bookmark:
   tag: "#restaurant_capacity"
   title: "[CAPACITY ALERT] Restaurant Full"
   log_periodic_minutes: 15
+
+# Optional Multi-Table Occupancy Monitoring (Modular Table Engine)
+# Reuses the exact same YOLO detection pass (0 extra model inference overhead)
+table_monitoring:
+  enabled: true                 # Set to false to disable table overlays/telemetry
+  show_overlay: true            # Draw translucent table highlights
+  show_labels: true             # Draw table badges
+  dwell_time:
+    enabled: false              # Toggle: true = track dwell time; false = simple Occupied/Vacant status
+    min_occupied_sec: 0.0       # Immediate occupancy confirmation upon person detection
+    empty_debounce_sec: 15.0    # Consecutive seconds empty before marking VACANT
+    alert_dwell_sec: 3600.0     # Turnaround warning threshold in seconds
+
+  tables:
+    - id: "T1"
+      name: "Table 1 (Front Left)"
+      capacity: 4
+      polygon:
+        - [0.22, 0.44]
+        - [0.44, 0.44]
+        - [0.44, 0.94]
+        - [0.22, 0.94]
+
+    - id: "T2"
+      name: "Table 2 (Front Right Booth)"
+      capacity: 6
+      polygon:
+        - [0.70, 0.46]
+        - [0.99, 0.46]
+        - [0.99, 0.92]
+        - [0.70, 0.92]
+
+    - id: "T3"
+      name: "Table 3 (Center)"
+      capacity: 4
+      polygon:
+        - [0.40, 0.33]
+        - [0.58, 0.33]
+        - [0.58, 0.60]
+        - [0.40, 0.60]
+
+    - id: "T4"
+      name: "Table 4 (Mid Left)"
+      capacity: 4
+      polygon:
+        - [0.26, 0.22]
+        - [0.42, 0.22]
+        - [0.42, 0.44]
+        - [0.26, 0.44]
+
+    - id: "T5"
+      name: "Table 5 (Far Left Window)"
+      capacity: 4
+      confidence_threshold: 0.15 # Boost sensitivity for distant window
+      polygon:
+        - [0.05, 0.20]
+        - [0.22, 0.20]
+        - [0.22, 0.42]
+        - [0.05, 0.42]
+
+    - id: "T6"
+      name: "Table 6 (Near Left Wall)"
+      capacity: 4
+      polygon:
+        - [0.00, 0.38]
+        - [0.18, 0.38]
+        - [0.18, 0.68]
+        - [0.00, 0.68]
+
+    - id: "T7"
+      name: "Table 7 (Mid Right)"
+      capacity: 4
+      polygon:
+        - [0.55, 0.22]
+        - [0.72, 0.22]
+        - [0.72, 0.44]
+        - [0.55, 0.44]
+
+    - id: "T8"
+      name: "Table 8 (Far Right Mezzanine)"
+      capacity: 4
+      polygon:
+        - [0.60, 0.16]
+        - [0.75, 0.16]
+        - [0.75, 0.32]
+        - [0.60, 0.32]
+
+    - id: "T9"
+      name: "Table 9 (Far Center Bamboo)"
+      capacity: 4
+      confidence_threshold: 0.12 # Boost sensitivity for shaded bamboo table
+      polygon:
+        - [0.48, 0.12]
+        - [0.60, 0.12]
+        - [0.60, 0.28]
+        - [0.48, 0.28]

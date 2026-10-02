@@ -16,6 +16,7 @@ import yaml
 
 from core.base_pipeline import BasePipeline
 from nx_integration.nx_client import NxClient
+from core.table_manager import TableOccupancyEngine
 
 logger = logging.getLogger("RestaurantPipeline")
 
@@ -110,11 +111,22 @@ class RestaurantCounterPipeline(BasePipeline):
         self.line_zone: Optional[sv.LineZone] = None
         self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
 
+        # Optional Table Monitoring Engine (Modular Multi-Table Occupancy)
+        self.table_engine: Optional[TableOccupancyEngine] = None
+        self.table_summary: Dict[str, Any] = {}
+        table_cfg = self.rules.get("table_monitoring")
+        if table_cfg and table_cfg.get("enabled", True):
+            self.table_engine = TableOccupancyEngine(
+                config=table_cfg,
+                on_event_callback=self._handle_table_event
+            )
+
         self.last_periodic_log = time.time()
+        tbl_info = f", tables={len(self.table_engine.tables)}" if self.table_engine else ""
         logger.info(
             f"[{self.camera_name}] Initialized Restaurant Pipeline in '{self.mode}' mode "
             f"using model '{model_name}' (imgsz={self.imgsz}, conf={self.conf_thresh}, "
-            f"tracking={self.tracking_enabled}, deduplication={self.deduplication_enabled})."
+            f"tracking={self.tracking_enabled}, deduplication={self.deduplication_enabled}{tbl_info})."
         )
 
     def _suppress_duplicates(self, detections: sv.Detections) -> sv.Detections:
@@ -236,13 +248,25 @@ class RestaurantCounterPipeline(BasePipeline):
             out = self._process_area_occupancy(frame, timestamp_ms)
         else:
             out = self._process_tripwire(frame, timestamp_ms)
-        self.emit_status({
+
+        status_payload = {
             "occupancy": self.current_occupancy,
             "rawOccupancy": self.raw_occupancy,
             "maxCapacity": self.max_capacity,
             "warningCapacity": self.warning_capacity,
             "mode": self.mode,
-        })
+        }
+        if self.table_engine is not None and self.table_summary:
+            status_payload.update({
+                "totalTables": self.table_summary.get("totalTables", 0),
+                "occupiedTables": self.table_summary.get("occupiedTables", 0),
+                "vacantTables": self.table_summary.get("vacantTables", 0),
+                "occupancyRatePct": self.table_summary.get("occupancyRatePct", 0.0),
+                "dwellTimeEnabled": self.table_summary.get("dwellTimeEnabled", False),
+                "tables": self.table_summary.get("tables", []),
+            })
+
+        self.emit_status(status_payload)
         return out
 
     def _process_area_occupancy(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
@@ -308,8 +332,21 @@ class RestaurantCounterPipeline(BasePipeline):
         # 7. Check capacity thresholds & dispatch alarms
         self._check_capacity_alerts(self.current_occupancy, timestamp_ms)
 
-        # 8. Render visualizations
+        # 8. Update Table Occupancy Engine (reusing detections with 0 extra model inference)
+        if self.table_engine is not None:
+            self.table_summary = self.table_engine.update(
+                detections=active_detections,
+                timestamp_ms=timestamp_ms,
+                frame_shape=frame.shape,
+                default_conf=self.conf_thresh
+            )
+
+        # 9. Render visualizations
         annotated_frame = frame.copy()
+
+        # Render table polygons & badges
+        if self.table_engine is not None:
+            annotated_frame = self.table_engine.annotate(annotated_frame)
         
         # Color coding for zone & HUD
         if self.current_occupancy >= self.max_capacity:
@@ -439,6 +476,35 @@ class RestaurantCounterPipeline(BasePipeline):
             duration_ms=10000
         )
 
+    def _handle_table_event(self, event_type: str, data: Dict[str, Any], severity: str):
+        """Dispatches table events to Web Analytics Dashboard and Nx Meta Bookmarks."""
+        self.emit(event_type, data, severity)
+
+        if self.nx_client and event_type == "table_state_change":
+            tbl_name = data.get("tableName", data.get("tableId", "Table"))
+            status = data.get("status", "")
+            dwell_sec = data.get("dwellSec", 0)
+
+            if status == "OCCUPIED":
+                title = f"[TABLE] {tbl_name} Seated"
+                desc = f"Guests seated at {tbl_name} ({self.camera_name})."
+                tags = ["#restaurant_tables", "#table_seated"]
+            else:
+                mins = dwell_sec // 60
+                title = f"[TABLE] {tbl_name} Vacated"
+                desc = f"{tbl_name} vacated after {mins}m dwell time ({self.camera_name})."
+                tags = ["#restaurant_tables", "#table_vacated"]
+
+            ts_ms = data.get("timestampMs") or int(time.time() * 1000)
+            self.nx_client.create_bookmark(
+                camera_id=self.nx_camera_id,
+                title=title,
+                description=desc,
+                tags=tags,
+                start_time_ms=ts_ms,
+                duration_ms=5000
+            )
+
     def _render_occupancy_hud(
         self,
         frame: np.ndarray,
@@ -449,10 +515,11 @@ class RestaurantCounterPipeline(BasePipeline):
     ) -> np.ndarray:
         """Renders an attractive, high-contrast HUD panel at the top-left."""
         h, w = frame.shape[:2]
+        has_tables = self.table_engine is not None and len(self.table_engine.tables) > 0
         
-        # Draw translucent background card
+        # Draw translucent background card (expanded if table stats active)
         card_w = 460
-        card_h = 100
+        card_h = 125 if has_tables else 100
         sub_img = frame[15:15 + card_h, 15:15 + card_w]
         dark_rect = np.full(sub_img.shape, 20, dtype=np.uint8)
         frame[15:15 + card_h, 15:15 + card_w] = cv2.addWeighted(sub_img, 0.35, dark_rect, 0.65, 0)
@@ -468,5 +535,13 @@ class RestaurantCounterPipeline(BasePipeline):
 
         # Status badge on the right of the card
         cv2.putText(frame, f"[{status_text}]", (250, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 1)
+
+        # Table Summary line if active
+        if has_tables and self.table_summary:
+            t_occ = self.table_summary.get("occupiedTables", 0)
+            t_tot = self.table_summary.get("totalTables", 0)
+            t_vac = self.table_summary.get("vacantTables", 0)
+            t_str = f"TABLES: {t_occ}/{t_tot} OCCUPIED ({t_vac} VACANT)"
+            cv2.putText(frame, t_str, (25, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 220, 255), 1, cv2.LINE_AA)
 
         return frame

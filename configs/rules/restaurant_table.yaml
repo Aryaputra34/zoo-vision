@@ -1,0 +1,118 @@
+# Restaurant Table Occupancy & Dwell Time Rule Configuration
+rule_name: "restaurant_table_monitor"
+
+# Model Architecture
+model_name: "yolo11s.onnx"
+imgsz: 1920
+confidence_threshold: 0.20
+target_class: "person"
+
+# Anti-Duplicate suppression
+deduplication_enabled: true
+iou_threshold: 0.45
+containment_threshold: 0.65
+
+# Display & Presentation
+show_person_boxes: false        # Draw bounding boxes on detected patrons
+show_person_labels: false       # Draw confidence labels
+show_overlay: true              # Draw table polygon outlines and translucent highlights
+show_labels: true               # Draw table badges (e.g. "Table 1: OCCUPIED (12m 30s)")
+show_summary_card: true         # Draw summary card at top-right
+
+# Global Dwell Time & Hysteresis Settings
+dwell_time:
+  enabled: false                # Toggle: true = track dwell time; false = simple Occupied/Vacant
+  min_occupied_sec: 0.0         # Immediate occupancy confirmation upon person detection
+  empty_debounce_sec: 15.0      # Table must be empty for 15s continuously before marking VACANT
+  alert_dwell_sec: 3600.0       # Alert if table exceeds 60 minutes dwell time
+
+# Predefined Table ROIs (normalized coordinates [x, y] 0.0 to 1.0)
+# Calibrated for Safari Cafe dining hall layout
+tables:
+  - id: "T1"
+    name: "Table 1 (Front Left)"
+    capacity: 4
+    polygon:
+      - [0.22, 0.44]
+      - [0.44, 0.44]
+      - [0.44, 0.94]
+      - [0.22, 0.94]
+
+  - id: "T2"
+    name: "Table 2 (Front Right Booth)"
+    capacity: 6
+    polygon:
+      - [0.70, 0.46]
+      - [0.99, 0.46]
+      - [0.99, 0.92]
+      - [0.70, 0.92]
+
+  - id: "T3"
+    name: "Table 3 (Center)"
+    capacity: 4
+    polygon:
+      - [0.40, 0.33]
+      - [0.58, 0.33]
+      - [0.58, 0.60]
+      - [0.40, 0.60]
+
+  - id: "T4"
+    name: "Table 4 (Mid Left)"
+    capacity: 4
+    polygon:
+      - [0.26, 0.22]
+      - [0.42, 0.22]
+      - [0.42, 0.44]
+      - [0.26, 0.44]
+
+  - id: "T5"
+    name: "Table 5 (Far Left Window)"
+    capacity: 4
+    confidence_threshold: 0.15   # Boosted sensitivity for distant window table
+    polygon:
+      - [0.05, 0.20]
+      - [0.22, 0.20]
+      - [0.22, 0.42]
+      - [0.05, 0.42]
+
+  - id: "T6"
+    name: "Table 6 (Near Left Wall)"
+    capacity: 4
+    polygon:
+      - [0.00, 0.38]
+      - [0.18, 0.38]
+      - [0.18, 0.68]
+      - [0.00, 0.68]
+
+  - id: "T7"
+    name: "Table 7 (Mid Right)"
+    capacity: 4
+    polygon:
+      - [0.55, 0.22]
+      - [0.72, 0.22]
+      - [0.72, 0.44]
+      - [0.55, 0.44]
+
+  - id: "T8"
+    name: "Table 8 (Far Right Mezzanine)"
+    capacity: 4
+    polygon:
+      - [0.60, 0.16]
+      - [0.75, 0.16]
+      - [0.75, 0.32]
+      - [0.60, 0.32]
+
+  - id: "T9"
+    name: "Table 9 (Far Center Bamboo)"
+    capacity: 4
+    confidence_threshold: 0.12   # Boosted sensitivity for shaded bamboo table
+    polygon:
+      - [0.48, 0.12]
+      - [0.60, 0.12]
+      - [0.60, 0.28]
+      - [0.48, 0.28]
+
+# Nx Meta Event Metadata
+nx_bookmark:
+  tag: "#restaurant_tables"
+  title: "[TABLE ALERT] Table Turnaround Notice"
