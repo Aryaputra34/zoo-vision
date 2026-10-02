@@ -2,6 +2,17 @@
 
 An intelligent video analytics (IVA) and revenue assurance system integrated with **Network Optix (Nx Witness / Nx Meta) VMS**, targeting **5 key attraction use cases** across a 300-camera park estate.
 
+> **Current architecture (2026-10-02, [ADR-008](docs/adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md)):**
+> about 12 cameras per site, and Nx is optional.
+>
+> | Component | What it does |
+> | :--- | :--- |
+> | Python (`main.py`) | Runs all analytics, one worker per camera. |
+> | [MediaMTX](configs/mediamtx.yml) | Records the cameras and serves the event clips. |
+> | [zoo-analytics-web](../zoo-analytics-web) | The only UI: live annotated preview, a snapshot and clip for every event, reports, login. |
+>
+> The C++ Nx plugin is frozen.
+
 ---
 
 ## 📚 Complete Project Documentation

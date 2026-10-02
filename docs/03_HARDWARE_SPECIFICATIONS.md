@@ -7,6 +7,11 @@ Targeting **5 to 10 concurrent AI camera streams** across:
 3. Feeding Attraction Stations (2–4 cameras @ 8–10 FPS)
 *Total AI Ingest Workload: ~70 to 100 frames per second (FPS) aggregate.*
 
+> **Update (2026-10-02):** plan for **about 12 cameras** per site, depending on the use case. Cameras now go
+> through **MediaMTX on the AI server** instead of an Nx cluster
+> ([ADR-008](adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md)), and it records them. Add
+> recording disk to the sizing below: ~43 GB/day per 4 Mbit/s camera, so 12 cameras × 7 days ≈ 3.6 TB.
+
 ---
 
 ## 1. Workload & Compute Resource Sizing

@@ -3,6 +3,12 @@
 
 A comprehensive computer vision and video management system (VMS) implementation plan across a **300-camera park estate**, retaining the existing video recording system while deploying a **clustered Nx Witness layer (~5–6 servers)** for unified live view and targeted AI analytics.
 
+> **Update (2026-10-02):** a deployment is **about 12 AI cameras, depending on the use case**, not the
+> 300-camera estate described here, and Nx is no longer required. The architecture is now Python analytics +
+> MediaMTX (recording, event clips) + the web dashboard. See
+> [ADR-008](adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md). The use cases and phases below
+> still apply; the Nx topology does not.
+
 ---
 
 ## 1. Use Case Matrix

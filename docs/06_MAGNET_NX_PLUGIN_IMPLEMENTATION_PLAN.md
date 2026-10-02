@@ -6,6 +6,10 @@
 **Target Server:** Linux (Ubuntu 20.04 / 22.04 LTS)  
 **SDK Package:** `metavms-server_plugin_sdk-6.1.2.42921-universal.zip`  
 
+> **Status (2026-10-02): frozen.** [ADR-008](adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md)
+> keeps all analytics in Python and uses MediaMTX + the web dashboard for video and evidence. Phases 4–6
+> below will not be built. The plugin stays in the repo for sites that already run Nx and record on it.
+
 ---
 
 ## 1. Executive Summary

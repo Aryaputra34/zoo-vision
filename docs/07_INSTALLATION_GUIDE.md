@@ -35,6 +35,18 @@ This document provides complete, step-by-step instructions for installing, confi
 
 ## 1. Architecture & Deployment Options
 
+> **Current architecture (2026-10-02, [ADR-008](adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md)):**
+> about 12 cameras per site. Nx is optional.
+>
+> ```
+> cameras ──RTSP/TCP──> MediaMTX ──RTSP──> zoo-monitor (Python AI) ──events + snapshots──> zoo-analytics-web
+>                         │ records, 7-day retention     │ :8000 preview / snapshots API          │ login, /live,
+>                         └──── :9996 event clips ───────┴────────────────────────────────────────┘ evidence, clips
+> ```
+>
+> Use Method B (Docker Compose, which also starts MediaMTX) in production. The diagram below is the earlier
+> Nx-centred design; Method C (the C++ plugin) is frozen and only relevant to sites that already record on Nx.
+
 The Zoo Vision system operates in three deployment topologies depending on your infrastructure requirements:
 
 ```mermaid
@@ -78,7 +90,7 @@ flowchart TB
 | :--- | :--- | :--- | :--- |
 | **Method A: Python Virtualenv** | Local development, debugging, video replay testing | Python 3.10/3.11, CUDA 12.x | Direct access to OpenCV GUI previews, fast code iteration |
 | **Method B: Docker Compose** *(Recommended Production)* | 24/7 dedicated AI server, multi-camera headless deployment | Docker Engine, NVIDIA Container Toolkit | Isolated dependencies, auto-restart, identical across environments |
-| **Method C: Native C++ Plugin** | High-density in-process analytics inside Nx Mediaserver | CMake, G++, Nx Meta Plugin SDK | Zero-copy YUV ingestion, lowest CPU latency, native Nx desktop overlays |
+| **Method C: Native C++ Plugin** *(optional, frozen; see ADR-008)* | Sites that already record on Nx and want boxes in Nx Desktop | CMake, G++, Nx Meta Plugin SDK | Zero-copy YUV ingestion, native Nx desktop overlays; no rules, events or dashboard feed |
 
 ---
 
@@ -280,24 +292,49 @@ cd ~/zoo-vision
 # 2. Ensure configuration files are prepared (see Section 6)
 cp configs/app_config.yaml.example configs/app_config.yaml
 cp configs/cameras.yaml.example configs/cameras.yaml
+#    and list every camera's RTSP URL under `paths:` in configs/mediamtx.yml
 
 # 3. Create required persistent host mount directories
-mkdir -p logs models
+mkdir -p logs models snapshots recordings
 
-# 4. Build and start the container in detached mode
+# 4. Build and start the containers (MediaMTX + AI engine) in detached mode
 docker compose up -d --build
 
 # 5. Inspect container health and live inference logs
 docker compose logs -f zoo-ai-engine
+docker compose logs -f mediamtx      # "[path cam_...] [RTSP source] ready" per camera
 ```
 
+#### Cameras, MediaMTX and the dashboard
+
+1. In `configs/mediamtx.yml`, add one path per camera:
+   `cam_cashier_01: {source: rtsp://user:pass@<camera>/stream1}`. Set the cameras to H.264 so browsers can
+   play the clips.
+2. In `configs/cameras.yaml`, read each camera from MediaMTX and name its recording:
+   `source: rtsp://127.0.0.1:8554/cam_cashier_01` and `recording_path: cam_cashier_01`.
+3. In `configs/app_config.yaml`:
+   * `api_server.host`: set to `0.0.0.0` if the dashboard runs on another host.
+   * `api_server.api_key`: set a long random key.
+   * `snapshots.retention_days`: how many days of event snapshots to keep.
+4. In the dashboard's `.env.local`:
+   * `AI_ENGINE_URL=http://<ai-host>:8000`
+   * `AI_ENGINE_API_KEY=<same key>`
+   * `MEDIAMTX_PLAYBACK_URL=http://<ai-host>:9996`
+   * `DASHBOARD_PASSWORD=<shared login>`
+5. Keep ports 8000 (AI API) and 8554/8889/9996 (MediaMTX) on the internal network. MediaMTX only allows
+   reads and playback from private address ranges.
+6. Disk: recordings take ~43 GB/day per 4 Mbit/s camera. Tune `recordDeleteAfter` in `configs/mediamtx.yml`.
+7. Run NTP on the AI server and the cameras, so event times line up with the recorded clips.
+
 #### Key Elements of `docker-compose.yml`:
-* `network_mode: "host"`: Guarantees the lowest latency for RTSP stream ingestion and REST calls to the local Nx Server without Docker NAT overhead.
+* `mediamtx` service: pulls every camera once, records to `./recordings`, re-serves RTSP on `:8554` and event clips on `:9996`.
+* `network_mode: "host"`: Guarantees the lowest latency for RTSP stream ingestion and REST calls without Docker NAT overhead.
 * `capabilities: [ gpu, video ]`: Exposes both CUDA Tensor cores and NVDEC hardware video decoding ASICs to the container.
 * Volume Mounts:
   * `./configs:/app/configs`: Modify camera streams, polygons, and thresholds on the fly without restarting or rebuilding the image.
   * `./models:/app/models`: Hot-swap TensorRT `.engine` or ONNX model weights.
   * `./logs:/app/logs`: Persist operational logs directly on host storage.
+  * `./snapshots:/app/snapshots`: Event JPEGs, served to the dashboard by the AI engine API.
 
 #### Common Container Management Commands:
 
@@ -318,6 +355,10 @@ docker stats zoo_vision_service
 ---
 
 ## 5. Method C: Native C++ Nx Meta Plugin (`magnet_nx_plugin`)
+
+> **Optional and frozen** ([ADR-008](adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md)). Only for sites
+> that already record these cameras on Nx. The plugin draws boxes in Nx Desktop, but has no rules, no events and no
+> dashboard feed. Methods A/B remain required for analytics.
 
 For deployments requiring in-process execution inside Network Optix MetaVMS Server (`metavms-server` / `nxwitness-server`), deploy the native C++ plugin.
 
