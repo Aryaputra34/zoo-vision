@@ -3,9 +3,15 @@ Threaded Stream Manager with FPS Throttling and Auto-Reconnect.
 Ingests video from RTSP (Nx Server), webcams, or local MP4 files without frame buffer lag.
 """
 
+import os
 import time
 import threading
 import logging
+
+# RTSP over TCP: OpenCV's FFmpeg backend defaults to UDP, which loses packets under load and smears
+# frames. Must be set before cv2 opens a stream; an explicit environment value wins.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+
 import cv2
 import numpy as np
 from typing import Optional, Tuple

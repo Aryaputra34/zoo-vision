@@ -1,22 +1,26 @@
 """
 Zoo & Safari Computer Vision Orchestrator (Phase 1 Master Entrypoint).
-Loads camera definitions, connects to Nx Meta REST API v3, and coordinates vision pipelines.
+Loads camera definitions, runs one inference worker thread per camera, and serves the dashboard API
+(live preview + event snapshots). Nx Meta REST v3 bookmarks are optional (nx_server.mock_mode).
 """
 
 import os
 import sys
-import time
 import argparse
 import logging
 import signal
+import threading
 import yaml
 import cv2
 
 from nx_integration.nx_client import NxClient
 from core.analytics_dispatcher import AnalyticsDispatcher
+from core.api_server import create_app, start_api_server
+from core.snapshot_store import SnapshotStore
 from core.stream_manager import StreamManager
 from pipelines.cashier_presence_pipeline import CashierPresencePipeline
 from pipelines.restaurant_pipeline import RestaurantCounterPipeline
+from pipelines.table_occupancy_pipeline import TableOccupancyPipeline
 from pipelines.vehicle_gate_pipeline import VehicleGatePipeline
 from pipelines.horse_riding_pipeline import HorseRidingPipeline
 
@@ -35,6 +39,25 @@ def load_yaml(path: str) -> dict:
         return {}
     with open(path, "r") as f:
         return yaml.safe_load(f) or {}
+
+
+def camera_worker(name: str, stream: StreamManager, pipeline, stop: threading.Event):
+    """Inference loop for one camera. Cameras run in parallel; YOLO / ONNX release the GIL while inferring."""
+    last_ts = None
+    while not stop.is_set():
+        frame, timestamp_ms = stream.get_frame()
+        # A dead stream keeps returning its last frame: skip it so we don't re-run YOLO
+        # or keep sending dashboard heartbeats for a camera that is actually down.
+        if frame is None or timestamp_ms == last_ts:
+            stop.wait(0.01)
+            continue
+        last_ts = timestamp_ms
+        try:
+            pipeline.run(frame, timestamp_ms)
+        except Exception:
+            # One camera's failure must not stop the others
+            logger.exception(f"[{name}] Pipeline error, skipping frame")
+            stop.wait(1.0)
 
 
 def main():
@@ -69,6 +92,13 @@ def main():
         api_key=an_cfg.get("api_key") or None,
     ) if an_cfg.get("enabled") else None
 
+    # One JPEG per dashboard event, served by the API server below
+    snap_cfg = app_cfg.get("snapshots", {})
+    snapshots = SnapshotStore(
+        root=snap_cfg.get("dir", "snapshots"),
+        retention_days=snap_cfg.get("retention_days", 30),
+    ) if analytics and snap_cfg.get("enabled", True) else None
+
     device = app_cfg.get("ai_engine", {}).get("device", "cpu")
 
     # 2. Build Pipeline Registry
@@ -94,8 +124,12 @@ def main():
             pipeline = CashierPresencePipeline(
                 cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
             )
-        elif pipeline_type == "restaurant_counter":
+        elif pipeline_type in ["restaurant_counter", "restaurant"]:
             pipeline = RestaurantCounterPipeline(
+                cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
+            )
+        elif pipeline_type in ["restaurant_table", "table_occupancy", "table_monitor"]:
+            pipeline = TableOccupancyPipeline(
                 cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
             )
         elif pipeline_type == "vehicle_gate":
@@ -110,6 +144,8 @@ def main():
             logger.warning(f"Unknown pipeline type '{pipeline_type}' for camera '{name}'. Skipping.")
             continue
         pipeline.analytics = analytics
+        pipeline.snapshots = snapshots
+        pipeline.recording_path = cam.get("recording_path")  # MediaMTX path, for event clips in the dashboard
 
         # Ingest stream
         stream = StreamManager(source=source, camera_id=cam_id, target_fps=target_fps)
@@ -122,46 +158,56 @@ def main():
         logger.warning("No enabled cameras found in cameras.yaml. Exiting.")
         return
 
-    logger.info(f"Initialized {len(active_pipelines)} active vision pipeline(s). Entering main inference loop...")
+    # Dashboard API: annotated live preview, event snapshots, health
+    api_cfg = app_cfg.get("api_server", {})
+    api_server = start_api_server(
+        create_app({cam_id: p for cam_id, _, _, p in active_pipelines}, snapshots, api_cfg.get("api_key") or None),
+        host=api_cfg.get("host", "127.0.0.1"),
+        port=api_cfg.get("port", 8000),
+    ) if api_cfg.get("enabled", True) else None
 
-    running = True
+    stop = threading.Event()
 
-    def sigint_handler(sig, frame):
-        nonlocal running
+    def shutdown_handler(sig, frame):
         logger.info("Shutdown signal received. Stopping streams...")
-        running = False
+        stop.set()
 
-    signal.signal(signal.SIGINT, sigint_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)  # docker stop / systemctl stop
 
-    last_ts = {}
+    workers = [
+        threading.Thread(target=camera_worker, args=(name, stream, pipeline, stop), daemon=True, name=f"cam-{cam_id}")
+        for cam_id, name, stream, pipeline in active_pipelines
+    ]
+    for w in workers:
+        w.start()
+    logger.info(f"Started {len(workers)} camera worker(s).")
+
     try:
-        while running:
-            for cam_id, name, stream, pipeline in active_pipelines:
-                frame, timestamp_ms = stream.get_frame()
-                # A dead stream keeps returning its last frame: skip it so we don't re-run YOLO
-                # or keep sending dashboard heartbeats for a camera that is actually down.
-                if frame is None or last_ts.get(cam_id) == timestamp_ms:
-                    continue
-                last_ts[cam_id] = timestamp_ms
-
-                # Run inference & business logic
-                annotated = pipeline.process_frame(frame, timestamp_ms)
-
-                # Optional desktop GUI preview
-                if args.preview:
+        while not stop.is_set():
+            if not args.preview:
+                stop.wait(0.5)
+                continue
+            # OpenCV windows must be driven from the main thread
+            for _, name, _, pipeline in active_pipelines:
+                annotated = pipeline.latest_frame()
+                if annotated is not None:
                     cv2.imshow(f"Zoo Vision: {name}", annotated)
-
-            if args.preview:
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    logger.info("Quit key pressed ('q'). Exiting...")
-                    break
-
-            time.sleep(0.01)
+            if cv2.waitKey(30) & 0xFF == ord('q'):
+                logger.info("Quit key pressed ('q'). Exiting...")
+                break
 
     finally:
         logger.info("Cleaning up resources...")
+        stop.set()
+        for w in workers:
+            w.join(timeout=10.0)  # let an in-flight inference finish before its stream is released
         for stream in active_streams:
             stream.stop()
+        if api_server:
+            api_server.should_exit = True
+        if snapshots:
+            snapshots.stop()
         if analytics:
             analytics.stop()
         if args.preview:

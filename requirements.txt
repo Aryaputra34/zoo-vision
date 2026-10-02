@@ -8,6 +8,8 @@ easyocr>=1.7.0              # Deep learning OCR for vehicle license plate recogn
 # Networking & Nx Meta VMS Integration
 requests>=2.31.0            # Nx Meta REST API v3 client (HTTP/HTTPS)
 urllib3>=2.2.1
+fastapi>=0.111.0            # AI engine API for the dashboard (live preview, event snapshots)
+uvicorn>=0.30.0
 
 # Configuration & Utilities
 pydantic>=2.7.0             # Data validation for camera configs & event payloads
