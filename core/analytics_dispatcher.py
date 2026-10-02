@@ -19,6 +19,10 @@ logger = logging.getLogger("AnalyticsDispatcher")
 MAX_RETRY_BUFFER = 5000
 
 
+def new_event_id() -> str:
+    return f"evt_{uuid.uuid4().hex[:12]}"
+
+
 def _jsonable(o):
     """json.dumps fallback: numpy scalars (np.int64 tracker ids, np.float32 confidences, np.bool_) -> Python."""
     return o.item() if hasattr(o, "item") else str(o)
@@ -77,7 +81,8 @@ class AnalyticsDispatcher:
         data: Dict[str, Any],
         severity: str = "info",
         nx_camera_id: Optional[str] = None,
-        timestamp_ms: Optional[int] = None
+        timestamp_ms: Optional[int] = None,
+        event_id: Optional[str] = None
     ):
         """
         Enqueues an event for asynchronous delivery.
@@ -88,7 +93,7 @@ class AnalyticsDispatcher:
 
         ts = timestamp_ms or int(time.time() * 1000)
         payload = {
-            "eventId": f"evt_{uuid.uuid4().hex[:12]}",
+            "eventId": event_id or new_event_id(),
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts / 1000.0)),
             "timestampMs": ts,
             "cameraId": camera_id,
