@@ -12,7 +12,8 @@ This guide provides end-to-end testing instructions for the **Zoo & Safari Compu
 5. [End-to-End Testing with Web Dashboard (`zoo-analytics-web`)](#5-end-to-end-testing-with-web-dashboard-zoo-analytics-web)
 6. [Interactive GUI Controls & Coordinate Calibration](#6-interactive-gui-controls--coordinate-calibration)
 7. [Testing the Embedded AI API Engine (`:8000`)](#7-testing-the-embedded-ai-api-engine-8000)
-8. [Common Troubleshooting & Gotchas](#8-common-troubleshooting--gotchas)
+8. [Testing MediaMTX RTSP Streaming & Event Clips (`:9996`)](#8-testing-mediamtx-rtsp-streaming--event-clips-9996)
+9. [Common Troubleshooting & Gotchas](#9-common-troubleshooting--gotchas)
 
 ---
 
@@ -227,11 +228,46 @@ When running with `--analytics` or via `main.py`, the AI engine runs a lightweig
 | `/health` | `GET` | List active cameras, online status, and FPS | `curl http://127.0.0.1:8000/health` |
 | `/frame/{cam_id}` | `GET` | Return single latest annotated JPEG frame | Open `http://127.0.0.1:8000/frame/cam_restaurant_test` in browser |
 | `/stream/{cam_id}` | `GET` | On-demand 5 FPS MJPEG stream | Open `http://127.0.0.1:8000/stream/cam_restaurant_test` in browser |
-| `/snapshots/{path}` | `GET` | Retrieve saved event snapshot JPEG | `http://127.0.0.1:8000/snapshots/<cam>/<date>/<event_id>.jpg` |
+---
+
+## 8. Testing MediaMTX RTSP Streaming & Event Clips (`:9996`)
+
+MediaMTX acts as the zero-license video recorder and stream aggregator. For full configuration details, see **[docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md)**.
+
+### Quick Verification Steps:
+
+1. **Launch MediaMTX**:
+   ```powershell
+   # Windows standalone binary:
+   .\mediamtx.exe configs\mediamtx.yml
+
+   # Or via Docker:
+   docker compose up -d mediamtx
+   ```
+
+2. **Publish a Test Stream via FFmpeg**:
+   ```powershell
+   ffmpeg -re -stream_loop -1 -i "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" -c:v copy -an -f rtsp rtsp://127.0.0.1:8554/cam_restaurant_01
+   ```
+
+3. **Verify RTSP Stream with ffplay or VLC**:
+   ```powershell
+   ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/cam_restaurant_01
+   ```
+
+4. **Verify HTTP Event Clip API (`:9996`)**:
+   ```powershell
+   # Query a 30s clip ending now:
+   $start = [DateTime]::UtcNow.AddSeconds(-30).ToString("yyyy-MM-ddTHH:mm:ssZ")
+   curl "http://127.0.0.1:9996/get?path=cam_restaurant_01&start=$start&duration=30&format=mp4" -o clip.mp4
+   ```
+
+5. **Connect to Web Dashboard**:
+   Ensure `MEDIAMTX_PLAYBACK_URL=http://127.0.0.1:9996` is configured in `zoo-analytics-web/.env.local`. When an alert triggers, click **Putar Klip (Play Clip)** in the dashboard event table!
 
 ---
 
-## 8. Common Troubleshooting & Gotchas
+## 9. Common Troubleshooting & Gotchas
 
 ### Issue 1: "Could not open GUI window. Running in headless mode"
 * **Cause**: `opencv-python-headless` is installed or has shadowed `opencv-python`.

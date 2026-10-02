@@ -64,11 +64,16 @@ All project documentation is structured inside the [`docs/`](docs/) folder:
    * End-to-end integration with the Web Analytics Dashboard (`zoo-analytics-web`), live on-demand MJPEG preview, and event snapshots.
    * Interactive GUI keyboard shortcuts, coordinate calibration, and troubleshooting.
 
+9. **[09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md)** 📹
+   * Standalone video streaming and 24/7 continuous recording backbone setup.
+   * Configuring `configs/mediamtx.yml`, local RTSP proxying (`:8554`), and HTTP playback API (`:9996`).
+   * Simulating IP cameras with FFmpeg and testing event clips in `zoo-analytics-web`.
+
 ---
 
 ## ⚡ Quick Start & Installation
 
-Detailed instructions are available in [INSTALLATION.md](INSTALLATION.md), [docs/07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md), and [docs/08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md).
+Detailed instructions are available in [INSTALLATION.md](INSTALLATION.md), [docs/07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md), [docs/08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md), and [docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md).
 
 ### 1. Python Environment Setup
 ```bash
