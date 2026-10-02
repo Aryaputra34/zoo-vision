@@ -56,14 +56,19 @@ All project documentation is structured inside the [`docs/`](docs/) folder:
 7. **[07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md)** ⭐
    * End-to-end setup across bare-metal Python (Ubuntu & Windows), Docker GPU containers, and native C++ plugin.
    * Configuration setup for `app_config.yaml` and `cameras.yaml`.
-   * Testing suite (`test_synthetic_demo.py`, `pick_coordinates.py`, `test_video.py`).
    * Production systemd daemon configuration and troubleshooting FAQ.
+
+8. **[08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md)** 🧪
+   * Comprehensive testing instructions across all 5 attraction use cases.
+   * Running recorded MP4 evaluations via `test_video.py` and live multi-camera feeds via `main.py`.
+   * End-to-end integration with the Web Analytics Dashboard (`zoo-analytics-web`), live on-demand MJPEG preview, and event snapshots.
+   * Interactive GUI keyboard shortcuts, coordinate calibration, and troubleshooting.
 
 ---
 
 ## ⚡ Quick Start & Installation
 
-Detailed instructions are available in [INSTALLATION.md](INSTALLATION.md) and [docs/07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md).
+Detailed instructions are available in [INSTALLATION.md](INSTALLATION.md), [docs/07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md), and [docs/08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md).
 
 ### 1. Python Environment Setup
 ```bash
@@ -90,11 +95,11 @@ cp configs/cameras.yaml.example configs/cameras.yaml
 # Run smoke test without cameras:
 python test_synthetic_demo.py
 
-# Test video pipeline with live preview:
-python test_video.py --video sample_data/cars.mp4 --pipeline vehicle_gate --preview
+# Test video pipeline with interactive GUI and Web Dashboard analytics:
+python test_video.py --video sample_data/cars.mp4 --pipeline gate --analytics
 
 # Run master multi-camera service:
-python main.py --preview
+python main.py
 ```
 
 ### 🐳 Docker Deployment

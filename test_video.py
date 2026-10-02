@@ -101,7 +101,7 @@ def test_video(
     nx_client = NxClient(mock_mode=True)
 
     # 2. Select Pipeline
-    if pipeline_type == "gate":
+    if pipeline_type in ["gate", "vehicle_gate"]:
         rule_cfg = rule_path or "configs/rules/vehicle_gate.yaml"
         c_name = camera_name or "Main Vehicle Gate 1"
         gate_rules = {"anpr": {"enabled": False}} if no_anpr else None
@@ -349,7 +349,12 @@ def test_video(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Zoo Vision Pipelines on an MP4 video file")
     parser.add_argument("--video", required=True, help="Path to .mp4 video file")
-    parser.add_argument("--pipeline", choices=["gate", "cashier", "restaurant", "restaurant_table", "table", "horse", "horse_riding"], default="horse", help="Pipeline type (default: horse)")
+    parser.add_argument(
+        "--pipeline",
+        choices=["gate", "vehicle_gate", "cashier", "cashier_presence", "restaurant", "restaurant_counter", "restaurant_table", "table", "horse", "horse_riding"],
+        default="horse",
+        help="Pipeline type (default: horse)"
+    )
     parser.add_argument("--start-time", default="00:00", help="Start time e.g. '26:50' or '1610'")
     parser.add_argument("--camera-name", default=None, help="Custom camera name to display on HUD")
     parser.add_argument("--save-output", default=None, help="Optional output .mp4 file path to save demo video")
@@ -359,6 +364,7 @@ if __name__ == "__main__":
     parser.add_argument("--hide-boxes", action="store_true", help="Hide bounding boxes (clean executive HUD view for client demos)")
     parser.add_argument("--show-boxes", action="store_true", help="Force show bounding boxes and tracking IDs")
     parser.add_argument("--no-gui", action="store_true", help="Run without opening GUI window (ideal for headless or background execution)")
+    parser.add_argument("--preview", action="store_true", help="Optional/compatibility flag; GUI is shown by default unless --no-gui is passed")
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
     parser.add_argument("--analytics", action="store_true", help="Send events + snapshots to the web dashboard and serve the live preview (configs/app_config.yaml)")

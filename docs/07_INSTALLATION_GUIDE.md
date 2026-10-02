@@ -593,12 +593,15 @@ python pick_coordinates.py --video sample_data/cars.mp4 --mode polygon
 Test and preview any pipeline on a local `.mp4` file before connecting live camera streams:
 
 ```bash
-# Test Vehicle Gate & ANPR pipeline with OpenCV live preview:
-python test_video.py --video sample_data/cars.mp4 --pipeline vehicle_gate --preview
+# Test Vehicle Gate & ANPR pipeline with interactive GUI and Web Dashboard sync:
+python test_video.py --video sample_data/cars.mp4 --pipeline gate --analytics
 
 # Save an annotated demonstration video for review:
-python test_video.py --video sample_data/cars.mp4 --pipeline vehicle_gate --save-output demo_gate.mp4
+python test_video.py --video sample_data/cars.mp4 --pipeline gate --save-output demo_gate.mp4
 ```
+
+> [!TIP]
+> For a full command matrix across all 5 use cases and web dashboard testing steps, refer to **[docs/08_TESTING_GUIDE.md](08_TESTING_GUIDE.md)**.
 
 ---
 

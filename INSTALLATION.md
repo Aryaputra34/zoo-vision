@@ -54,12 +54,14 @@ python test_synthetic_demo.py
 # 2. Verify or pre-fetch ANPR plate detector (auto-heals if missing):
 python export_model.py --setup-plate-model
 
-# 3. Test a video file with live preview:
-python test_video.py --video sample_data/cars.mp4 --pipeline vehicle_gate --preview
+# 3. Test a video file with live preview and Web Dashboard sync:
+python test_video.py --video sample_data/cars.mp4 --pipeline gate --analytics
 
 # 4. Launch full master multi-camera service:
-python main.py --preview
+python main.py
 ```
+
+For complete testing procedures across all 5 use cases, see **[docs/08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md)**.
 
 ---
 
@@ -80,6 +82,7 @@ docker compose logs -f zoo-ai-engine
 ## 📚 Complete Guides & References
 
 * **[Complete Installation & Deployment Guide](docs/07_INSTALLATION_GUIDE.md)**: Full guide covering bare metal, Docker, native C++ Nx plugin, systemd daemon, and troubleshooting.
+* **[Comprehensive Testing Guide](docs/08_TESTING_GUIDE.md)**: Testing offline MP4 videos, live multi-camera feeds, web dashboard live streaming, snapshots, and table analytics.
 * **[Implementation Plan](docs/01_IMPLEMENTATION_PLAN.md)**: Architecture, phased schedule, and use cases.
 * **[Hardware Sizing Guide](docs/03_HARDWARE_SPECIFICATIONS.md)**: Compute, VRAM, and BOM specifications.
 * **[Model Building & Training Guide](docs/02_MODEL_BUILDING_GUIDE.md)**: YOLOv11 + ByteTrack + Indonesian ANPR.
