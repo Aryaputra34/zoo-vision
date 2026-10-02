@@ -1,4 +1,4 @@
-# Nx Witness / Nx Meta Media Server Connection Settings
+# Nx Witness / Nx Meta Media Server Connection Settings (optional; only for sites that already run Nx)
 nx_server:
   host: "127.0.0.1"             # IP address of Nx Meta Media Server (e.g. 192.168.1.100)
   port: 7001                    # Default Nx Server port
@@ -27,3 +27,17 @@ analytics:
   enabled: true
   api_url: "http://localhost:3000/api/events"
   api_key: ""                   # = INGEST_API_KEY in the dashboard's .env.local; empty = no auth
+
+# AI engine API for the dashboard: annotated live preview, event snapshots, health.
+# The dashboard proxies it (AI_ENGINE_URL / AI_ENGINE_API_KEY); browsers never call it directly.
+api_server:
+  enabled: true
+  host: "127.0.0.1"             # "0.0.0.0" when the dashboard runs on another host
+  port: 8000
+  api_key: ""                   # = AI_ENGINE_API_KEY in the dashboard's .env.local; set it whenever host is not 127.0.0.1
+
+# One annotated JPEG per dashboard event (not for status heartbeats), served by api_server
+snapshots:
+  enabled: true
+  dir: "snapshots"
+  retention_days: 30            # day folders older than this are deleted; 0 = keep forever

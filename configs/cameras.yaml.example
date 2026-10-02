@@ -1,11 +1,18 @@
 # Camera Ingest Configuration
 # Sources can be RTSP streams (rtsp://...) or local video files (.mp4) for testing.
+#
+# Production: cameras go through MediaMTX (configs/mediamtx.yml), which pulls each camera once, records it,
+# and re-serves it. Point `source` at MediaMTX and set `recording_path` to the same MediaMTX path name so the
+# dashboard can play the clip around each event:
+#     source: "rtsp://127.0.0.1:8554/cam_cashier_01"
+#     recording_path: "cam_cashier_01"
 
 cameras:
   - id: "cam_cashier_01"
     name: "Loket Mini Train Cashier"
     nx_camera_id: "00000000-0000-0000-0000-000000000001" # Nx Camera UUID
-    source: "sample_data/kasir.mp4"                        # Or RTSP stream: rtsp://user:pass@192.168.1.50/stream
+    source: "sample_data/kasir.mp4"                        # Production: rtsp://127.0.0.1:8554/cam_cashier_01 (MediaMTX)
+    # recording_path: "cam_cashier_01"                     # MediaMTX path; enables "Play clip" in the dashboard
     pipeline: "cashier_presence"
     target_fps: 5                                          # 5 FPS provides smooth responsiveness
     enabled: true

@@ -19,10 +19,13 @@ import cv2
 import yaml
 
 from core.analytics_dispatcher import AnalyticsDispatcher
+from core.api_server import create_app, start_api_server
+from core.snapshot_store import SnapshotStore
 from nx_integration.nx_client import NxClient
 from pipelines.vehicle_gate_pipeline import VehicleGatePipeline
 from pipelines.cashier_presence_pipeline import CashierPresencePipeline
 from pipelines.restaurant_pipeline import RestaurantCounterPipeline
+from pipelines.table_occupancy_pipeline import TableOccupancyPipeline
 from pipelines.horse_riding_pipeline import HorseRidingPipeline
 
 logging.basicConfig(
@@ -144,6 +147,17 @@ def test_video(
             nx_client=nx_client,
             device="cpu"
         )
+    elif pipeline_type in ["restaurant_table", "table", "tables"]:
+        rule_cfg = rule_path or "configs/rules/restaurant_table.yaml"
+        c_name = camera_name or "Safari Cafe Table Monitor"
+        pipeline = TableOccupancyPipeline(
+            camera_id="cam_table_test",
+            camera_name=c_name,
+            nx_camera_id="00000000-0000-0000-0000-000000000002",
+            rule_config_path=rule_cfg,
+            nx_client=nx_client,
+            device="cpu"
+        )
     else:
         logger.error(f"Unknown pipeline: {pipeline_type}")
         return
@@ -158,18 +172,31 @@ def test_video(
         pipeline.show_labels = True
         logger.info("[DISPLAY] Debug Mode: Bounding boxes and confidence labels visible.")
 
-    # Optionally send events to the web dashboard (api_url/api_key from app_config.yaml; its 'enabled' flag is ignored here)
-    dispatcher = None
+    # Optionally send events to the web dashboard (api_url/api_key from app_config.yaml; its 'enabled' flag is ignored here),
+    # with event snapshots and the live preview API, so the run shows up in the dashboard like a real camera
+    dispatcher = snapshots = api_server = None
     if analytics:
-        an_cfg = {}
+        app_cfg = {}
         if os.path.exists("configs/app_config.yaml"):
             with open("configs/app_config.yaml", "r") as f:
-                an_cfg = (yaml.safe_load(f) or {}).get("analytics", {})
+                app_cfg = yaml.safe_load(f) or {}
+        an_cfg = app_cfg.get("analytics", {})
         dispatcher = AnalyticsDispatcher(
             api_url=an_cfg.get("api_url", "http://localhost:3000/api/events"),
             api_key=an_cfg.get("api_key") or None,
         )
         pipeline.analytics = dispatcher
+        snap_cfg = app_cfg.get("snapshots", {})
+        if snap_cfg.get("enabled", True):
+            snapshots = SnapshotStore(root=snap_cfg.get("dir", "snapshots"), retention_days=snap_cfg.get("retention_days", 30))
+            pipeline.snapshots = snapshots
+        api_cfg = app_cfg.get("api_server", {})
+        if api_cfg.get("enabled", True):
+            api_server = start_api_server(
+                create_app({pipeline.camera_id: pipeline}, snapshots, api_cfg.get("api_key") or None),
+                host=api_cfg.get("host", "127.0.0.1"),
+                port=api_cfg.get("port", 8000),
+            )
 
     # Seek to start time if provided
     start_sec = parse_time_str(start_time)
@@ -263,7 +290,7 @@ def test_video(
             timestamp_ms = int(current_sec * 1000)
 
             # Process frame through the active pipeline
-            annotated_frame = pipeline.process_frame(frame, timestamp_ms)
+            annotated_frame = pipeline.run(frame, timestamp_ms)
 
             # Write to output video file if enabled
             if writer:
@@ -306,6 +333,10 @@ def test_video(
                 logger.info(f"[ANPR TOGGLE] ANPR is now {state_str}")
 
     cap.release()
+    if api_server:
+        api_server.should_exit = True
+    if snapshots:
+        snapshots.stop()
     if dispatcher:
         dispatcher.stop()
     if writer:
@@ -318,7 +349,7 @@ def test_video(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Zoo Vision Pipelines on an MP4 video file")
     parser.add_argument("--video", required=True, help="Path to .mp4 video file")
-    parser.add_argument("--pipeline", choices=["gate", "cashier", "restaurant", "horse", "horse_riding"], default="horse", help="Pipeline type (default: horse)")
+    parser.add_argument("--pipeline", choices=["gate", "cashier", "restaurant", "restaurant_table", "table", "horse", "horse_riding"], default="horse", help="Pipeline type (default: horse)")
     parser.add_argument("--start-time", default="00:00", help="Start time e.g. '26:50' or '1610'")
     parser.add_argument("--camera-name", default=None, help="Custom camera name to display on HUD")
     parser.add_argument("--save-output", default=None, help="Optional output .mp4 file path to save demo video")
@@ -330,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-gui", action="store_true", help="Run without opening GUI window (ideal for headless or background execution)")
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
-    parser.add_argument("--analytics", action="store_true", help="Send events to the web dashboard (api_url/api_key from configs/app_config.yaml)")
+    parser.add_argument("--analytics", action="store_true", help="Send events + snapshots to the web dashboard and serve the live preview (configs/app_config.yaml)")
     args = parser.parse_args()
 
     test_video(

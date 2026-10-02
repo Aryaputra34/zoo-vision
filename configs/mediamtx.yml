@@ -1,0 +1,53 @@
+# MediaMTX for zoo-monitor (https://github.com/bluenviron/mediamtx, tested with v1.21.1).
+# Only settings that differ from the MediaMTX defaults are listed.
+#
+# MediaMTX pulls each camera once, records it with a retention window, and re-serves it:
+#   zoo-monitor reads   rtsp://127.0.0.1:8554/<path>                          (cameras.yaml `source`)
+#   dashboard clips     http://<host>:9996/get?path=<path>&start=<RFC3339>&duration=<s>
+#                       (cameras.yaml `recording_path` = <path>; dashboard MEDIAMTX_PLAYBACK_URL)
+#   raw live view       http://<host>:8889/<path>                             (WebRTC, fallback only)
+# Browsers play H.264 reliably; set the camera stream to H.264 rather than H.265.
+#
+# Disk: a 4 Mbit/s camera records ~43 GB/day, so 12 cameras x 7 days ~ 3.6 TB. Lower recordDeleteAfter
+# (or point cameras at their sub-stream) if the site's NVR already keeps long-term footage.
+
+authInternalUsers:
+  # Read / play back from localhost and private networks, without a password.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    permissions:
+      - action: read
+      - action: playback
+  # Cameras are pulled (`source:` below), so only local test feeds ever publish.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+      - action: api
+      - action: metrics
+
+playback: true
+rtmp: false
+hls: false
+srt: false
+moq: false
+
+pathDefaults:
+  # UDP drops packets under load and smears frames, both for the AI and in the recordings
+  rtspTransport: tcp
+  record: true
+  recordPath: ./recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordSegmentDuration: 10m
+  recordDeleteAfter: 7d
+
+# One entry per camera. The name is what cameras.yaml uses in `source` and `recording_path`.
+# Paths not listed here do not exist (no `all_others`), so nobody can push arbitrary streams in.
+paths:
+  cam_cashier_01:
+    source: rtsp://user:pass@192.168.1.50:554/stream1
+  cam_restaurant_01:
+    source: rtsp://user:pass@192.168.1.52:554/stream1
+  cam_gate_entry_01:
+    source: rtsp://user:pass@192.168.1.53:554/stream1
