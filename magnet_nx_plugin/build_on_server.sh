@@ -122,28 +122,34 @@ else
 fi
 
 # 4. Configure and compile using CMake
-echo "[4/6] Configuring and building libmagnet_analytics_plugin.so..."
+echo "[4/6] Configuring and building Magnet AI Analytics Plugins..."
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 cmake -DnxSdkDir="$SDK_DIR" -DonnxRuntimeDir="$ORT_DIR" -DCMAKE_BUILD_TYPE=Release ..
 make -j"$(nproc)"
 
-SO_FILE="${BUILD_DIR}/libmagnet_analytics_plugin.so"
-if [ ! -f "$SO_FILE" ]; then
-    echo "ERROR: Compilation finished but $SO_FILE was not found!"
+PLUGINS_FOUND=$(find "$BUILD_DIR" -name "libmagnet_*_plugin.so")
+if [ -z "$PLUGINS_FOUND" ]; then
+    echo "ERROR: Compilation finished but no libmagnet_*_plugin.so was found!"
     exit 1
 fi
 
-echo "  Build successful! Binary: $SO_FILE ($(du -h "$SO_FILE" | cut -f1))"
+echo "  Build successful! Found plugins:"
+for p in $PLUGINS_FOUND; do
+    echo "    - $(basename "$p") ($(du -h "$p" | cut -f1))"
+done
 
 # 5. Deploy plugin and ONNX Runtime libraries to MetaVMS Mediaserver
-echo "[5/6] Deploying plugin and runtime libraries to MetaVMS server..."
+echo "[5/6] Deploying plugins and runtime libraries to MetaVMS server..."
 sudo mkdir -p "$PLUGIN_TARGET_DIR"
 sudo mkdir -p "${PLUGIN_TARGET_DIR}/models"
 
-sudo cp -f "$SO_FILE" "$PLUGIN_TARGET_DIR/"
-sudo chmod 755 "${PLUGIN_TARGET_DIR}/libmagnet_analytics_plugin.so"
+for p in $PLUGINS_FOUND; do
+    sudo cp -f "$p" "$PLUGIN_TARGET_DIR/"
+    sudo chmod 755 "${PLUGIN_TARGET_DIR}/$(basename "$p")"
+    echo "  Installed: $PLUGIN_TARGET_DIR/$(basename "$p")"
+done
 
 # Copy libonnxruntime.so alongside the plugin
 sudo cp -P -f "$ORT_DIR"/lib/libonnxruntime.so* "$PLUGIN_TARGET_DIR/" || true

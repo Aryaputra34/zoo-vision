@@ -1,0 +1,35 @@
+# Build output directories
+build/
+build_msvc/
+build_win/
+dist/
+dist_win/
+dist_windows/
+
+# Runtime logs
+*.log
+
+# Compiler intermediate and binary files
+*.obj
+*.o
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.idb
+*.dll
+*.so
+*.dylib
+
+# Third-party SDKs and heavy dependency archives (unpacked during build)
+server_plugin_sdk/
+eigen/
+onnxruntime-*/
+*.zip
+*.tar.gz
+*.tgz
+
+# IDE and cache files
+.vs/
+out/
+CMakeSettings.json

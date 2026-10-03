@@ -45,14 +45,27 @@ std::string Engine::resolveModelPath() const
     }
 
     const std::vector<std::string> candidatePaths = {
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/magnet_cashier_plugin/models/yolo11s.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/magnet_analytics_plugin/models/yolo11s.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/magnet_cashier_plugin/models/yolo11m.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/magnet_analytics_plugin/models/yolo11m.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/models/yolo11s.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/models/yolo11m.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/yolo11s.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/plugins/yolo11m.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/models/yolo11s.onnx",
+        "C:/Program Files/Network Optix/Nx Meta/MediaServer/models/yolo11m.onnx",
         "/opt/networkoptix-metavms/mediaserver/bin/models/yolo11m.onnx",
         "/opt/networkoptix-metavms/mediaserver/bin/plugins/models/yolo11m.onnx",
         "/opt/networkoptix-metavms/mediaserver/bin/plugins/yolo11m.onnx",
         "/opt/networkoptix-metavms/mediaserver/bin/models/yolo11s.onnx",
         "/opt/networkoptix-metavms/mediaserver/bin/plugins/models/yolo11s.onnx",
         "models/yolo11m.onnx",
+        "models/yolo11s.onnx",
         "yolo11m.onnx",
-        "../models/yolo11m.onnx"
+        "yolo11s.onnx",
+        "../models/yolo11m.onnx",
+        "../models/yolo11s.onnx"
     };
 
     for (const auto& path : candidatePaths)
