@@ -20,13 +20,21 @@ using namespace nx::sdk::analytics;
 
 static void logCashierDebug(const std::string& msg)
 {
+#if defined(_WIN32)
     static std::ofstream logFile("d:/WORK/zoo-vision/magnet_nx_plugin/cashier_debug.log", std::ios::app);
+#else
+    static std::ofstream logFile("/tmp/magnet_cashier_debug.log", std::ios::app);
+#endif
     if (logFile.is_open())
     {
         const auto now = std::chrono::system_clock::now();
         const auto time_t_now = std::chrono::system_clock::to_time_t(now);
         struct tm tm_buf;
+#if defined(_WIN32)
         localtime_s(&tm_buf, &time_t_now);
+#else
+        localtime_r(&time_t_now, &tm_buf);
+#endif
         char timeStr[32];
         std::strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &tm_buf);
         logFile << "[" << timeStr << "] [Magnet Cashier] " << msg << std::endl;

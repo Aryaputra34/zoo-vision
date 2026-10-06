@@ -51,19 +51,19 @@ pathDefaults:
 # Paths use runOnInit to automatically loop the local MP4 files as 24/7 RTSP camera feeds.
 paths:
   cam_cashier_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "C:/Users/Magnet Busdev-2/Videos/vlc-record-2026-10-02-19h41m49s-kasir.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_cashier_01
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h41m49s-kasir.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_cashier_01
     runOnInitRestart: yes
 
   cam_restaurant_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "C:/Users/Magnet Busdev-2/Videos/vlc-record-2026-10-02-19h46m00s-restoran.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_restaurant_01
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h46m00s-restoran.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_restaurant_01
     runOnInitRestart: yes
 
   cam_gate_entry_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "C:/Users/Magnet Busdev-2/Videos/vlc-record-2026-10-02-19h48m37s-gateway_kendaraan.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_gate_entry_01
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h48m37s-gateway_kendaraan.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_gate_entry_01
     runOnInitRestart: yes
 
   cam_horse_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "C:/Users/Magnet Busdev-2/Videos/vlc-record-2026-09-30-14h55m15s-horse_riding.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_horse_01
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-09-30-14h55m15s-horse_riding.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_horse_01
     runOnInitRestart: yes
 
 

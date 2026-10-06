@@ -5,8 +5,8 @@ rule_name: "restaurant_capacity_monitor"
 mode: "area_occupancy"
 
 # Model Architecture (yolo11s.onnx, yolo26m.onnx, yolo26s.onnx)
-model_name: "yolo11s.pt"
-imgsz: 640                 # Native 1080p resolution to resolve distant seated patrons
+model_name: "yolo26s.pt"
+imgsz: [1088,1920]                 # Native 1080p resolution to resolve distant seated patrons
 confidence_threshold: 0.20
 target_class: "person"
 
@@ -33,7 +33,7 @@ dining_zone:
 # Enhanced Sensitivity for Difficult Bamboo Wall Shadow Zone
 # Specifically boosts seated patrons behind tall chairs under the mezzanine overhang
 shadow_zone:
-  enabled: true
+  enabled: false
   start: [1.00, 0.48]
   end: [0.82, 0.17]
   confidence_threshold: 0.11
@@ -61,8 +61,8 @@ table_monitoring:
   show_overlay: true            # Draw translucent table highlights
   show_labels: true             # Draw table badges
   dwell_time:
-    enabled: false              # Toggle: true = track dwell time; false = simple Occupied/Vacant status
-    min_occupied_sec: 0.0       # Immediate occupancy confirmation upon person detection
+    enabled: true              # Toggle: true = track dwell time; false = simple Occupied/Vacant status
+    min_occupied_sec: 5.0       # Immediate occupancy confirmation upon person detection
     empty_debounce_sec: 15.0    # Consecutive seconds empty before marking VACANT
     alert_dwell_sec: 3600.0     # Turnaround warning threshold in seconds
 

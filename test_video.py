@@ -134,7 +134,7 @@ def test_video(
             nx_camera_id="00000000-0000-0000-0000-000000000002",
             rule_config_path=rule_cfg,
             nx_client=nx_client,
-            device="cpu"
+            device="cuda:0"
         )
     elif pipeline_type in ["horse", "horse_riding"]:
         rule_cfg = rule_path or "configs/rules/horse_riding.yaml"
