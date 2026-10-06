@@ -42,10 +42,10 @@ tables:
     name: "Table 2 (Front Right Booth)"
     capacity: 6
     polygon:
-      - [0.72, 0.46]
-      - [0.99, 0.46]
-      - [0.99, 0.98]
-      - [0.72, 0.98]
+      - [0.99, 0.62]
+      - [0.78, 0.44]
+      - [0.71, 0.83]
+      - [0.98, 0.98]
 
   - id: "T3"
     name: "Table 3 (Center)"
