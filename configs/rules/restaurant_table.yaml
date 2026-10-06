@@ -33,84 +33,138 @@ tables:
     name: "Table 1 (Front Left)"
     capacity: 4
     polygon:
-      - [0.22, 0.44]
-      - [0.44, 0.44]
-      - [0.44, 0.94]
-      - [0.22, 0.94]
+      - [0.22, 0.48]
+      - [0.44, 0.48]
+      - [0.45, 0.95]
+      - [0.21, 0.95]
 
   - id: "T2"
     name: "Table 2 (Front Right Booth)"
     capacity: 6
     polygon:
-      - [0.70, 0.46]
+      - [0.72, 0.46]
       - [0.99, 0.46]
-      - [0.99, 0.92]
-      - [0.70, 0.92]
+      - [0.99, 0.98]
+      - [0.72, 0.98]
 
   - id: "T3"
     name: "Table 3 (Center)"
     capacity: 4
     polygon:
-      - [0.40, 0.33]
-      - [0.58, 0.33]
-      - [0.58, 0.60]
-      - [0.40, 0.60]
+      - [0.42, 0.32]
+      - [0.61, 0.32]
+      - [0.62, 0.60]
+      - [0.41, 0.58]
 
   - id: "T4"
     name: "Table 4 (Mid Left)"
     capacity: 4
     polygon:
-      - [0.26, 0.22]
-      - [0.42, 0.22]
-      - [0.42, 0.44]
-      - [0.26, 0.44]
+      - [0.25, 0.23]
+      - [0.43, 0.24]
+      - [0.43, 0.47]
+      - [0.24, 0.46]
 
   - id: "T5"
     name: "Table 5 (Far Left Window)"
     capacity: 4
-    confidence_threshold: 0.15   # Boosted sensitivity for distant window table
+    confidence_threshold: 0.15
     polygon:
-      - [0.05, 0.20]
-      - [0.22, 0.20]
-      - [0.22, 0.42]
-      - [0.05, 0.42]
+      - [0.08, 0.22]
+      - [0.22, 0.21]
+      - [0.25, 0.38]
+      - [0.10, 0.42]
 
   - id: "T6"
     name: "Table 6 (Near Left Wall)"
     capacity: 4
     polygon:
-      - [0.00, 0.38]
-      - [0.18, 0.38]
-      - [0.18, 0.68]
-      - [0.00, 0.68]
+      - [0.00, 0.45]
+      - [0.15, 0.42]
+      - [0.21, 0.75]
+      - [0.02, 0.97]
 
   - id: "T7"
     name: "Table 7 (Mid Right)"
     capacity: 4
     polygon:
       - [0.55, 0.22]
-      - [0.72, 0.22]
-      - [0.72, 0.44]
-      - [0.55, 0.44]
+      - [0.70, 0.22]
+      - [0.71, 0.46]
+      - [0.55, 0.46]
 
   - id: "T8"
     name: "Table 8 (Far Right Mezzanine)"
     capacity: 4
     polygon:
-      - [0.60, 0.16]
-      - [0.75, 0.16]
-      - [0.75, 0.32]
-      - [0.60, 0.32]
+      - [0.63, 0.14]
+      - [0.64, 0.27]
+      - [0.73, 0.31]
+      - [0.72, 0.17]
 
   - id: "T9"
     name: "Table 9 (Far Center Bamboo)"
     capacity: 4
-    confidence_threshold: 0.12   # Boosted sensitivity for shaded bamboo table
+    confidence_threshold: 0.12
     polygon:
-      - [0.48, 0.12]
-      - [0.60, 0.12]
-      - [0.60, 0.28]
-      - [0.48, 0.28]
+      - [0.49, 0.10]
+      - [0.51, 0.26]
+      - [0.60, 0.24]
+      - [0.59, 0.13]
+
+  - id: "T10"
+    name: "Table 10"
+    capacity: 4
+    polygon:
+      - [0.10, 0.42]
+      - [0.00, 0.44]
+      - [0.00, 0.33]
+      - [0.08, 0.29]
+
+  - id: "T11"
+    name: "Table 11"
+    capacity: 4
+    polygon:
+      - [0.24, 0.17]
+      - [0.27, 0.33]
+      - [0.38, 0.24]
+      - [0.33, 0.13]
+
+  - id: "T12"
+    name: "Table 12"
+    capacity: 4
+    polygon:
+      - [0.34, 0.10]
+      - [0.38, 0.23]
+      - [0.46, 0.17]
+      - [0.42, 0.08]
+
+  - id: "T13"
+    name: "Table 13"
+    capacity: 4
+    polygon:
+      - [0.51, 0.31]
+      - [0.43, 0.31]
+      - [0.42, 0.18]
+      - [0.50, 0.16]
+
+  - id: "T14"
+    name: "Table 14"
+    capacity: 4
+    polygon:
+      - [0.84, 0.32]
+      - [0.99, 0.43]
+      - [0.98, 0.61]
+      - [0.82, 0.47]
+
+  - id: "T15"
+    name: "Table 15"
+    capacity: 4
+    polygon:
+      - [0.85, 0.20]
+      - [0.84, 0.32]
+      - [1.00, 0.44]
+      - [1.00, 0.28]
 
 # Nx Meta Event Metadata
 nx_bookmark:

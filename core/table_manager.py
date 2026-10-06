@@ -85,14 +85,15 @@ class TableZone:
             return False
         return cv2.pointPolygonTest(self.pixel_polygon, (float(pt[0]), float(pt[1])), False) >= 0
 
-    def test_detection(self, xyxy: np.ndarray, conf: float, default_conf: float) -> bool:
+    def test_detection(self, xyxy: np.ndarray, conf: float, default_conf: float) -> Tuple[bool, float]:
         """
         Determines if a person bounding box belongs to this table:
         Tests center, torso, head/shoulders, and bottom center against the table polygon.
+        Returns (is_match: bool, penetration_depth: float).
         """
         req_conf = self.confidence_threshold if self.confidence_threshold is not None else default_conf
-        if conf < req_conf:
-            return False
+        if conf < req_conf or self.pixel_polygon is None:
+            return False, -1.0
 
         x1, y1, x2, y2 = xyxy
         cx = (x1 + x2) / 2.0
@@ -101,27 +102,27 @@ class TableZone:
         torso_y = y1 + 0.60 * (y2 - y1)
         bottom_y = y2
 
-        # 1. Torso anchor (seated patrons)
-        if self.contains_point((cx, torso_y)):
-            return True
-        # 2. Center anchor
-        if self.contains_point((cx, cy)):
-            return True
-        # 3. Head & shoulders anchor (visible above table or tall chair)
-        if self.contains_point((cx, head_y)):
-            return True
-        # 4. Bottom center (standing or leaning)
-        if self.contains_point((cx, bottom_y)):
-            return True
+        # 1. Anchors inside polygon
+        d_torso = cv2.pointPolygonTest(self.pixel_polygon, (float(cx), float(torso_y)), True)
+        d_center = cv2.pointPolygonTest(self.pixel_polygon, (float(cx), float(cy)), True)
+        d_head = cv2.pointPolygonTest(self.pixel_polygon, (float(cx), float(head_y)), True)
+        d_bottom = cv2.pointPolygonTest(self.pixel_polygon, (float(cx), float(bottom_y)), True)
 
-        # 5. Overlap test: If person bounding box intersects table polygon bounding box,
+        depth = max(d_torso, d_center, d_head, d_bottom)
+        if depth >= 0:
+            return True, depth
+
+        # 2. Overlap test: If person bounding box intersects table polygon bounding box,
         # test if either lateral torso point falls inside polygon
         bx1, by1, bx2, by2 = self.bbox
         if max(x1, bx1) < min(x2, bx2) and max(y1, by1) < min(y2, by2):
-            if self.contains_point((x1, torso_y)) or self.contains_point((x2, torso_y)):
-                return True
+            d_l = cv2.pointPolygonTest(self.pixel_polygon, (float(x1), float(torso_y)), True)
+            d_r = cv2.pointPolygonTest(self.pixel_polygon, (float(x2), float(torso_y)), True)
+            lat_depth = max(d_l, d_r)
+            if lat_depth >= 0:
+                return True, lat_depth
 
-        return False
+        return False, -1.0
 
     def update_state(
         self,
@@ -289,9 +290,15 @@ class TableOccupancyEngine:
         table_counts = {t.table_id: 0 for t in self.tables}
         if has_dets:
             for xyxy, conf in zip(boxes, confs):
+                best_table_id = None
+                best_depth = -1.0
                 for t in self.tables:
-                    if t.test_detection(xyxy, float(conf), default_conf):
-                        table_counts[t.table_id] += 1
+                    matched, depth = t.test_detection(xyxy, float(conf), default_conf)
+                    if matched and depth > best_depth:
+                        best_depth = depth
+                        best_table_id = t.table_id
+                if best_table_id is not None:
+                    table_counts[best_table_id] += 1
 
         # 3. Update state machine and dispatch events
         occupied_count = 0
