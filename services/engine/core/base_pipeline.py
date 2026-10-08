@@ -14,6 +14,7 @@ import yaml
 from ultralytics import YOLO
 
 from core.analytics_dispatcher import new_event_id
+from core.model_store import resolve_model_path
 from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("BasePipeline")
@@ -71,7 +72,7 @@ class BasePipeline(ABC):
 
         # Load YOLO model
         logger.info(f"[{self.camera_name}] Loading vision model '{model_name}' (imgsz={self.imgsz}) on device '{device}'...")
-        self.model = YOLO(model_name, task="detect")
+        self.model = YOLO(resolve_model_path(model_name), task="detect")
 
     def _apply_inline_roi(self, roi: Any):
         """Applies inline ROI to rules configuration."""

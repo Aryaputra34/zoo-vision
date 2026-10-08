@@ -43,4 +43,6 @@ def fake_yolo(monkeypatch):
     monkeypatch.setattr("core.base_pipeline.YOLO", FakeYOLO)
     monkeypatch.setattr("core.anpr_engine.YOLO", FakeYOLO)
     monkeypatch.setattr("core.anpr_engine.easyocr.Reader", FakeReader)
+    # pipelines need no weights on disk; ANPR keeps the real lookup (see the gate wiring test)
+    monkeypatch.setattr("core.base_pipeline.resolve_model_path", lambda name, models_dir=None: name)
     return FakeYOLO

@@ -8,6 +8,12 @@
       "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/yolo11s.pt"
     },
     {
+      "file": "yolo26s.pt",
+      "sha256": "646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b",
+      "size": 20422725,
+      "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/yolo26s.pt"
+    },
+    {
       "file": "yolo11s.onnx",
       "sha256": "ecb5a18b60da4c0382ca7222990831d35493825fce5d3dcb86d093416d996f29",
       "size": 38051717,

@@ -10,6 +10,8 @@ from typing import Optional, Dict, Any, List, Tuple
 import cv2
 import numpy as np
 from ultralytics import YOLO
+
+from core.model_store import resolve_model_path
 # pyrefly: ignore [missing-import]
 import easyocr
 
@@ -63,13 +65,8 @@ class AnprEngine:
         self.min_plate_height = min_plate_height
         self.gpu = gpu
 
-        if not os.path.exists(detector_model_path):
-            logger.warning(f"Plate detector model not found at '{detector_model_path}'. Attempting automated self-healing download...")
-            try:
-                from core.model_downloader import ensure_license_plate_detector
-                detector_model_path = ensure_license_plate_detector(detector_model_path)
-            except Exception as e:
-                logger.error(f"Could not auto-download plate detector model: {e}")
+        # Raises FileNotFoundError if the weights were never fetched; the gate pipeline then runs without ANPR
+        detector_model_path = resolve_model_path(detector_model_path)
 
         logger.info(f"Loading YOLO License Plate Detector from '{detector_model_path}'...")
         self.detector = YOLO(detector_model_path, task="detect")
