@@ -2,6 +2,14 @@
 
 Modular native C++ Analytics Plugins for **Network Optix MetaVMS** (`metavms-server`), branded for **Magnet**.
 
+> **Status: frozen prototype.** Kept for a future Nx bridge that forwards the Python engine's boxes and
+> events to Nx (see `docs/superpowers/specs/2026-10-08-zoo-vision-production-architecture-design.md`,
+> section 6). No changes until that bridge gets its own spec. It is not built in CI.
+>
+> **SDK:** built against Nx Meta Server Plugin SDK **6.1.2.42921**
+> (`metavms-server_plugin_sdk-6.1.2.42921-universal`). Pass its `server_plugin_sdk` folder with
+> `-DnxSdkDir=...` (CMake), `NX_SDK_DIR=...` or as the first argument of `build_on_server.sh`.
+
 ---
 
 ## Architecture Overview
@@ -56,10 +64,10 @@ graph TD
 
 ### 1. Copy Files to the Server
 
-From your development machine, copy this `magnet_nx_plugin/` folder, the SDK zip archive, and your exported ONNX model (`yolo11s.onnx` or `yolo11m.onnx`) to your Linux server (e.g., `172.31.254.130`):
+From your development machine, copy this `integrations/nx/plugin/` folder (it arrives as `~/plugin`), the SDK zip archive, and your exported ONNX model (`yolo11s.onnx` or `yolo11m.onnx`) to your Linux server (e.g., `172.31.254.130`):
 
 ```bash
-scp -r magnet_nx_plugin/ yolo11s.onnx user@172.31.254.130:~/
+scp -r integrations/nx/plugin/ yolo11s.onnx user@172.31.254.130:~/
 ```
 
 ### 2. Run the One-Command Build Script
@@ -67,7 +75,7 @@ scp -r magnet_nx_plugin/ yolo11s.onnx user@172.31.254.130:~/
 On your Linux server:
 
 ```bash
-cd ~/magnet_nx_plugin
+cd ~/plugin
 chmod +x build_on_server.sh
 ./build_on_server.sh --restart
 ```
@@ -100,7 +108,7 @@ The script will automatically:
 ## Directory Structure
 
 ```
-magnet_nx_plugin/
+integrations/nx/plugin/
 ├── CMakeLists.txt              # Unified root build configuration
 ├── build_on_server.sh          # One-command server build & deploy script
 ├── README.md                   # This guide
