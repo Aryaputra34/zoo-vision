@@ -6,7 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     # from the prototype's requirements.txt
     "ultralytics>=8.3.0",
-    "supervision>=0.23.0",
+    "supervision>=0.23.0,<0.31",  # 0.31 removes sv.ByteTrack (vehicle_gate_pipeline.py)
     "shapely>=2.0.3",
     "easyocr>=1.7.0",
     "requests>=2.31.0",

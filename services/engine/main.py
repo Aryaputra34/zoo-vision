@@ -10,10 +10,12 @@ import argparse
 import logging
 import signal
 import threading
+from typing import Optional
 import yaml
 import cv2
 
 from nx_integration.nx_client import NxClient
+from core.base_pipeline import BasePipeline
 from core.analytics_dispatcher import AnalyticsDispatcher
 from core.api_server import create_app, start_api_server
 from core.snapshot_store import SnapshotStore
@@ -58,6 +60,40 @@ def camera_worker(name: str, stream: StreamManager, pipeline, stop: threading.Ev
             # One camera's failure must not stop the others
             logger.exception(f"[{name}] Pipeline error, skipping frame")
             stop.wait(1.0)
+
+
+def create_pipeline(cam: dict, nx_client: NxClient, device: str) -> Optional[BasePipeline]:
+    """Builds the pipeline a camera entry from cameras.yaml asks for; None for an unknown type."""
+    cam_id = cam.get("id")
+    name = cam.get("name", cam_id)
+    pipeline_type = cam.get("pipeline")
+    rule_path = cam.get("rule_config", "")
+    nx_id = cam.get("nx_camera_id", "00000000-0000-0000-0000-000000000000")
+    roi = cam.get("roi")
+    inline_rules = cam.get("rules")
+
+    if pipeline_type == "cashier_presence":
+        return CashierPresencePipeline(
+            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
+        )
+    elif pipeline_type in ["restaurant_counter", "restaurant"]:
+        return RestaurantCounterPipeline(
+            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
+        )
+    elif pipeline_type in ["restaurant_table", "table_occupancy", "table_monitor"]:
+        return TableOccupancyPipeline(
+            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
+        )
+    elif pipeline_type == "vehicle_gate":
+        return VehicleGatePipeline(
+            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
+        )
+    elif pipeline_type in ["horse_riding", "horse_tracking", "horse"]:
+        return HorseRidingPipeline(
+            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
+        )
+    logger.warning(f"Unknown pipeline type '{pipeline_type}' for camera '{name}'. Skipping.")
+    return None
 
 
 def main():
@@ -112,36 +148,11 @@ def main():
         cam_id = cam.get("id")
         name = cam.get("name", cam_id)
         source = str(cam.get("source", "0"))
-        pipeline_type = cam.get("pipeline")
-        rule_path = cam.get("rule_config", "")
-        nx_id = cam.get("nx_camera_id", "00000000-0000-0000-0000-000000000000")
         target_fps = cam.get("target_fps", 10)
-        roi = cam.get("roi")
-        inline_rules = cam.get("rules")
 
         # Instantiate specific pipeline
-        if pipeline_type == "cashier_presence":
-            pipeline = CashierPresencePipeline(
-                cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-            )
-        elif pipeline_type in ["restaurant_counter", "restaurant"]:
-            pipeline = RestaurantCounterPipeline(
-                cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-            )
-        elif pipeline_type in ["restaurant_table", "table_occupancy", "table_monitor"]:
-            pipeline = TableOccupancyPipeline(
-                cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-            )
-        elif pipeline_type == "vehicle_gate":
-            pipeline = VehicleGatePipeline(
-                cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-            )
-        elif pipeline_type in ["horse_riding", "horse_tracking", "horse"]:
-            pipeline = HorseRidingPipeline(
-                cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-            )
-        else:
-            logger.warning(f"Unknown pipeline type '{pipeline_type}' for camera '{name}'. Skipping.")
+        pipeline = create_pipeline(cam, nx_client, device)
+        if pipeline is None:
             continue
         pipeline.analytics = analytics
         pipeline.snapshots = snapshots
