@@ -39,6 +39,9 @@ detector only turns ANPR off.
 
 ## Run
 
+`sample_data/cars.mp4` is stored with Git LFS. Without git-lfs it is a small pointer file that
+OpenCV cannot open: install git-lfs, then run `git lfs pull`.
+
 ```bash
 uv run python main.py                                              # all enabled cameras
 uv run python test_video.py --video <file.mp4> --pipeline <name>   # one pipeline on a video file

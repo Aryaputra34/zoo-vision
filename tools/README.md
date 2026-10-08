@@ -30,3 +30,23 @@ The engine tests fail if a rule file names a model that isn't in the manifest.
 
 **Customer-specific models** (for example trained on the park's footage) never go in a public
 release. Install them with `--from <folder>` from a file share or USB stick.
+
+## export_model.py: convert a model
+
+Exports a YOLO `.pt` model to ONNX, OpenVINO, TensorRT, TorchScript or TFLite (interactive wizard
+when run without `--model`). It needs the engine's Python environment:
+
+```bash
+uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280
+uv run --project services/engine python tools/export_model.py --list    # local .pt files
+```
+
+## pick_coordinates.py: draw zones on a frame
+
+Interactive picker for tripwire lines, polygons and restaurant tables on a video frame. With
+`--update-yaml` (or in tables mode) it writes the coordinates into
+`services/engine/configs/rules/*.yaml`. Phase 3's web zone editor replaces it.
+
+```bash
+uv run --project services/engine python tools/pick_coordinates.py --help
+```
