@@ -1,5 +1,5 @@
-configs/app_config.yaml
-configs/cameras.yaml
+services/engine/configs/app_config.yaml
+services/engine/configs/cameras.yaml
 __pycache__
 .env
 .venv
