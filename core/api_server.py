@@ -26,7 +26,7 @@ from core.snapshot_store import SnapshotStore
 
 logger = logging.getLogger("ApiServer")
 
-PREVIEW_MAX_FPS = 5
+PREVIEW_MAX_FPS = 25
 PREVIEW_MAX_WIDTH = 960
 ONLINE_SEC = 10
 
