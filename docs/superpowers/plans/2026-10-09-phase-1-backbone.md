@@ -33,12 +33,13 @@ Redis 7.4, GitHub Actions.
   `services/engine/configs/cameras.yaml`, which a worktree would not have. Never commit to `main`.
   Push only after the user says yes.
 - Every commit message ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- The dev laptop (Windows, Docker Desktop) has no NVIDIA GPU:
-  - The engine always runs from source with `uv`.
-  - Docker on the laptop runs only `postgres`, `redis`, `api-migrate`, `api` and the Testcontainers
-    test containers.
+- This phase runs on a Windows laptop with Docker Desktop and no NVIDIA GPU:
+  - The engine always runs from source with `uv`, on CPU.
+  - Docker runs only `postgres`, `redis`, `api-migrate`, `api` and the Testcontainers test
+    containers.
   - Never run `docker compose up` without naming services. Never build the engine image
-    (`services/engine/Dockerfile`) in this phase; it is for the GPU server.
+    (`services/engine/Dockerfile`) in this phase; it needs a CUDA machine (the user's CUDA laptop
+    or the park server) and Phase 1 doesn't need it.
 - Don't edit historical documents: `docs/adr/*`, `docs/01_*`, `docs/04_*`, `docs/06_*`,
   `docs/architecture_best_practice_recommendation.md`, the spec, the Phase 0 plan.
 - The engine still reads `cameras.yaml` + `rules/*.yaml`. `core/api_server.py` (live preview,
