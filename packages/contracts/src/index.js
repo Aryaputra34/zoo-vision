@@ -102,7 +102,7 @@ function createValidator(registry = loadRegistry()) {
     }
 
     if (message.message === 'metric') {
-      return message.name in useCase.metrics
+      return Object.hasOwn(useCase.metrics, message.name)
         ? { ok: true }
         : fail('/name', `unknown metric '${message.name}' for use case '${message.useCase}'`);
     }

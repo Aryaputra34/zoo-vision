@@ -10,7 +10,7 @@
   },
   "scripts": {
     "generate": "node scripts/generate.mjs",
-    "check": "npm run generate && git diff --exit-code -- generated ../../services/engine/contracts",
+    "check": "node scripts/check.mjs",
     "test": "node --test"
   },
   "dependencies": {

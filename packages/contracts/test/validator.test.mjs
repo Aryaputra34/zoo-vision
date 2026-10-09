@@ -91,6 +91,10 @@ test('rejects a metric name not in metrics.json', () => {
   assert.deepEqual(v.validateMessage({ ...metric, name: 'count' }), { ok: true });
 });
 
+test('rejects a metric named after an Object.prototype key', () => {
+  assert.equal(v.validateMessage({ message: 'metric', ...base, name: 'toString', value: 1 }).ok, false);
+});
+
 test('rejects a schemaVersion other than the use case version', () => {
   assert.equal(v.validateMessage(ping({ schemaVersion: 2 })).ok, false);
 });
