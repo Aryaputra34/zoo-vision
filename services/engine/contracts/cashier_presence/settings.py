@@ -5,43 +5,6 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
 
 
-class ModelName(RootModel[constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$')]):
-    root: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
-        'yolo11s.onnx', title='ModelName'
-    )
-
-
-class ImageSizeItem(RootModel[conint(ge=32, le=4096)]):
-    root: conint(ge=32, le=4096)
-
-
-class ImageSize(
-    RootModel[conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem]]
-):
-    root: conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem] = Field(
-        640,
-        description='Inference size: one integer for a square, or [height, width].',
-        title='ImageSize',
-        validate_default=True,
-    )
-
-
-class ConfidenceThreshold(RootModel[confloat(ge=0.01, le=1.0)]):
-    root: confloat(ge=0.01, le=1.0) = Field(0.22, title='ConfidenceThreshold')
-
-
-class PointItem(RootModel[confloat(ge=0.0, le=1.0)]):
-    root: confloat(ge=0.0, le=1.0)
-
-
-class Point(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
-
-
-class Polygon(RootModel[list[Point]]):
-    root: list[Point] = Field(..., title='Polygon')
-
-
 class NxBookmark(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -51,31 +14,36 @@ class NxBookmark(BaseModel):
     duration_ms: conint(ge=1000, le=600000) | None = None
 
 
-class Point1(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
-
-
-class Polygon1(RootModel[list[Point1]]):
-    root: list[Point1] = Field(..., min_length=3, title='Polygon')
+class Polygon1(
+    RootModel[list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]]]
+):
+    root: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
+        ..., min_length=3, title='Polygon'
+    )
 
 
 class CashierPresenceSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: ModelName | None = Field(
-        'yolo11s.onnx', title='ModelName', validate_default=True
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+        'yolo11s.onnx', title='ModelName'
     )
-    imgsz: ImageSize | None = Field(
+    imgsz: (
+        conint(ge=32, le=4096)
+        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
+        | None
+    ) = Field(
         640,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
-        validate_default=True,
     )
-    confidence_threshold: ConfidenceThreshold | None = Field(
-        0.22, title='ConfidenceThreshold', validate_default=True
+    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+        0.22, title='ConfidenceThreshold'
     )
-    clerk_zone: Polygon = Field(..., min_length=3, title='Polygon')
+    clerk_zone: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
+        ..., min_length=3, title='Polygon'
+    )
     visitor_zone: Polygon1 | None = None
     absence_alert_timeout_sec: conint(ge=1) | None = 10
     min_waiting_confirm_sec: conint(ge=0) | None = 3

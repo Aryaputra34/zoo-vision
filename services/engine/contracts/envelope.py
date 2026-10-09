@@ -8,20 +8,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
 
-class Time(RootModel[constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$')]):
-    root: constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$') = Field(
-        ..., title='Time'
-    )
-
-
-class MinuteTime(
-    RootModel[constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$')]
-):
-    root: constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$') = Field(
-        ..., title='MinuteTime'
-    )
-
-
 class Severity(Enum):
     info = 'info'
     warning = 'warning'
@@ -37,7 +23,9 @@ class EventMessage(BaseModel):
     useCase: str
     schemaVersion: conint(ge=1)
     configVersion: int | None
-    time: Time
+    time: constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$') = Field(
+        ..., title='Time'
+    )
     id: constr(pattern=r'^evt_[0-9a-f]{32}$')
     type: str
     severity: Severity
@@ -54,7 +42,9 @@ class IntervalOpenMessage(BaseModel):
     useCase: str
     schemaVersion: conint(ge=1)
     configVersion: int | None
-    time: Time = Field(..., description='interval start')
+    time: constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$') = Field(
+        ..., description='interval start', title='Time'
+    )
     sessionId: constr(pattern=r'^ses_[0-9a-f]{32}$')
     kind: str
     subjectId: str | None
@@ -75,7 +65,9 @@ class IntervalCloseMessage(BaseModel):
     useCase: str
     schemaVersion: conint(ge=1)
     configVersion: int | None
-    time: Time = Field(..., description='interval end')
+    time: constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$') = Field(
+        ..., description='interval end', title='Time'
+    )
     sessionId: constr(pattern=r'^ses_[0-9a-f]{32}$')
     kind: str
     endReason: EndReason
@@ -93,7 +85,9 @@ class MetricMessage(BaseModel):
     useCase: str
     schemaVersion: conint(ge=1)
     configVersion: int | None
-    time: MinuteTime = Field(..., description='start of the minute')
+    time: constr(pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$') = Field(
+        ..., description='start of the minute', title='MinuteTime'
+    )
     name: str
     value: float
 

@@ -7,42 +7,9 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
 
 
-class ModelName(RootModel[constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$')]):
-    root: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
-        'yolo11s.onnx', title='ModelName'
-    )
-
-
-class ImageSizeItem(RootModel[conint(ge=32, le=4096)]):
-    root: conint(ge=32, le=4096)
-
-
-class ImageSize(
-    RootModel[conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem]]
-):
-    root: conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem] = Field(
-        1920,
-        description='Inference size: one integer for a square, or [height, width].',
-        title='ImageSize',
-        validate_default=True,
-    )
-
-
 class Mode(Enum):
     area_occupancy = 'area_occupancy'
     tripwire = 'tripwire'
-
-
-class PointItem(RootModel[confloat(ge=0.0, le=1.0)]):
-    root: confloat(ge=0.0, le=1.0)
-
-
-class Point(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
-
-
-class Polygon(RootModel[list[Point]]):
-    root: list[Point] = Field(..., title='Polygon')
 
 
 class DwellTime(BaseModel):
@@ -55,10 +22,6 @@ class DwellTime(BaseModel):
     alert_dwell_sec: confloat(ge=0.0) | None = 3600
 
 
-class ConfidenceThreshold(RootModel[confloat(ge=0.01, le=1.0)]):
-    root: confloat(ge=0.01, le=1.0) = Field(..., title='ConfidenceThreshold')
-
-
 class NxBookmark(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -68,24 +31,24 @@ class NxBookmark(BaseModel):
     duration_ms: conint(ge=1000, le=600000) | None = None
 
 
-class Point1(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
-
-
-class Polygon1(RootModel[list[Point1]]):
-    root: list[Point1] = Field(..., min_length=3, title='Polygon')
-
-
-class Point2(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
+class Polygon1(
+    RootModel[list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]]]
+):
+    root: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
+        ..., min_length=3, title='Polygon'
+    )
 
 
 class Line(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    start: Point2
-    end: Point2
+    start: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
+        ..., title='Point'
+    )
+    end: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
+        ..., title='Point'
+    )
 
 
 class ShadowZone(BaseModel):
@@ -93,10 +56,14 @@ class ShadowZone(BaseModel):
         extra='forbid',
     )
     enabled: bool | None = False
-    start: Point2 | None = Field([1, 0.48], validate_default=True)
-    end: Point2 | None = Field([0.82, 0.17], validate_default=True)
-    confidence_threshold: ConfidenceThreshold | None = Field(
-        0.11, validate_default=True
+    start: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] | None = Field(
+        [1, 0.48], title='Point'
+    )
+    end: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] | None = Field(
+        [0.82, 0.17], title='Point'
+    )
+    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+        0.11, title='ConfidenceThreshold'
     )
 
 
@@ -108,16 +75,12 @@ class Table(BaseModel):
     name: str | None = ''
     capacity: conint(ge=1) | None = 4
     polygon: Polygon1
-    confidence_threshold: ConfidenceThreshold | None = Field(
+    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
         None, title='ConfidenceThreshold'
     )
     min_occupied_sec: confloat(ge=0.0) | None = None
     empty_debounce_sec: confloat(ge=0.0) | None = None
     track_dwell_time: bool | None = None
-
-
-class TableList(RootModel[list[Table]]):
-    root: list[Table] = Field(..., title='TableList')
 
 
 class TableMonitoring(BaseModel):
@@ -129,23 +92,28 @@ class TableMonitoring(BaseModel):
     show_labels: bool | None = True
     show_summary_card: bool | None = False
     dwell_time: DwellTime | None = Field({}, title='DwellTime', validate_default=True)
-    tables: TableList | None = Field(None, title='TableList')
+    tables: list[Table] | None = Field(None, title='TableList')
 
 
 class RestaurantCounterSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: ModelName | None = Field(
-        'yolo11s.onnx', title='ModelName', validate_default=True
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+        'yolo11s.onnx', title='ModelName'
     )
-    imgsz: ImageSize | None = Field(
+    imgsz: (
+        conint(ge=32, le=4096)
+        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
+        | None
+    ) = Field(
         1920,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
-        validate_default=True,
     )
-    confidence_threshold: ConfidenceThreshold | None = Field(0.2, validate_default=True)
+    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+        0.2, title='ConfidenceThreshold'
+    )
     mode: Mode | None = 'area_occupancy'
     deduplication_enabled: bool | None = True
     iou_threshold: float | None = 0.45
@@ -155,7 +123,9 @@ class RestaurantCounterSettings(BaseModel):
     smoothing_frames: int | None = 5
     show_boxes: bool | None = True
     show_labels: bool | None = True
-    dining_zone: Polygon | None = Field(None, min_length=3, title='Polygon')
+    dining_zone: (
+        list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] | None
+    ) = Field(None, min_length=3, title='Polygon')
     tripwire: Line | None = Field(
         {'start': [0.1, 0.5], 'end': [0.9, 0.5]}, title='Line', validate_default=True
     )

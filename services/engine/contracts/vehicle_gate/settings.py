@@ -2,44 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
-
-
-class ModelName(RootModel[constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$')]):
-    root: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
-        'yolo26s.onnx', title='ModelName'
-    )
-
-
-class ImageSizeItem(RootModel[conint(ge=32, le=4096)]):
-    root: conint(ge=32, le=4096)
-
-
-class ImageSize(
-    RootModel[conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem]]
-):
-    root: conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem] = Field(
-        640,
-        description='Inference size: one integer for a square, or [height, width].',
-        title='ImageSize',
-        validate_default=True,
-    )
-
-
-class ConfidenceThreshold(RootModel[confloat(ge=0.01, le=1.0)]):
-    root: confloat(ge=0.01, le=1.0) = Field(0.3, title='ConfidenceThreshold')
-
-
-class PointItem(RootModel[confloat(ge=0.0, le=1.0)]):
-    root: confloat(ge=0.0, le=1.0)
-
-
-class Point(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
-
-
-class Polygon(RootModel[list[Point]]):
-    root: list[Point] = Field(..., title='Polygon')
+from pydantic import BaseModel, ConfigDict, Field, confloat, conint, constr
 
 
 class Anpr(BaseModel):
@@ -60,40 +23,45 @@ class NxBookmark(BaseModel):
     duration_ms: conint(ge=1000, le=600000) | None = None
 
 
-class Point1(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
-
-
 class Line(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    start: Point1
-    end: Point1
+    start: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
+        ..., title='Point'
+    )
+    end: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
+        ..., title='Point'
+    )
 
 
 class VehicleGateSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: ModelName | None = Field(
-        'yolo26s.onnx', title='ModelName', validate_default=True
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+        'yolo26s.onnx', title='ModelName'
     )
-    imgsz: ImageSize | None = Field(
+    imgsz: (
+        conint(ge=32, le=4096)
+        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
+        | None
+    ) = Field(
         640,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
-        validate_default=True,
     )
-    confidence_threshold: ConfidenceThreshold | None = Field(
-        0.3, title='ConfidenceThreshold', validate_default=True
+    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+        0.3, title='ConfidenceThreshold'
     )
     tripwire: Line | None = Field(
         {'start': [0.76, 0.58], 'end': [0.05, 0.43]},
         title='Line',
         validate_default=True,
     )
-    roi_polygon: Polygon | None = Field(None, min_length=3, title='Polygon')
+    roi_polygon: (
+        list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] | None
+    ) = Field(None, min_length=3, title='Polygon')
     track_activation_thresh: float | None = 0.25
     lost_track_buffer: int | None = 75
     matching_thresh: float | None = 0.7

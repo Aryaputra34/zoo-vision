@@ -2,28 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
-
-
-class ModelName(RootModel[constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$')]):
-    root: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
-        'yolo11s.onnx', title='ModelName'
-    )
-
-
-class ImageSizeItem(RootModel[conint(ge=32, le=4096)]):
-    root: conint(ge=32, le=4096)
-
-
-class ImageSize(
-    RootModel[conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem]]
-):
-    root: conint(ge=32, le=4096) | tuple[ImageSizeItem, ImageSizeItem] = Field(
-        1920,
-        description='Inference size: one integer for a square, or [height, width].',
-        title='ImageSize',
-        validate_default=True,
-    )
+from pydantic import BaseModel, ConfigDict, Field, confloat, conint, constr
 
 
 class DwellTime(BaseModel):
@@ -36,22 +15,6 @@ class DwellTime(BaseModel):
     alert_dwell_sec: confloat(ge=0.0) | None = 3600
 
 
-class PointItem(RootModel[confloat(ge=0.0, le=1.0)]):
-    root: confloat(ge=0.0, le=1.0)
-
-
-class Point(RootModel[tuple[PointItem, PointItem]]):
-    root: tuple[PointItem, PointItem] = Field(..., title='Point')
-
-
-class Polygon(RootModel[list[Point]]):
-    root: list[Point] = Field(..., title='Polygon')
-
-
-class ConfidenceThreshold(RootModel[confloat(ge=0.01, le=1.0)]):
-    root: confloat(ge=0.01, le=1.0) = Field(..., title='ConfidenceThreshold')
-
-
 class Table(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -59,17 +22,15 @@ class Table(BaseModel):
     id: constr(pattern=r'^[A-Za-z0-9_-]{1,32}$')
     name: str | None = ''
     capacity: conint(ge=1) | None = 4
-    polygon: Polygon = Field(..., min_length=3, title='Polygon')
-    confidence_threshold: ConfidenceThreshold | None = Field(
+    polygon: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
+        ..., min_length=3, title='Polygon'
+    )
+    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
         None, title='ConfidenceThreshold'
     )
     min_occupied_sec: confloat(ge=0.0) | None = None
     empty_debounce_sec: confloat(ge=0.0) | None = None
     track_dwell_time: bool | None = None
-
-
-class TableList(RootModel[list[Table]]):
-    root: list[Table] = Field(..., title='TableList')
 
 
 class NxBookmark(BaseModel):
@@ -85,16 +46,21 @@ class RestaurantTableSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: ModelName | None = Field(
-        'yolo11s.onnx', title='ModelName', validate_default=True
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+        'yolo11s.onnx', title='ModelName'
     )
-    imgsz: ImageSize | None = Field(
+    imgsz: (
+        conint(ge=32, le=4096)
+        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
+        | None
+    ) = Field(
         1920,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
-        validate_default=True,
     )
-    confidence_threshold: ConfidenceThreshold | None = Field(0.2, validate_default=True)
+    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+        0.2, title='ConfidenceThreshold'
+    )
     deduplication_enabled: bool | None = True
     iou_threshold: float | None = 0.45
     containment_threshold: float | None = 0.65
@@ -104,5 +70,5 @@ class RestaurantTableSettings(BaseModel):
     show_labels: bool | None = True
     show_summary_card: bool | None = True
     dwell_time: DwellTime | None = Field({}, title='DwellTime', validate_default=True)
-    tables: TableList = Field(..., min_length=1, title='TableList')
+    tables: list[Table] = Field(..., min_length=1, title='TableList')
     nx_bookmark: NxBookmark | None = Field(None, title='NxBookmark')

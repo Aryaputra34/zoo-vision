@@ -104,6 +104,7 @@ const codegen = (input, output) => {
       '--output', output,
       '--output-model-type', 'pydantic_v2.BaseModel',
       '--use-title-as-name',
+      '--collapse-root-models',
       '--formatters', 'black', 'isort',
       '--disable-timestamp',
       '--target-python-version', '3.12',
