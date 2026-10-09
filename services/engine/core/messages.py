@@ -115,7 +115,7 @@ def _partial(model: type[BaseModel]) -> type[BaseModel]:
 
 def _check(model: type[BaseModel], payload: Any, where: str) -> None:
     try:
-        model.model_validate_json(json.dumps(payload), strict=True)
+        model.model_validate_json(json.dumps(payload, allow_nan=False), strict=True)
     except (ValidationError, TypeError, ValueError) as e:
         raise ContractError(f"{where}: {e}") from e
 

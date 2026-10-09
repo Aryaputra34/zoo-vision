@@ -5,15 +5,18 @@ import time
 import pytest
 import redis.exceptions
 from core.event_stream import EventStream
-from core.messages import event_message
+from core.messages import event_message, metric_message
 
 
 class FakeRedis:
     def __init__(self):
         self.entries = []
         self.down = False
+        self.error = None
 
     def xadd(self, name, fields, maxlen=None, approximate=True):
+        if self.error:
+            raise self.error
         if self.down:
             raise redis.exceptions.ConnectionError("down")
         self.entries.append((name, fields, maxlen, approximate))
@@ -93,10 +96,12 @@ def test_full_buffer_drops_oldest_and_reports_the_count(fake):
 def test_send_never_blocks_while_redis_is_down(fake):
     fake.down = True
     es = make(fake)
-    t0 = time.monotonic()
+    slowest = 0.0
     for _ in range(1000):
+        t0 = time.monotonic()
         es.send(started())
-    assert time.monotonic() - t0 < 0.5
+        slowest = max(slowest, time.monotonic() - t0)
+    assert slowest < 0.25  # far below the 0.5 s first backoff: send never waits for Redis
     es.stop(timeout=0.1)
 
 
@@ -116,3 +121,31 @@ def test_stop_reports_undelivered_messages(fake, caplog):
     with caplog.at_level(logging.WARNING):
         es.stop(timeout=0.1)
     assert any("undelivered" in r.getMessage() and "1" in r.getMessage() for r in caplog.records)
+
+
+def test_non_finite_numbers_are_never_enqueued(fake):
+    es = make(fake)
+    es.send(event_message("cam_x", "vehicle_gate", "vehicle_crossing", {
+        "direction": "ENTRY", "vehicleType": "car", "plate": "B 1", "plateValid": True,
+        "ocrConfidence": float("inf"), "trackerId": 1}))
+    es.send(metric_message("cam_x", "horse_riding", "active_horses", 120_000, float("nan")))
+    es.stop()
+    assert fake.entries == [] and es.dropped_total == 0
+
+
+def test_xadd_refusals_are_dropped_counted_reported_and_logged_once(fake, monkeypatch, caplog):
+    monkeypatch.setattr("core.event_stream._BACKOFF_START", 0.01)
+    fake.error = redis.exceptions.ResponseError("OOM command not allowed")
+    es = make(fake, engine_group="g2")
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):
+            es.send(started())
+        assert wait_until(lambda: es.dropped_total == 3)
+        fake.error = None
+        es.send(started())
+        assert wait_until(lambda: len(fake.entries) == 2)
+    es.stop()
+    sent = [json.loads(f["msg"]) for _, f, _, _ in fake.entries]
+    assert [m["type"] for m in sent] == ["engine_started", "events_dropped"]
+    assert sent[1]["data"] == {"engineGroup": "g2", "count": 3}
+    assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 1

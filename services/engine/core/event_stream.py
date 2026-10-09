@@ -74,37 +74,42 @@ class EventStream:
         self._queue.append(message)
 
     def _run(self) -> None:
-        backoff, outage = _BACKOFF_START, False
+        backoff, failing = _BACKOFF_START, False
         while not self._abort.is_set():
             with self._cond:
                 while not self._queue and not self._stopping:
                     self._cond.wait()
                 if not self._queue:
                     return
-                message = self._queue.popleft()
+                message = self._queue[0]  # stays in the buffer while in flight, so the bound holds
             try:
-                self._client.xadd(self._stream, {"msg": json.dumps(message, separators=(",", ":"))},
-                                  maxlen=self._maxlen, approximate=True)
+                payload = json.dumps(message, separators=(",", ":"), allow_nan=False)
+                self._client.xadd(self._stream, {"msg": payload}, maxlen=self._maxlen, approximate=True)
             except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
-                with self._cond:
-                    if len(self._queue) < self._buffer_size:
-                        self._queue.appendleft(message)
-                    else:  # send() filled the buffer meanwhile; this is the oldest message
-                        self.dropped_total += 1
-                        self._unreported += 1
-                if not outage:
+                if not failing:
                     log.warning("Redis unreachable, buffering events: %s", e)
-                    outage = True
-                self._abort.wait(backoff)
-                backoff = min(backoff * 2, _BACKOFF_MAX)
-                continue
+                    failing = True
             except Exception:
-                log.exception("XADD failed, message dropped")
+                # the message itself may be what Redis refuses (or Redis is read-only/out of memory): drop it
+                with self._cond:
+                    if self._queue and self._queue[0] is message:
+                        self._queue.popleft()
+                    self.dropped_total += 1
+                    self._unreported += 1
+                if not failing:
+                    log.exception("XADD failed, dropping messages until it works again")
+                    failing = True
+            else:
+                with self._cond:
+                    if self._queue and self._queue[0] is message:
+                        self._queue.popleft()
+                if failing:
+                    log.info("Redis accepts events again, %d buffered message(s) to send", len(self._queue))
+                backoff, failing = _BACKOFF_START, False
+                self._report_drops()
                 continue
-            if outage:
-                log.info("Redis reachable again, %d buffered message(s) to send", len(self._queue))
-            backoff, outage = _BACKOFF_START, False
-            self._report_drops()
+            self._abort.wait(backoff)
+            backoff = min(backoff * 2, _BACKOFF_MAX)
 
     def _report_drops(self) -> None:
         with self._cond:

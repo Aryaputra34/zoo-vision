@@ -93,3 +93,12 @@ def test_interval_close_data_is_a_partial():
         validate(interval_close_message("cam_t", "restaurant_table", "table_session", sid, {"nope": 1}))
     with pytest.raises(ContractError):
         validate(interval_close_message("cam_t", "restaurant_table", "table_session", sid, {"tableName": 5}))
+
+
+def test_non_finite_numbers_are_rejected():
+    with pytest.raises(ContractError):
+        validate(metric_message("cam_x", "horse_riding", "active_horses", 120_000, float("nan")))
+    with pytest.raises(ContractError):
+        validate(event_message("cam_x", "vehicle_gate", "vehicle_crossing", {
+            "direction": "ENTRY", "vehicleType": "car", "plate": "B 1", "plateValid": True,
+            "ocrConfidence": float("inf"), "trackerId": 1}))
