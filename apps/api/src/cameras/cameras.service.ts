@@ -242,6 +242,23 @@ export class CamerasService {
       }
     }
 
+    // A non-superadmin sending a URL (any value, null too) is refused without decrypting or
+    // comparing: a 200/403 split on equality would confirm guesses of the stored credentials.
+    if (actor.role !== 'SUPERADMIN') {
+      const urlFields = (['mainStreamUrl', 'subStreamUrl'] as const).filter(
+        (f) => dto[f] !== undefined,
+      );
+      if (urlFields.length > 0) {
+        throw new ForbiddenException({
+          message: 'Changing these fields needs the SUPERADMIN role',
+          fields: [
+            ...changed.filter((f) => !MANAGER_FIELDS.has(f)),
+            ...urlFields,
+          ],
+        });
+      }
+    }
+
     // URLs: compare decrypted, store a new ciphertext only on a real change.
     const nextMain = dto.mainStreamUrl;
     const mainChanged =

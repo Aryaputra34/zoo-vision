@@ -178,9 +178,16 @@ describe('cameras', () => {
     expect(row.targetFps).toBe(5);
 
     await patch({ name: 'Again', targetFps: 5 }).expect(200);
-    // an unchanged URL is not a change either
-    await patch({ mainStreamUrl: URL_MAIN }).expect(200);
-    await patch({ mainStreamUrl: URL_SUB }).expect(403);
+    // URLs are never compared for a manager: any value is 403, so no equality oracle
+    for (const b of [
+      { mainStreamUrl: URL_MAIN },
+      { mainStreamUrl: URL_SUB },
+      { subStreamUrl: URL_SUB },
+      { subStreamUrl: null },
+    ]) {
+      const r = await patch(b).expect(403);
+      expect((r.body as { fields: string[] }).fields).toEqual(Object.keys(b));
+    }
     await patch({ id: 'x' }).expect(400);
     await patch({ name: 'x' }, 'nope_cam').expect(404);
   });
