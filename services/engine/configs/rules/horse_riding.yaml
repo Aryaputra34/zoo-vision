@@ -19,7 +19,7 @@ target_classes:
 track_activation_thresh: 0.25
 lost_track_buffer: 60       # 4 seconds memory at 15 FPS to maintain stable ID during pauses/turns
 matching_thresh: 0.70       # Resilient IoU matching through animal orientation changes
-frame_rate: 15
+frame_rate: 25
 
 # Display wording. The COCO class is "horse", but this attraction is signed "KUDA PONI TUNGGANG"
 # (pony riding), and the client reads the overlay rather than the class id.

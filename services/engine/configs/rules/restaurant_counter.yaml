@@ -63,7 +63,7 @@ table_monitoring:
   dwell_time:
     enabled: true              # Toggle: true = track dwell time; false = simple Occupied/Vacant status
     min_occupied_sec: 5.0       # Immediate occupancy confirmation upon person detection
-    empty_debounce_sec: 15.0    # Consecutive seconds empty before marking VACANT
+    empty_debounce_sec: 2.0    # Consecutive seconds empty before marking VACANT
     alert_dwell_sec: 3600.0     # Turnaround warning threshold in seconds
 
   tables:
