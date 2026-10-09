@@ -1,5 +1,6 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { TerminusModule } from '@nestjs/terminus';
+import { ApiTokensModule } from './api-tokens/api-tokens.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ENV, type Env } from './config/env';
@@ -24,6 +25,7 @@ export class AppModule {
         AuthModule,
         AuditModule,
         UsersModule,
+        ApiTokensModule,
       ],
       controllers: [HealthController],
       providers: [{ provide: ENV, useValue: env }],

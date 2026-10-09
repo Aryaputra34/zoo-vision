@@ -1,13 +1,12 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS } from '../redis/redis.module';
+import { sha256hex } from './hash';
 import { SESSION_IDLE_MS, SESSION_MAX_MS, sessionTtlMs } from './session-ttl';
 
 const sessKey = (hash: string) => `sess:${hash}`;
 const userKey = (userId: string) => `usess:${userId}`;
-const sha256hex = (token: string) =>
-  createHash('sha256').update(token).digest('hex');
 
 /** Cookie sessions in Redis. Only the SHA-256 of a token is ever stored. */
 @Injectable()

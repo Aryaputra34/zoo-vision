@@ -84,6 +84,8 @@ export class AuthController {
     @Req() req: ActorRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
+    // A Bearer actor has no session to end.
+    if (actor.type === 'token') return;
     const token = (req.cookies as Record<string, string>)[SESSION_COOKIE];
     await this.auth.logout(actor.id, token, requestMeta(req));
     res.clearCookie(SESSION_COOKIE, this.cookieOptions());

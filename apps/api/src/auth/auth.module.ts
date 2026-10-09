@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { PassportModule } from '@nestjs/passport';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ApiTokensModule } from '../api-tokens/api-tokens.module';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
@@ -14,6 +15,7 @@ import { SessionService } from './session.service';
 
 @Module({
   imports: [
+    ApiTokensModule,
     PassportModule,
     // Used only by LoginThrottlerGuard: 10 requests per minute per IP, counted in memory.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
