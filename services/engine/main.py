@@ -121,7 +121,7 @@ def main():
         mock_mode=nx_cfg.get("mock_mode", True)
     )
 
-    # Web analytics dashboard (zoo-analytics-web)
+    # Web analytics dashboard (zoo-vision-fe)
     an_cfg = app_cfg.get("analytics", {})
     analytics = AnalyticsDispatcher(
         api_url=an_cfg.get("api_url", "http://localhost:3000/api/events"),

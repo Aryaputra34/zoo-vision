@@ -1,5 +1,5 @@
 """
-AI Engine HTTP API for the web dashboard (zoo-analytics-web proxies it behind its login).
+AI Engine HTTP API for the web dashboard (zoo-vision-fe proxies it behind its login).
   GET /health                  per-camera FPS and online state
   GET /frame/{camera_id}       latest annotated frame, one JPEG
   GET /stream/{camera_id}      annotated live preview as MJPEG; frames are encoded only while someone watches

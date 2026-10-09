@@ -19,7 +19,7 @@ from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("BasePipeline")
 
-# Live-state heartbeat interval for the web dashboard (zoo-analytics-web src/lib/util.ts STATUS_SEC must match).
+# Live-state heartbeat interval for the web dashboard (zoo-vision-fe src/lib/util.ts STATUS_SEC must match).
 STATUS_INTERVAL_SEC = 30
 
 

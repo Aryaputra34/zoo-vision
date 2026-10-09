@@ -22,7 +22,7 @@ ai_engine:
   model_cache_dir: "models"
   default_confidence: 0.35
 
-# Web Analytics Dashboard (zoo-analytics-web)
+# Web Analytics Dashboard (zoo-vision-fe)
 analytics:
   enabled: true
   api_url: "http://localhost:3000/api/events"

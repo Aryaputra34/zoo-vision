@@ -1,7 +1,7 @@
 """
 Zoo Vision Analytics Dispatcher
 Dispatches structured telemetry and alert events from CV pipelines to the
-Web Analytics Dashboard API (zoo-analytics-web, POST /api/events) asynchronously.
+Web Analytics Dashboard API (zoo-vision-fe, POST /api/events) asynchronously.
 Non-blocking background thread prevents any latency impact on video processing.
 """
 
