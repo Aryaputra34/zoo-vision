@@ -27,7 +27,8 @@ def test_no_large_blobs():
 
 
 @pytest.mark.parametrize("path", ["mediamtx.exe", "mediamtx/mediamtx.exe", "mediamtx.yml", "yolo11s.onnx",
-                                  "services/engine/models/yolo26s.onnx", "scratch/notes.py"])
+                                  "services/engine/models/yolo26s.onnx", "scratch/notes.py",
+                                  "deploy/.env"])
 def test_local_files_are_ignored(path):
     assert subprocess.run(["git", "check-ignore", "-q", path], cwd=REPO).returncode == 0
 

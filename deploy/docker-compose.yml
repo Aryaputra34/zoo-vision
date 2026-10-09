@@ -1,7 +1,7 @@
-version: '3.8'
-
+# Zoo Vision on one park server. Run from this folder: docker compose up -d
+# Host data lives in ${ZOO_DATA_DIR} (default ./data): recordings, snapshots, models, logs. See README.md.
 services:
-  # Pulls every camera once, records it (configs/mediamtx.yml), re-serves RTSP to the AI engine
+  # Pulls every camera once, records it (mediamtx.yml), re-serves RTSP to the AI engine
   # and serves event clips to the dashboard on :9996.
   mediamtx:
     image: bluenviron/mediamtx:1.21.1
@@ -11,11 +11,12 @@ services:
     environment:
       - MTX_PATHDEFAULTS_RECORDPATH=/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
     volumes:
-      - ./configs/mediamtx.yml:/mediamtx.yml:ro
-      - ./recordings:/recordings
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - ${ZOO_DATA_DIR:-./data}/recordings:/recordings
 
   zoo-ai-engine:
-    build: ./services/engine
+    build: ../services/engine
+    image: zoo-vision-engine:${ZOO_VERSION:-dev}
     container_name: zoo_vision_service
     restart: unless-stopped
     network_mode: "host" # Host networking for lowest latency RTSP & REST calls
@@ -29,9 +30,9 @@ services:
               count: all # Passes your RTX 3060 / 4070 GPU directly inside
               capabilities: [ gpu, video ] # Enables CUDA + NVDEC hardware video decoding
     volumes:
-      - ./services/engine/configs:/app/configs # Edit camera configs without rebuilding image
-      - ./services/engine/models:/app/models # Hot-swap new TensorRT .engine files anytime
-      - ./logs:/app/logs
-      - ./snapshots:/app/snapshots # Event JPEGs served to the dashboard
+      - ../services/engine/configs:/app/configs # Edit camera configs without rebuilding image
+      - ${ZOO_DATA_DIR:-./data}/models:/app/models # Fetched by tools/fetch_models.py
+      - ${ZOO_DATA_DIR:-./data}/logs:/app/logs
+      - ${ZOO_DATA_DIR:-./data}/snapshots:/app/snapshots # Event JPEGs served to the dashboard
     environment:
       - PYTHONUNBUFFERED=1
