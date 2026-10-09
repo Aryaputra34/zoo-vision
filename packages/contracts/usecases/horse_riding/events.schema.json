@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "horse_crossing": {
+      "title": "HorseCrossing",
+      "type": "object",
+      "properties": {
+        "direction": {
+          "enum": [
+            "DEPARTURE",
+            "RETURN"
+          ]
+        },
+        "trackerId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "direction",
+        "trackerId"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

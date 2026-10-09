@@ -1,0 +1,16 @@
+{
+  "message": "event",
+  "cameraId": "cam-example",
+  "useCase": "horse_riding",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "id": "evt_00000000000000000000000000000004",
+  "type": "horse_crossing",
+  "severity": "info",
+  "snapshotPath": null,
+  "data": {
+    "direction": "DEPARTURE",
+    "trackerId": 7
+  }
+}

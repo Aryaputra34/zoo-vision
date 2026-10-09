@@ -1,0 +1,12 @@
+{
+  "message": "interval_open",
+  "cameraId": "cam-example",
+  "useCase": "cashier_presence",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "sessionId": "ses_00000000000000000000000000000003",
+  "kind": "desk_unattended",
+  "subjectId": null,
+  "data": {}
+}

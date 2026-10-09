@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HorseRidingSettings",
+  "type": "object",
+  "properties": {
+    "model_name": {
+      "$ref": "../../common/detection.schema.json#/$defs/ModelName",
+      "default": "yolo11m.pt",
+      "x-minRole": "SUPERADMIN"
+    },
+    "imgsz": {
+      "$ref": "../../common/detection.schema.json#/$defs/ImageSize",
+      "default": 640,
+      "x-minRole": "SUPERADMIN"
+    },
+    "confidence_threshold": {
+      "$ref": "../../common/detection.schema.json#/$defs/ConfidenceThreshold",
+      "default": 0.35
+    },
+    "track_horses_only": {
+      "type": "boolean",
+      "default": true,
+      "x-minRole": "SUPERADMIN"
+    },
+    "track_activation_thresh": {
+      "type": "number",
+      "default": 0.25,
+      "x-minRole": "SUPERADMIN"
+    },
+    "lost_track_buffer": {
+      "type": "integer",
+      "default": 60,
+      "x-minRole": "SUPERADMIN"
+    },
+    "matching_thresh": {
+      "type": "number",
+      "default": 0.7,
+      "x-minRole": "SUPERADMIN"
+    },
+    "frame_rate": {
+      "type": "integer",
+      "default": 15,
+      "minimum": 1,
+      "maximum": 60,
+      "x-minRole": "SUPERADMIN"
+    },
+    "smoothing_frames": {
+      "type": "integer",
+      "default": 4,
+      "x-minRole": "SUPERADMIN"
+    },
+    "tripwire": {
+      "title": "Tripwire",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "start": {
+          "$ref": "../../common/geometry.schema.json#/$defs/Point",
+          "default": [
+            0.2,
+            0.6
+          ]
+        },
+        "end": {
+          "$ref": "../../common/geometry.schema.json#/$defs/Point",
+          "default": [
+            0.8,
+            0.6
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "default": {},
+      "x-geometry": "line"
+    },
+    "roi_polygon": {
+      "$ref": "../../common/geometry.schema.json#/$defs/Polygon"
+    },
+    "display_label": {
+      "type": "string",
+      "default": "Horse"
+    },
+    "display_label_plural": {
+      "type": "string"
+    },
+    "attraction_title": {
+      "type": "string"
+    },
+    "show_boxes": {
+      "type": "boolean",
+      "default": true
+    },
+    "show_labels": {
+      "type": "boolean",
+      "default": true
+    },
+    "show_traces": {
+      "type": "boolean",
+      "default": true
+    },
+    "trace_length": {
+      "type": "integer",
+      "default": 45
+    },
+    "debounce_alert_sec": {
+      "type": "integer",
+      "default": 15
+    },
+    "nx_bookmark": {
+      "$ref": "../../common/detection.schema.json#/$defs/NxBookmark"
+    }
+  },
+  "additionalProperties": false
+}

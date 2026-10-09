@@ -1,0 +1,14 @@
+{
+  "message": "interval_close",
+  "cameraId": "cam-example",
+  "useCase": "restaurant_counter",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:05:00.000Z",
+  "sessionId": "ses_00000000000000000000000000000006",
+  "kind": "table_session",
+  "endReason": "ended",
+  "data": {
+    "tableName": "Table 2 (Front Right Booth)"
+  }
+}

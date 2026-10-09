@@ -1,0 +1,14 @@
+{
+  "message": "interval_open",
+  "cameraId": "cam-example",
+  "useCase": "restaurant_table",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "sessionId": "ses_00000000000000000000000000000007",
+  "kind": "table_session",
+  "subjectId": "T1",
+  "data": {
+    "tableName": "Table 1 (Front Left)"
+  }
+}

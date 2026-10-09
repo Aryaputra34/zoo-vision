@@ -1,0 +1,10 @@
+{
+  "queue_length": {
+    "label": "Queue length",
+    "unit": "persons"
+  },
+  "clerk_count": {
+    "label": "Clerks at desk",
+    "unit": "persons"
+  }
+}

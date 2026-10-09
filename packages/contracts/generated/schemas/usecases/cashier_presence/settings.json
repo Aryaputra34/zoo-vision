@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CashierPresenceSettings",
+  "type": "object",
+  "properties": {
+    "model_name": {
+      "default": "yolo11s.onnx",
+      "x-minRole": "SUPERADMIN",
+      "title": "ModelName",
+      "type": "string",
+      "pattern": "^[\\w.-]+\\.(onnx|pt|engine)$"
+    },
+    "imgsz": {
+      "default": 640,
+      "x-minRole": "SUPERADMIN",
+      "title": "ImageSize",
+      "description": "Inference size: one integer for a square, or [height, width].",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 32,
+          "maximum": 4096
+        },
+        {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 32,
+              "maximum": 4096
+            },
+            {
+              "type": "integer",
+              "minimum": 32,
+              "maximum": 4096
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      ]
+    },
+    "confidence_threshold": {
+      "default": 0.22,
+      "title": "ConfidenceThreshold",
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 1
+    },
+    "clerk_zone": {
+      "title": "Polygon",
+      "type": "array",
+      "items": {
+        "title": "Point",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "minItems": 3,
+      "x-geometry": "polygon"
+    },
+    "visitor_zone": {
+      "$ref": "#/properties/clerk_zone"
+    },
+    "absence_alert_timeout_sec": {
+      "type": "integer",
+      "default": 10,
+      "minimum": 1
+    },
+    "min_waiting_confirm_sec": {
+      "type": "integer",
+      "default": 3,
+      "minimum": 0
+    },
+    "visitor_waiting_alert_timeout_sec": {
+      "type": "integer",
+      "default": 5,
+      "minimum": 1
+    },
+    "debounce_alert_sec": {
+      "type": "integer",
+      "default": 30,
+      "minimum": 0
+    },
+    "nx_bookmark": {
+      "title": "NxBookmark",
+      "type": "object",
+      "properties": {
+        "tag": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 600000
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "clerk_zone"
+  ],
+  "additionalProperties": false
+}

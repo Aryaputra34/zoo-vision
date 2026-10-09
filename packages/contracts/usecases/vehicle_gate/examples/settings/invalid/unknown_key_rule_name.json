@@ -1,0 +1,48 @@
+{
+  "model_name": "yolo26l.onnx",
+  "imgsz": 640,
+  "tripwire": {
+    "start": [
+      0.76,
+      0.58
+    ],
+    "end": [
+      0.05,
+      0.43
+    ]
+  },
+  "roi_polygon": [
+    [
+      0,
+      0.15
+    ],
+    [
+      0.83,
+      0.15
+    ],
+    [
+      0.8,
+      1
+    ],
+    [
+      0,
+      1
+    ]
+  ],
+  "track_activation_thresh": 0.25,
+  "lost_track_buffer": 75,
+  "matching_thresh": 0.7,
+  "frame_rate": 25,
+  "confidence_threshold": 0.3,
+  "anpr": {
+    "enabled": false,
+    "model_path": "models/license_plate_detector.onnx",
+    "min_plate_confidence": 0.25
+  },
+  "nx_bookmark": {
+    "tag": "#vehicle_audit",
+    "title": "[GATE AUDIT] Vehicle Entry Logged",
+    "duration_ms": 10000
+  },
+  "rule_name": "vehicle_gate_audit"
+}

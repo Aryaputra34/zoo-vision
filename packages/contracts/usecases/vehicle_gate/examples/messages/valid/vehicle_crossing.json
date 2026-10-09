@@ -1,0 +1,20 @@
+{
+  "message": "event",
+  "cameraId": "cam-example",
+  "useCase": "vehicle_gate",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "id": "evt_00000000000000000000000000000008",
+  "type": "vehicle_crossing",
+  "severity": "info",
+  "snapshotPath": null,
+  "data": {
+    "direction": "ENTRY",
+    "vehicleType": "car",
+    "plate": "B 1234 XYZ",
+    "plateValid": true,
+    "ocrConfidence": 0.91,
+    "trackerId": 12
+  }
+}

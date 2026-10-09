@@ -1,0 +1,10 @@
+{
+  "message": "metric",
+  "cameraId": "cam-example",
+  "useCase": "cashier_presence",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "name": "queue_length",
+  "value": 2.5
+}

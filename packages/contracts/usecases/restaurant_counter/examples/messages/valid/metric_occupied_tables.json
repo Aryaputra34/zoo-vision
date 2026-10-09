@@ -1,0 +1,10 @@
+{
+  "message": "metric",
+  "cameraId": "cam-example",
+  "useCase": "restaurant_counter",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "name": "occupied_tables",
+  "value": 6
+}

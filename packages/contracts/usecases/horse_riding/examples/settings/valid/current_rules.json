@@ -1,0 +1,35 @@
+{
+  "model_name": "yolo26s.onnx",
+  "imgsz": 640,
+  "confidence_threshold": 0.25,
+  "track_horses_only": true,
+  "track_activation_thresh": 0.25,
+  "lost_track_buffer": 60,
+  "matching_thresh": 0.7,
+  "frame_rate": 25,
+  "display_label": "Pony",
+  "display_label_plural": "Ponies",
+  "attraction_title": "Pony Riding Attraction",
+  "show_boxes": true,
+  "show_labels": true,
+  "show_traces": true,
+  "trace_length": 45,
+  "smoothing_frames": 4,
+  "tripwire": {
+    "enabled": true,
+    "start": [
+      0.76,
+      0.62
+    ],
+    "end": [
+      0.13,
+      0.97
+    ]
+  },
+  "debounce_alert_sec": 15,
+  "nx_bookmark": {
+    "tag": "#horse_audit",
+    "title": "[RIDE AUDIT] Horse Departure Logged",
+    "duration_ms": 10000
+  }
+}
