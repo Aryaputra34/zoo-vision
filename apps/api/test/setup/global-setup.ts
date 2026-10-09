@@ -63,8 +63,7 @@ async function migrate(ownerUrl: string): Promise<void> {
   }
 }
 
-// Until the roles migration exists, zoo_api only needs to log in; the migration that
-// grants its table rights also creates the role when missing.
+// The db_roles migration creates zoo_api NOLOGIN and grants its rights; tests need it to log in.
 async function enableApiLogin(ownerUrl: string): Promise<void> {
   const client = new Client({ connectionString: ownerUrl });
   await client.connect();

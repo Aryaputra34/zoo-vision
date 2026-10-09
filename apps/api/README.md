@@ -51,6 +51,11 @@ Edit `prisma/schema.prisma`, then against a local database:
 DATABASE_MIGRATE_URL=postgresql://zoo_owner:...@localhost:5432/zoo_vision npx prisma migrate dev --name <change>
 ```
 
+**Rule: every migration that adds a table also adds its `GRANT`s for `zoo_api`.** Prisma does not
+diff grants, so write them by hand in the same migration (see `*_db_roles`). `Event`, `AuditLog`,
+`LoginLog` and `DeadEvent` stay SELECT + INSERT only; `Interval` and `Metric` allow UPDATE only on
+the columns listed there. `test/append-only.e2e-spec.ts` fails if a table has no SELECT grant.
+
 Deployments run `npx prisma migrate deploy` in the API image with `DATABASE_MIGRATE_URL` set.
 
 ## Docker
