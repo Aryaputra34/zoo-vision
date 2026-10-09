@@ -2,6 +2,8 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { createSuperadmin } from '../src/cli';
+import Redis from 'ioredis';
+import { REDIS } from '../src/redis/redis.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './app';
 import { login, seedUser } from './helpers/auth';
@@ -151,7 +153,7 @@ describe('auth', () => {
     });
   });
 
-  it('the eleventh attempt in a minute from one IP gets 429 and RATE_LIMITED', async () => {
+  it('the eleventh attempt in a minute from one IP gets 429 and RATE_LIMITED, the twelfth only 429', async () => {
     for (let i = 0; i < 10; i++) {
       await attempt(`ghost-${i}`, 'whatever-123').expect(401);
     }
@@ -162,6 +164,55 @@ describe('auth', () => {
       userId: null,
       userAgent: 'jest-agent',
     });
+    await attempt('ghost-11', 'whatever-123').expect(429);
+    expect(
+      await prisma.loginLog.count({ where: { result: 'RATE_LIMITED' } }),
+    ).toBe(1);
+  });
+
+  it('an extra body field gives 400 with no LoginLog row and no session', async () => {
+    const user = await seedUser(app, 'USER');
+    const redis = app.get<Redis>(REDIS);
+    await post('/api/v1/auth/login')
+      .send({ username: user.username, password: user.password, x: 1 })
+      .expect(400);
+    expect(await prisma.loginLog.count()).toBe(0);
+    expect(await redis.keys('sess:*')).toEqual([]);
+  });
+
+  it('credentials in the query string are rejected', async () => {
+    const user = await seedUser(app, 'USER');
+    const redis = app.get<Redis>(REDIS);
+    const res = await post('/api/v1/auth/login')
+      .query({ username: user.username, password: user.password })
+      .send({});
+    expect([400, 401]).toContain(res.status);
+    expect(await prisma.loginLog.count()).toBe(0);
+    expect(await redis.keys('sess:*')).toEqual([]);
+  });
+
+  it('a 201-character username gives 400 and no loginfail key', async () => {
+    const redis = app.get<Redis>(REDIS);
+    await attempt('a'.repeat(201), 'whatever-123').expect(400);
+    expect(await prisma.loginLog.count()).toBe(0);
+    expect(await redis.keys('loginfail:*')).toEqual([]);
+  });
+
+  it('8 concurrent wrong passwords leave at most 5 WRONG_PASSWORD rows and the rest LOCKED', async () => {
+    const user = await seedUser(app, 'USER');
+    const statuses = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        attempt(user.username, 'wrong-password').then((r) => r.status),
+      ),
+    );
+    expect(statuses.filter((s) => s === 401)).toHaveLength(5);
+    expect(statuses.filter((s) => s === 423)).toHaveLength(3);
+    expect(
+      await prisma.loginLog.count({ where: { result: 'WRONG_PASSWORD' } }),
+    ).toBe(5);
+    expect(await prisma.loginLog.count({ where: { result: 'LOCKED' } })).toBe(
+      3,
+    );
   });
 
   it('logout → 204, LOGOUT row, and the old cookie gets 401', async () => {

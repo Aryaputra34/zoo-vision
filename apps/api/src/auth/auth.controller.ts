@@ -9,7 +9,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiBody, ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import type { CookieOptions, Request, Response } from 'express';
 import { ENV, type Env } from '../config/env';
@@ -32,6 +32,7 @@ export class LoginDto {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   password!: string;
 }
 
@@ -53,6 +54,7 @@ export class AuthController {
 
   /** The credentials are checked by LocalAuthGuard (LocalStrategy), which leaves the result on req.user. */
   @Public()
+  @ApiBody({ type: LoginDto })
   @UseGuards(LoginThrottlerGuard, LocalAuthGuard)
   @HttpCode(200)
   @Post('login')

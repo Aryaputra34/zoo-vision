@@ -42,7 +42,7 @@ export class AuthService {
     const username = normalizeUsername(typed);
     const user = await this.prisma.user.findUnique({ where: { username } });
 
-    const lockedSec = await this.lockout.lockedForSec(username);
+    const lockedSec = await this.lockout.reserve(username);
     if (lockedSec > 0) {
       await this.record('LOCKED', typed, user?.id, meta);
       throw new HttpException(
@@ -54,16 +54,15 @@ export class AuthService {
     // Unknown users are compared against a dummy hash so the response time does not reveal them.
     const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok) {
-      await this.lockout.recordFailure(username);
       await this.record('WRONG_PASSWORD', typed, user?.id, meta);
       throw new UnauthorizedException('Invalid username or password');
     }
+    await this.lockout.reset(username);
     if (!user.active) {
       await this.record('DISABLED', typed, user.id, meta);
       throw new ForbiddenException('Account disabled');
     }
 
-    await this.lockout.reset(username);
     const token = await this.sessions.create(user.id, meta);
     await this.record('SUCCESS', typed, user.id, meta);
     return {
