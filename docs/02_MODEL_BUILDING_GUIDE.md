@@ -164,7 +164,7 @@ model.export(
 ```
 
 > [!TIP]
-> **Universal Model Exporter**: You can also use [`export_model.py`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/export_model.py) for interactive or scripted exports to ONNX, OpenVINO, and TensorRT with automatic 16:9 widescreen CCTV aspect ratio handling. See the full [Model Export Guide](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/05_MODEL_EXPORT_GUIDE.md).
+> **Universal Model Exporter**: You can also use [`tools/export_model.py`](../tools/export_model.py) for interactive or scripted exports to ONNX, OpenVINO, and TensorRT with automatic 16:9 widescreen CCTV aspect ratio handling. See the full [Model Export Guide](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docs/05_MODEL_EXPORT_GUIDE.md).
 
 ---
 
@@ -235,4 +235,4 @@ class IndonesianLPR:
 | **Phase 2 Dataset** | Mount Choke Camera | Record 2 hours of footage; label 200 frames for rider vs. handler. Fine-tune in Jupyter. |
 | **Phase 4 Dataset** | Feeding Platforms | Record feeding windows (10–11 AM, 2–3 PM). Label carrots, kresek, wrappers. Train custom YOLOv11. |
 | **GPU Optimization** | TensorRT 10.x | Always run `model.export(format='engine', half=True)` before deploying to production. |
-| **Production Runtime** | Docker + CUDA 12 | Deploy via `docker-compose.yml` with NVIDIA Container Toolkit. No Jupyter in production. |
+| **Production Runtime** | Docker + CUDA 12 | Deploy via `deploy/docker-compose.yml` with NVIDIA Container Toolkit. No Jupyter in production. |

@@ -1,5 +1,5 @@
 # Model Export & Runtime Optimization Guide
-**Universal YOLO Exporter for Zoo & Vision Pipelines (`export_model.py`)**
+**Universal YOLO Exporter for Zoo & Vision Pipelines (`tools/export_model.py`)**
 
 This guide provides end-to-end instructions for exporting PyTorch (`.pt`) YOLO models into high-performance deployment runtimes (**ONNX**, **Intel OpenVINO**, and **NVIDIA TensorRT**), selecting optimal aspect ratios for 1080p surveillance video, and integrating exported models into the Zoo Monitor production pipelines.
 
@@ -9,7 +9,7 @@ This guide provides end-to-end instructions for exporting PyTorch (`.pt`) YOLO m
 
 PyTorch (`.pt`) checkpoints are designed for training, backpropagation, and rapid experimentation. However, deploying `.pt` files in production surveillance environments introduces unnecessary overhead (Python GIL contention, heavy PyTorch runtime dependencies, and higher memory footprints).
 
-The universal model exporter ([`export_model.py`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/export_model.py)) converts PyTorch weights into optimized, hardware-accelerated graphs:
+The universal model exporter ([`tools/export_model.py`](../tools/export_model.py), run from the repo root with the engine environment) converts PyTorch weights into optimized, hardware-accelerated graphs:
 
 ```mermaid
 flowchart LR
@@ -39,7 +39,7 @@ flowchart LR
 
 Simply launch the script without arguments:
 ```powershell
-python export_model.py
+uv run --project services/engine python tools/export_model.py
 ```
 
 The wizard will guide you through 5 straightforward prompts:
@@ -100,35 +100,35 @@ For scripting, CI/CD, or automated builds, pass arguments directly.
 
 #### 1. List All Available PyTorch Weights
 ```powershell
-python export_model.py --list
+uv run --project services/engine python tools/export_model.py --list
 ```
 
 #### 2. Export to Dynamic ONNX (Standard 640)
 ```powershell
-python export_model.py --model yolo11s.pt --format onnx --imgsz 640 --dynamic
+uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format onnx --imgsz 640 --dynamic
 ```
 
 #### 3. Export for 16:9 Widescreen CCTV (Zero Letterbox Padding)
 ```powershell
 # Height 736, Width 1280 (Multiple of 32 for 16:9 aspect ratio)
-python export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
+uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
 ```
 
 #### 4. Export for Native 1080p High-Fidelity
 ```powershell
-python export_model.py --model yolo26m.pt --format onnx --imgsz 1088 1920 --dynamic
+uv run --project services/engine python tools/export_model.py --model yolo26m.pt --format onnx --imgsz 1088 1920 --dynamic
 ```
 
 #### 5. Export to Intel OpenVINO (for Intel NUC / Core / Xeon CPUs)
 ```powershell
-python export_model.py --model yolo11s.pt --format openvino --imgsz 640
+uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format openvino --imgsz 640
 ```
 
 #### 6. Export to NVIDIA TensorRT FP16 (for Production Linux / GPU Servers)
 > [!NOTE]
 > TensorRT export requires an NVIDIA GPU with CUDA and the `tensorrt` Python package installed.
 ```powershell
-python export_model.py --model yolo11s.pt --format engine --imgsz 640 --half
+uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format engine --imgsz 640 --half
 ```
 
 ---
@@ -202,7 +202,7 @@ By exporting with rectangular 16:9 dimensions:
 
 ```powershell
 # Export 16:9 Widescreen Model for Gate and Highway cameras:
-python export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
+uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
 ```
 
 ### The Stride-32 Rule
@@ -226,7 +226,7 @@ YOLO architectures employ 5 downsampling convolutional stages ($2^5 = 32$). Ther
 
 ```powershell
 # Export fixed shape for embedded NPU:
-python export_model.py --model yolo11n.pt --format onnx --imgsz 640 --fixed
+uv run --project services/engine python tools/export_model.py --model yolo11n.pt --format onnx --imgsz 640 --fixed
 ```
 
 ---
@@ -238,7 +238,7 @@ python export_model.py --model yolo11n.pt --format onnx --imgsz 640 --fixed
 
 ```powershell
 # Export FP16 model for NVIDIA GPU deployment:
-python export_model.py --model yolo26s.pt --format onnx --imgsz 640 --half
+uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 640 --half
 ```
 
 ---
@@ -248,10 +248,10 @@ python export_model.py --model yolo26s.pt --format onnx --imgsz 640 --half
 Once exported, configuring a pipeline to use the new model requires changing just one line in the corresponding rule configuration.
 
 ### 1. Update YAML Rule Configuration
-Open the desired pipeline configuration in [`configs/rules/`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/configs/rules/):
+Open the desired pipeline configuration in [`services/engine/configs/rules/`](../services/engine/configs/rules/):
 
 ```yaml
-# configs/rules/vehicle_gate.yaml
+# services/engine/configs/rules/vehicle_gate.yaml
 camera_id: "gate_camera_01"
 name: "Main Vehicle Gate 1"
 
@@ -264,7 +264,7 @@ vision:
 ```
 
 ```yaml
-# configs/rules/restaurant_counter.yaml
+# services/engine/configs/rules/restaurant_counter.yaml
 camera_id: "restaurant_camera_01"
 name: "Safari Restaurant Entrance"
 
@@ -276,17 +276,17 @@ vision:
 ```
 
 ### 2. Verify Pipeline Execution
-Test the pipeline on recorded CCTV footage using [`test_video.py`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/test_video.py):
+Test the pipeline on recorded CCTV footage using [`test_video.py`](../services/engine/test_video.py) (from `services/engine/`):
 
 ```powershell
 # Test Vehicle Gate pipeline with ONNX model
-python test_video.py --video "C:\Users\Magnet Busdev-2\Downloads\Copy of 27062026.mp4" --pipeline gate --start-time 00:25
+uv run python test_video.py --video "C:\Users\Magnet Busdev-2\Downloads\Copy of 27062026.mp4" --pipeline gate --start-time 00:25
 
 # Test Cashier Presence pipeline with ONNX model
-python test_video.py --video "demo_cashier.mp4" --pipeline cashier
+uv run python test_video.py --video "demo_cashier.mp4" --pipeline cashier
 
 # Test Restaurant People Counter pipeline
-python test_video.py --video "demo_restaurant.mp4" --pipeline restaurant
+uv run python test_video.py --video "demo_restaurant.mp4" --pipeline restaurant
 ```
 
 The pipeline logger will confirm that the model loaded via the ONNX runtime:
@@ -300,9 +300,10 @@ The pipeline logger will confirm that the model loaded via the ONNX runtime:
 ## 9. Troubleshooting & FAQ
 
 ### Q1: `ModuleNotFoundError: No module named 'onnx'` or `'onnxruntime'`
-**Fix**: Install the ONNX export and runtime packages into your active virtual environment:
+**Fix**: `onnx` and ONNX Runtime are engine dependencies; re-sync the environment:
 ```powershell
-pip install onnx onnxruntime onnxsim
+cd services/engine
+uv sync
 ```
 
 ### Q2: Why did `export_model.py` change my resolution from 720 to 736?
@@ -314,5 +315,5 @@ pip install onnx onnxruntime onnxsim
 ### Q4: Can I export custom-trained weights from Tier 2 or Tier 4?
 **Answer**: Yes. Any PyTorch weights trained via Ultralytics (e.g. `runs/detect/train/weights/best.pt`) can be passed directly:
 ```powershell
-python export_model.py --model runs/detect/train/weights/best.pt --format onnx --imgsz 640
+uv run --project services/engine python tools/export_model.py --model runs/detect/train/weights/best.pt --format onnx --imgsz 640
 ```

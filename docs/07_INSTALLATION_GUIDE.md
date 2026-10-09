@@ -12,16 +12,16 @@ This document provides complete, step-by-step instructions for installing, confi
 3. [Method A: Local Python Environment (Bare Metal / Dev)](#3-method-a-local-python-environment-bare-metal--dev)
    - [Linux (Ubuntu 22.04 LTS)](#step-1a-system-packages-ubuntu-2204-lts)
    - [Windows 10/11](#step-1b-system-packages-windows-1011)
-   - [Python Virtual Environment & Dependencies](#step-2-python-virtual-environment--dependencies)
+   - [Python Environment & Dependencies (uv)](#step-2-python-environment--dependencies-uv)
    - [GPU Hardware Acceleration (PyTorch + CUDA)](#step-3-gpu-hardware-acceleration-pytorch--cuda)
 4. [Method B: Containerized Deployment (Docker & Docker Compose)](#4-method-b-containerized-deployment-docker--docker-compose)
    - [NVIDIA Container Toolkit Setup](#step-1-nvidia-container-toolkit-host-setup)
    - [Docker Compose Deployment](#step-2-deploy-via-docker-compose)
-5. [Method C: Native C++ Nx Meta Plugin (`magnet_nx_plugin`)](#5-method-c-native-c-nx-meta-plugin-magnet_nx_plugin)
+5. [Method C: Native C++ Nx Meta Plugin (`integrations/nx/plugin`)](#5-method-c-native-c-nx-meta-plugin-integrationsnxplugin)
 6. [Configuration & Environment Setup](#6-configuration--environment-setup)
-   - [Application Configuration (`configs/app_config.yaml`)](#61-application-configuration-configsapp_configyaml)
-   - [Camera Stream Configuration (`configs/cameras.yaml`)](#62-camera-stream-configuration-configscamerasyaml)
-   - [Pipeline Rules Configuration (`configs/rules/`)](#63-pipeline-rules-configuration-configsrules)
+   - [Application Configuration (`services/engine/configs/app_config.yaml`)](#61-application-configuration-servicesengineconfigsapp_configyaml)
+   - [Camera Stream Configuration (`services/engine/configs/cameras.yaml`)](#62-camera-stream-configuration-servicesengineconfigscamerasyaml)
+   - [Pipeline Rules Configuration (`services/engine/configs/rules/`)](#63-pipeline-rules-configuration-servicesengineconfigsrules)
    - [Model Weights & Acceleration Artifacts](#64-model-weights--acceleration-artifacts)
 7. [Verification & Smoke Testing](#7-verification--smoke-testing)
    - [Quick Smoke Test (Synthetic Frames)](#71-quick-smoke-test-synthetic-frames)
@@ -39,7 +39,7 @@ This document provides complete, step-by-step instructions for installing, confi
 > about 12 cameras per site. Nx is optional.
 >
 > ```
-> cameras ──RTSP/TCP──> MediaMTX ──RTSP──> zoo-monitor (Python AI) ──events + snapshots──> zoo-analytics-web
+> cameras ──RTSP/TCP──> MediaMTX ──RTSP──> zoo-vision engine (Python AI) ──events + snapshots──> zoo-vision-fe
 >                         │ records, 7-day retention     │ :8000 preview / snapshots API          │ login, /live,
 >                         └──── :9996 event clips ───────┴────────────────────────────────────────┘ evidence, clips
 > ```
@@ -65,13 +65,13 @@ flowchart TB
     subgraph Deployment ["Zoo Vision Analytics Options"]
         direction TB
         Opt1["<b>Method A: Python Bare-Metal</b><br/>Local Dev / Workstation Service<br/>(PyTorch + OpenCV + supervision)"]
-        Opt2["<b>Method B: Docker Container</b><br/>Host-Networked NVIDIA Docker<br/>(docker-compose.yml)"]
+        Opt2["<b>Method B: Docker Container</b><br/>Host-Networked NVIDIA Docker<br/>(deploy/docker-compose.yml)"]
         Opt3["<b>Method C: Native C++ Plugin</b><br/>In-Process Nx Meta Plugin<br/>(libmagnet_analytics_plugin.so)"]
     end
 
     subgraph Egress ["Dashboards & Alerts"]
         NxClient["Nx Witness Desktop Client<br/>(Live Bounding Boxes & Bookmarks)"]
-        WebDash["Web Analytics Dashboard<br/>(zoo-analytics-web :3000)"]
+        WebDash["Web Analytics Dashboard<br/>(zoo-vision-fe :3000)"]
     end
 
     Cameras -->|RTSP| NxServer
@@ -154,93 +154,65 @@ sudo apt-get install -y \
 
 ---
 
-### Step 2: Python Virtual Environment & Dependencies
+### Step 2: Python Environment & Dependencies (uv)
 
-Clone the repository and create an isolated Python virtual environment:
-
-```bash
-# 1. Clone repository (or navigate to workspace directory)
-cd ~/zoo-vision   # On Windows: cd C:\Users\<YourUser>\Documents\WORK\zoo-vision
-
-# 2. Create Python virtual environment (.venv)
-python3 -m venv .venv       # On Windows: python -m venv .venv
-
-# 3. Activate the virtual environment
-# On Linux/macOS:
-source .venv/bin/activate
-
-# On Windows PowerShell:
-.\.venv\Scripts\Activate.ps1
-# (If execution policy blocks scripts, run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass)
-```
-
-Upgrade core packaging tools:
+The engine is a [uv](https://docs.astral.sh/uv/) project in `services/engine/`. uv installs Python 3.12 and the exact
+locked dependencies (`uv.lock`), so there are no manual venv or pip steps.
 
 ```bash
-python -m pip install --upgrade pip setuptools wheel
+# 1. Install uv and git-lfs
+#    Linux:   curl -LsSf https://astral.sh/uv/install.sh | sh   and   sudo apt install git-lfs
+#    Windows: winget install astral-sh.uv   and   winget install GitHub.GitLFS
+
+# 2. Enter the engine folder of the cloned repository
+cd ~/zoo-vision/services/engine   # On Windows: cd C:\Users\<YourUser>\Documents\WORK\zoo-vision\services\engine
+
+# 3. Create .venv with the locked dependencies
+uv sync
+
+# 4. Fetch the model weights (not stored in git) into services/engine/models/
+python ../../tools/fetch_models.py
 ```
+
+Every engine command below runs from `services/engine/` through `uv run` (for example `uv run python main.py`).
 
 ---
 
 ### Step 3: GPU Hardware Acceleration (PyTorch + CUDA)
 
-> [!TIP]
-> Always install PyTorch matching your installed CUDA driver before installing the rest of `requirements.txt`.
+`services/engine/pyproject.toml` already chooses the PyTorch build:
+* **Linux**: CUDA 12.6 wheels from the PyTorch index. Needs NVIDIA driver 525.60 or newer (560+ recommended).
+* **Windows**: CPU wheels from PyPI (development).
 
-#### For NVIDIA GPU Acceleration (CUDA 12.1 / 12.4):
-
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
-
-Verify GPU visibility in Python:
+Verify GPU visibility:
 
 ```bash
-python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()} | GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
+uv run python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()} | GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
 ```
 
-*Expected output: `CUDA Available: True | GPU: NVIDIA GeForce RTX ...`*
-
-#### For CPU-Only Development (Laptops / Non-GPU Desktops):
-
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-```
+*Expected output on the GPU server: `CUDA Available: True | GPU: NVIDIA GeForce RTX ...`*
 
 ---
 
-### Step 4: Install Core Requirements
+### Step 4: What `uv sync` Installs
 
-Install the project dependencies from `requirements.txt`:
-
-```bash
-pip install -r requirements.txt
-```
-
-This installs:
-* `ultralytics>=8.3.0` (YOLOv11 engine, PyTorch inference, video frame decoders)
-* `supervision>=0.23.0` (ByteTrack tracker, LineZone tripwires, PolygonZone ROIs)
-* `shapely>=2.0.3` (Planar geometry for polygon intersection math)
-* `easyocr>=1.7.0` (Deep learning OCR for Indonesian license plate recognition)
-* `requests>=2.31.0` (Nx Meta REST API v3 HTTP client)
+`services/engine/pyproject.toml` lists the dependencies and `uv.lock` pins every version:
+* `ultralytics` (YOLO engine, PyTorch inference, video frame decoders)
+* `supervision` (ByteTrack tracker, LineZone tripwires, PolygonZone ROIs); kept below 0.31, which removes `sv.ByteTrack`
+* `shapely` (Planar geometry for polygon intersection math)
+* `easyocr` (Deep learning OCR for Indonesian license plate recognition)
+* `requests` (Nx Meta REST API v3 HTTP client), `fastapi` + `uvicorn` (engine API for the dashboard)
 * `pydantic`, `pyyaml`, `python-dotenv`, `tqdm` (Configuration and schema validation)
+* `torch`, `torchvision`, `onnx` and ONNX Runtime (`onnxruntime` on Windows, `onnxruntime-gpu` on Linux)
 
-#### Optional Hardware Acceleration Packages:
+#### Optional Export Runtimes:
 
-Depending on your target inference runtime:
+Only needed to export models to these formats with `tools/export_model.py`; they are not in the lock, and the next
+`uv sync` removes them again:
 
 ```bash
-# ONNX Runtime (CPU)
-pip install onnxruntime
-
-# ONNX Runtime (NVIDIA GPU with CUDA 12)
-pip install onnxruntime-gpu
-
-# Intel OpenVINO (Accelerates inference on Intel Core CPUs and integrated Intel Iris/UHD graphics)
-pip install openvino>=2024.0.0
-
-# NVIDIA TensorRT (Ultra-low latency FP16 engine on RTX GPUs)
-pip install tensorrt
+uv pip install "openvino>=2024.0.0"   # Intel OpenVINO (Intel Core CPUs and integrated Iris/UHD graphics)
+uv pip install tensorrt               # NVIDIA TensorRT (low-latency FP16 engine on RTX GPUs)
 ```
 
 ---
@@ -283,36 +255,35 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-runtime-ubuntu22.04 nvidia-smi
 
 ### Step 2: Deploy via Docker Compose
 
-The repository includes a ready-to-use [`Dockerfile`](../Dockerfile) and [`docker-compose.yml`](../docker-compose.yml).
+The repository includes a ready-to-use [`services/engine/Dockerfile`](../services/engine/Dockerfile) and [`deploy/docker-compose.yml`](../deploy/docker-compose.yml).
 
 ```bash
-# 1. Navigate to repository root
-cd ~/zoo-vision
+# 1. Navigate to the deploy folder
+cd ~/zoo-vision/deploy
 
-# 2. Ensure configuration files are prepared (see Section 6)
-cp configs/app_config.yaml.example configs/app_config.yaml
-cp configs/cameras.yaml.example configs/cameras.yaml
-#    and list every camera's RTSP URL under `paths:` in configs/mediamtx.yml
+# 2. Prepare configuration (see Section 6) and model weights
+cp .env.example .env              # ZOO_DATA_DIR (default ./data) and ZOO_VERSION
+cp ../services/engine/configs/app_config.yaml.example ../services/engine/configs/app_config.yaml
+cp ../services/engine/configs/cameras.yaml.example ../services/engine/configs/cameras.yaml
+#    and list every camera's RTSP URL under `paths:` in deploy/mediamtx.yml
+python3 ../tools/fetch_models.py --dest ./data/models    # offline site: add --from /media/usb/models
 
-# 3. Create required persistent host mount directories
-mkdir -p logs models snapshots recordings
-
-# 4. Build and start the containers (MediaMTX + AI engine) in detached mode
+# 3. Build and start the containers (MediaMTX + AI engine) in detached mode
 docker compose up -d --build
 
-# 5. Inspect container health and live inference logs
+# 4. Inspect container health and live inference logs
 docker compose logs -f zoo-ai-engine
 docker compose logs -f mediamtx      # "[path cam_...] [RTSP source] ready" per camera
 ```
 
 #### Cameras, MediaMTX and the dashboard
 
-1. In `configs/mediamtx.yml`, add one path per camera:
+1. In `deploy/mediamtx.yml`, add one path per camera:
    `cam_cashier_01: {source: rtsp://user:pass@<camera>/stream1}`. Set the cameras to H.264 so browsers can
    play the clips.
-2. In `configs/cameras.yaml`, read each camera from MediaMTX and name its recording:
+2. In `services/engine/configs/cameras.yaml`, read each camera from MediaMTX and name its recording:
    `source: rtsp://127.0.0.1:8554/cam_cashier_01` and `recording_path: cam_cashier_01`.
-3. In `configs/app_config.yaml`:
+3. In `services/engine/configs/app_config.yaml`:
    * `api_server.host`: set to `0.0.0.0` if the dashboard runs on another host.
    * `api_server.api_key`: set a long random key.
    * `snapshots.retention_days`: how many days of event snapshots to keep.
@@ -323,26 +294,27 @@ docker compose logs -f mediamtx      # "[path cam_...] [RTSP source] ready" per 
    * `DASHBOARD_PASSWORD=<shared login>`
 5. Keep ports 8000 (AI API) and 8554/8889/9996 (MediaMTX) on the internal network. MediaMTX only allows
    reads and playback from private address ranges.
-6. Disk: recordings take ~43 GB/day per 4 Mbit/s camera. Tune `recordDeleteAfter` in `configs/mediamtx.yml`.
+6. Disk: recordings take ~43 GB/day per 4 Mbit/s camera. Tune `recordDeleteAfter` in `deploy/mediamtx.yml`.
 7. Run NTP on the AI server and the cameras, so event times line up with the recorded clips.
 
-#### Key Elements of `docker-compose.yml`:
-* `mediamtx` service: pulls every camera once, records to `./recordings`, re-serves RTSP on `:8554` and event clips on `:9996`.
+#### Key Elements of `deploy/docker-compose.yml`:
+* `mediamtx` service: pulls every camera once, records to `${ZOO_DATA_DIR}/recordings`, re-serves RTSP on `:8554` and event clips on `:9996`.
 * `network_mode: "host"`: Guarantees the lowest latency for RTSP stream ingestion and REST calls without Docker NAT overhead.
 * `capabilities: [ gpu, video ]`: Exposes both CUDA Tensor cores and NVDEC hardware video decoding ASICs to the container.
 * Volume Mounts:
-  * `./configs:/app/configs`: Modify camera streams, polygons, and thresholds on the fly without restarting or rebuilding the image.
-  * `./models:/app/models`: Hot-swap TensorRT `.engine` or ONNX model weights.
-  * `./logs:/app/logs`: Persist operational logs directly on host storage.
-  * `./snapshots:/app/snapshots`: Event JPEGs, served to the dashboard by the AI engine API.
+  * `../services/engine/configs:/app/configs`: Modify camera streams, polygons, and thresholds on the fly without restarting or rebuilding the image.
+  * `${ZOO_DATA_DIR}/models:/app/models`: Model weights fetched by `tools/fetch_models.py`; hot-swap TensorRT `.engine` or ONNX files.
+  * `${ZOO_DATA_DIR}/logs:/app/logs`: Persist operational logs directly on host storage.
+  * `${ZOO_DATA_DIR}/snapshots:/app/snapshots`: Event JPEGs, served to the dashboard by the AI engine API.
 
 #### Common Container Management Commands:
 
 ```bash
+# From deploy/:
 # Stop service
 docker compose stop
 
-# Restart service after editing configs/cameras.yaml
+# Restart service after editing services/engine/configs/cameras.yaml
 docker compose restart
 
 # Tear down container
@@ -354,7 +326,7 @@ docker stats zoo_vision_service
 
 ---
 
-## 5. Method C: Native C++ Nx Meta Plugin (`magnet_nx_plugin`)
+## 5. Method C: Native C++ Nx Meta Plugin (`integrations/nx/plugin`)
 
 > **Optional and frozen** ([ADR-008](adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md)). Only for sites
 > that already record these cameras on Nx. The plugin draws boxes in Nx Desktop, but has no rules, no events and no
@@ -363,12 +335,12 @@ docker stats zoo_vision_service
 For deployments requiring in-process execution inside Network Optix MetaVMS Server (`metavms-server` / `nxwitness-server`), deploy the native C++ plugin.
 
 ```bash
-# 1. Transfer the magnet_nx_plugin directory and the Nx Meta Plugin SDK to your Linux server
-scp -r magnet_nx_plugin/ user@<server-ip>:~/
+# 1. Transfer the integrations/nx/plugin directory (arrives as ~/plugin) and the Nx Meta Plugin SDK to your Linux server
+scp -r integrations/nx/plugin/ user@<server-ip>:~/
 
 # 2. Connect to the server
 ssh user@<server-ip>
-cd ~/magnet_nx_plugin
+cd ~/plugin
 
 # 3. Execute the automated build script
 chmod +x build_on_server.sh
@@ -402,14 +374,14 @@ For complete details, see [06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md](06_MAGNET
 Before starting the service, initialize your local configuration files from the provided `.example` templates.
 
 ```bash
-# Copy example configuration templates
+# From services/engine/: copy the example configuration templates (the copies are git-ignored)
 cp configs/app_config.yaml.example configs/app_config.yaml
 cp configs/cameras.yaml.example configs/cameras.yaml
 ```
 
-### 6.1 Application Configuration (`configs/app_config.yaml`)
+### 6.1 Application Configuration (`services/engine/configs/app_config.yaml`)
 
-Open `configs/app_config.yaml` in your editor and configure your environment:
+Open `services/engine/configs/app_config.yaml` in your editor and configure your environment:
 
 ```yaml
 # Nx Witness / Nx Meta Media Server Connection Settings
@@ -437,7 +409,7 @@ ai_engine:
   model_cache_dir: "models"
   default_confidence: 0.35
 
-# Web Analytics Dashboard Integration (zoo-analytics-web)
+# Web Analytics Dashboard Integration (zoo-vision-fe)
 analytics:
   enabled: true                 # Set to false if dashboard is not deployed
   api_url: "http://localhost:3000/api/events"
@@ -446,9 +418,9 @@ analytics:
 
 ---
 
-### 6.2 Camera Stream Configuration (`configs/cameras.yaml`)
+### 6.2 Camera Stream Configuration (`services/engine/configs/cameras.yaml`)
 
-Define your RTSP video sources, target FPS, and pipeline bindings in `configs/cameras.yaml`:
+Define your RTSP video sources, target FPS, and pipeline bindings in `services/engine/configs/cameras.yaml` (`rule_config` paths are relative to `services/engine/`):
 
 ```yaml
 cameras:
@@ -509,34 +481,34 @@ cameras:
 
 ---
 
-### 6.3 Pipeline Rules Configuration (`configs/rules/`)
+### 6.3 Pipeline Rules Configuration (`services/engine/configs/rules/`)
 
 Each pipeline has a dedicated rule file defining operational thresholds:
-* `configs/rules/cashier_presence.yaml`: Absence warning threshold (`absence_warning_sec: 180`), critical absence threshold (`absence_critical_sec: 300`), queue wait alerts.
-* `configs/rules/restaurant_counter.yaml`: Headcount capacity alert limits, dwell time thresholds, bidirectional tripwire lines.
-* `configs/rules/vehicle_gate.yaml`: Directional entry/exit lines, vehicle class whitelist, ANPR crop confidence.
-* `configs/rules/horse_riding.yaml`: Choke-point line crossings, handler rejection filters, tripwire debounce intervals.
+* `services/engine/configs/rules/cashier_presence.yaml`: Absence warning threshold (`absence_warning_sec: 180`), critical absence threshold (`absence_critical_sec: 300`), queue wait alerts.
+* `services/engine/configs/rules/restaurant_counter.yaml`: Headcount capacity alert limits, dwell time thresholds, bidirectional tripwire lines.
+* `services/engine/configs/rules/vehicle_gate.yaml`: Directional entry/exit lines, vehicle class whitelist, ANPR crop confidence.
+* `services/engine/configs/rules/horse_riding.yaml`: Choke-point line crossings, handler rejection filters, tripwire debounce intervals.
 
 ---
 
 ### 6.4 Model Weights & Acceleration Artifacts
 
 The system automatically loads models configured per pipeline. By default:
-* Ultralytics YOLO downloads official COCO pre-trained weights (`yolo11s.pt`, `yolo11n.pt`) automatically on first run to the user cache.
-* An optimized ONNX model [`yolo11s.onnx`](../yolo11s.onnx) and Intel OpenVINO model [`yolo11s_openvino_model/`](../yolo11s_openvino_model) are already provided in the repository root.
+* Model weights are not stored in git. `python tools/fetch_models.py` downloads the files listed in [`services/engine/models/manifest.json`](../services/engine/models/manifest.json) into `services/engine/models/` and checks their sha256; `--from <folder>` copies them on offline sites (see [tools/README.md](../tools/README.md)).
+* Ultralytics still downloads its official `.pt` weights by name if one is missing.
 
 #### Exporting Custom Weights to High-Performance Formats:
 Use the included Universal Model Exporter CLI to generate hardware-optimized models:
 
 ```bash
-# Interactive export wizard:
-python export_model.py
+# From the repo root. Interactive export wizard:
+uv run --project services/engine python tools/export_model.py
 
 # Or direct 1-click export to 16:9 widescreen ONNX:
-python export_model.py --model yolo11s.pt --format onnx --imgsz 736 1280 --dynamic
+uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format onnx --imgsz 736 1280 --dynamic
 
 # Or export to NVIDIA TensorRT (FP16):
-python export_model.py --model yolo11s.pt --format engine --imgsz 640 --half
+uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format engine --imgsz 640 --half
 ```
 
 For complete export syntax and benchmarks, consult [05_MODEL_EXPORT_GUIDE.md](05_MODEL_EXPORT_GUIDE.md).
@@ -550,7 +522,9 @@ For complete export syntax and benchmarks, consult [05_MODEL_EXPORT_GUIDE.md](05
 Verify that the Python environment, PyTorch, ByteTrack, Shapely, and all pipeline logic operate without errors—no camera streams or video files needed:
 
 ```bash
-python test_synthetic_demo.py
+# From services/engine/:
+uv run pytest                        # automated tests (no models or GPU needed)
+uv run python test_synthetic_demo.py  # synthetic-frame smoke test with real models
 ```
 
 *Expected output:*
@@ -569,14 +543,14 @@ python test_synthetic_demo.py
 
 ### 7.2 Interactive ROI Calibration Tool
 
-Use [`pick_coordinates.py`](../pick_coordinates.py) to visually calibrate tripwires or polygon zones on any camera video feed or sample recording:
+Use [`tools/pick_coordinates.py`](../tools/pick_coordinates.py) to visually calibrate tripwires or polygon zones on any camera video feed or sample recording:
 
 ```bash
-# Calibrate a LineZone tripwire:
-python pick_coordinates.py --video sample_data/cars.mp4 --mode line
+# From the repo root. Calibrate a LineZone tripwire:
+uv run --project services/engine python tools/pick_coordinates.py --video services/engine/sample_data/cars.mp4 --mode line
 
 # Calibrate a PolygonZone area (e.g. Cashier desk or Dining area):
-python pick_coordinates.py --video sample_data/cars.mp4 --mode polygon
+uv run --project services/engine python tools/pick_coordinates.py --video services/engine/sample_data/cars.mp4 --mode polygon
 ```
 
 * **Controls**:
@@ -593,11 +567,11 @@ python pick_coordinates.py --video sample_data/cars.mp4 --mode polygon
 Test and preview any pipeline on a local `.mp4` file before connecting live camera streams:
 
 ```bash
-# Test Vehicle Gate & ANPR pipeline with interactive GUI and Web Dashboard sync:
-python test_video.py --video sample_data/cars.mp4 --pipeline gate --analytics
+# From services/engine/. Test Vehicle Gate & ANPR pipeline with interactive GUI and Web Dashboard sync:
+uv run python test_video.py --video sample_data/cars.mp4 --pipeline gate --analytics
 
 # Save an annotated demonstration video for review:
-python test_video.py --video sample_data/cars.mp4 --pipeline gate --save-output demo_gate.mp4
+uv run python test_video.py --video sample_data/cars.mp4 --pipeline gate --save-output demo_gate.mp4
 ```
 
 > [!TIP]
@@ -610,14 +584,14 @@ python test_video.py --video sample_data/cars.mp4 --pipeline gate --save-output 
 Run the multi-camera master orchestrator:
 
 ```bash
-# Headless production execution:
-python main.py
+# From services/engine/. Headless production execution:
+uv run python main.py
 
 # With live OpenCV desktop preview windows:
-python main.py --preview
+uv run python main.py --preview
 
 # Using custom configuration files:
-python main.py --app-config configs/app_config.yaml --cameras-config configs/cameras.yaml
+uv run python main.py --app-config configs/app_config.yaml --cameras-config configs/cameras.yaml
 ```
 
 ---
@@ -644,11 +618,11 @@ Wants=network-online.target
 Type=simple
 User=administrator
 Group=administrator
-WorkingDirectory=/home/administrator/zoo-vision
-Environment="PATH=/home/administrator/zoo-vision/.venv/bin:/usr/local/cuda/bin:/usr/bin"
+WorkingDirectory=/home/administrator/zoo-vision/services/engine
+Environment="PATH=/home/administrator/zoo-vision/services/engine/.venv/bin:/usr/local/cuda/bin:/usr/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="CUDA_VISIBLE_DEVICES=0"
-ExecStart=/home/administrator/zoo-vision/.venv/bin/python3 main.py
+ExecStart=/home/administrator/zoo-vision/services/engine/.venv/bin/python main.py
 Restart=always
 RestartSec=5s
 KillSignal=SIGINT
@@ -685,9 +659,9 @@ journalctl -u zoo-vision.service -f
 ### Q1: `CUDA out of memory (OOM)` during multi-camera inference
 * **Cause**: Aggregate VRAM allocated to YOLO, ByteTrack, NVDEC buffers, and OCR exceeded your GPU capacity.
 * **Resolution**:
-  1. In `configs/cameras.yaml`, lower camera `target_fps` (e.g., reduce Cashier monitoring from 5 to 2 FPS, Restaurant from 5 to 2 FPS).
+  1. In `services/engine/configs/cameras.yaml`, lower camera `target_fps` (e.g., reduce Cashier monitoring from 5 to 2 FPS, Restaurant from 5 to 2 FPS).
   2. Use smaller model architectures (switch from `yolo11m` to `yolo11s` or `yolo11n`).
-  3. Export models to **FP16 Half-Precision** via `python export_model.py --model yolo11s.pt --half --format engine`.
+  3. Export models to **FP16 Half-Precision** via `uv run --project services/engine python tools/export_model.py --model yolo11s.pt --half --format engine`.
   4. Refer to the VRAM budget breakdown in [03_HARDWARE_SPECIFICATIONS.md](03_HARDWARE_SPECIFICATIONS.md).
 
 ---
@@ -713,9 +687,9 @@ journalctl -u zoo-vision.service -f
 ---
 
 ### Q4: `NxClient: 401 Unauthorized` or SSL Certificate Errors
-* **Cause**: Incorrect username/password in `configs/app_config.yaml` or untrusted self-signed SSL certificate.
+* **Cause**: Incorrect username/password in `services/engine/configs/app_config.yaml` or untrusted self-signed SSL certificate.
 * **Resolution**:
-  1. Verify credentials in `configs/app_config.yaml` under `nx_server.auth`.
+  1. Verify credentials in `services/engine/configs/app_config.yaml` under `nx_server.auth`.
   2. In test environments with self-signed SSL, ensure `verify_ssl: false` is set.
   3. Set `mock_mode: true` to bypass Nx network authentication completely during offline development.
 
@@ -724,11 +698,11 @@ journalctl -u zoo-vision.service -f
 ### Q5: EasyOCR model download hangs on first run
 * **Cause**: First-time initialization downloads pre-trained language weights from GitHub/PyTorch hub.
 * **Resolution**:
-  Ensure outgoing internet access on the server during the initial test run (`python test_synthetic_demo.py`). Once downloaded, weights are cached locally in `~/.EasyOCR/model/` and work 100% offline.
+  Ensure outgoing internet access on the server during the initial test run (`uv run python test_synthetic_demo.py` in `services/engine/`). Once downloaded, weights are cached locally in `~/.EasyOCR/model/` and work 100% offline.
 
 ---
 
 ### Q6: Path separator errors on Windows vs Linux
 * **Cause**: Backslashes (`\`) vs Forward slashes (`/`) in YAML configuration files.
 * **Resolution**:
-  Always use forward slashes (`/`) in `configs/app_config.yaml` and `configs/cameras.yaml` (e.g. `sample_data/cars.mp4`). Python's `os.path` handles forward slashes transparently on both Windows and Linux.
+  Always use forward slashes (`/`) in `services/engine/configs/app_config.yaml` and `services/engine/configs/cameras.yaml` (e.g. `sample_data/cars.mp4`). Python's `os.path` handles forward slashes transparently on both Windows and Linux.

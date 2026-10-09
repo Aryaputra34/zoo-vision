@@ -1,6 +1,6 @@
 # Comprehensive Testing & Verification Guide
 
-This guide provides end-to-end testing instructions for the **Zoo & Safari Computer Vision System** (`zoo-monitor`) and its integration with the **Web Analytics Dashboard** (`zoo-analytics-web`) and **Network Optix MetaVMS**.
+This guide provides end-to-end testing instructions for the **Zoo & Safari Computer Vision System** (`zoo-monitor`) and its integration with the **Web Analytics Dashboard** (`zoo-vision-fe`) and **Network Optix MetaVMS**.
 
 ---
 
@@ -9,7 +9,7 @@ This guide provides end-to-end testing instructions for the **Zoo & Safari Compu
 2. [Quick Sanity Checks (Smoke Tests)](#2-quick-sanity-checks-smoke-tests)
 3. [Testing with Recorded MP4 Footage (`test_video.py`)](#3-testing-with-recorded-mp4-footage-test_videopy)
 4. [5 Use Cases Testing Command Matrix](#4-5-use-cases-testing-command-matrix)
-5. [End-to-End Testing with Web Dashboard (`zoo-analytics-web`)](#5-end-to-end-testing-with-web-dashboard-zoo-analytics-web)
+5. [End-to-End Testing with Web Dashboard (`zoo-vision-fe`)](#5-end-to-end-testing-with-web-dashboard-zoo-vision-fe)
 6. [Interactive GUI Controls & Coordinate Calibration](#6-interactive-gui-controls--coordinate-calibration)
 7. [Testing the Embedded AI API Engine (`:8000`)](#7-testing-the-embedded-ai-api-engine-8000)
 8. [Testing MediaMTX RTSP Streaming & Event Clips (`:9996`)](#8-testing-mediamtx-rtsp-streaming--event-clips-9996)
@@ -41,7 +41,7 @@ graph LR
 
     subgraph Egress [Verification & Dashboards]
         OpenCV["OpenCV Desktop Window (Interactive GUI)"]
-        WebDash["Web Dashboard (zoo-analytics-web :3000)<br/>/live, /restaurant, /cashier, /vehicles, /events"]
+        WebDash["Web Dashboard (zoo-vision-fe :3000)<br/>/live, /restaurant, /cashier, /vehicles, /events"]
         Nx["Nx Witness Client (Timeline Bookmarks)"]
     end
 
@@ -64,8 +64,9 @@ graph LR
 ### Test Synthetic Detections (No Camera / No MP4 Needed)
 Verifies that PyTorch, ByteTrack, and the rules engine run without errors:
 ```powershell
-# From zoo-monitor directory with virtual environment activated:
-python test_synthetic_demo.py
+# From services/engine/:
+uv run pytest                        # automated tests (no models or GPU needed)
+uv run python test_synthetic_demo.py  # synthetic-frame smoke test with real models
 ```
 * **Expected Output**: A simulated cashier test running 30 synthetic frames, detecting presence, state changes, and completing with `[PASS]`.
 
@@ -73,11 +74,11 @@ python test_synthetic_demo.py
 
 ## 3. Testing with Recorded MP4 Footage (`test_video.py`)
 
-[`test_video.py`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/test_video.py) is the primary diagnostic utility for evaluating AI vision models and state machines on real recorded footage.
+[`test_video.py`](../services/engine/test_video.py) is the primary diagnostic utility (run it from `services/engine/`) for evaluating AI vision models and state machines on real recorded footage.
 
 ### Basic Syntax
 ```powershell
-python test_video.py --video <PATH_TO_MP4> --pipeline <PIPELINE_NAME> [OPTIONS]
+uv run python test_video.py --video <PATH_TO_MP4> --pipeline <PIPELINE_NAME> [OPTIONS]
 ```
 
 ### Key Command Line Arguments
@@ -103,10 +104,10 @@ python test_video.py --video <PATH_TO_MP4> --pipeline <PIPELINE_NAME> [OPTIONS]
 ### Use Case 1: Vehicle Gate & License Plate Recognition (ANPR)
 ```powershell
 # Interactive GUI test with ANPR:
-python test_video.py --video "sample_data/cars.mp4" --pipeline gate --infer-fps 10
+uv run python test_video.py --video "sample_data/cars.mp4" --pipeline gate --infer-fps 10
 
 # Push gate telemetry & vehicle counts to web dashboard:
-python test_video.py --video "sample_data/cars.mp4" --pipeline gate --infer-fps 10 --analytics
+uv run python test_video.py --video "sample_data/cars.mp4" --pipeline gate --infer-fps 10 --analytics
 ```
 * **What to verify**: Direction tripwire crossing (IN / OUT count) and Indonesian license plate OCR box in the HUD.
 
@@ -115,10 +116,10 @@ python test_video.py --video "sample_data/cars.mp4" --pipeline gate --infer-fps 
 ### Use Case 2: Cashier Desk Presence & Queue Monitoring
 ```powershell
 # Interactive GUI test:
-python test_video.py --video "sample_data/kasir.mp4" --pipeline cashier --infer-fps 5
+uv run python test_video.py --video "sample_data/kasir.mp4" --pipeline cashier --infer-fps 5
 
 # Connect to web dashboard:
-python test_video.py --video "sample_data/kasir.mp4" --pipeline cashier --infer-fps 5 --analytics
+uv run python test_video.py --video "sample_data/kasir.mp4" --pipeline cashier --infer-fps 5 --analytics
 ```
 * **What to verify**:
   - `CLERK PRESENT` (Green) when teller is seated in `clerk_zone`.
@@ -130,7 +131,7 @@ python test_video.py --video "sample_data/kasir.mp4" --pipeline cashier --infer-
 ### Use Case 3: Restaurant Capacity & Dining Hall Headcount
 ```powershell
 # Test dining hall occupancy starting at timestamp 26:50:
-python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" --pipeline restaurant --start-time 26:50 --infer-fps 15 --analytics
+uv run python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" --pipeline restaurant --start-time 26:50 --infer-fps 15 --analytics
 ```
 * **What to verify**:
   - Top-left HUD card displaying live smoothed occupancy vs. Warning Limit (45) and Max Capacity (60).
@@ -141,7 +142,7 @@ python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" -
 ### Use Case 4: Dining Table Occupancy & Dwell Time (Status Meja)
 ```powershell
 # Run the dedicated multi-table pipeline with dashboard sync:
-python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" --pipeline restaurant_table --start-time 26:50 --infer-fps 15 --analytics
+uv run python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" --pipeline restaurant_table --start-time 26:50 --infer-fps 15 --analytics
 ```
 * **What to verify**:
   - 9 dining table polygons rendered on frame (Green = `EMPTY`, Red = `OCCUPIED`).
@@ -153,7 +154,7 @@ python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" -
 ### Use Case 5: Horse-Riding Attraction Tracking
 ```powershell
 # Interactive test:
-python test_video.py --video "sample_data/kuda.mp4" --pipeline horse --infer-fps 10 --analytics
+uv run python test_video.py --video "sample_data/kuda.mp4" --pipeline horse --infer-fps 10 --analytics
 ```
 * **What to verify**:
   - Choke-point tripwire counts horse departures and returns.
@@ -161,18 +162,18 @@ python test_video.py --video "sample_data/kuda.mp4" --pipeline horse --infer-fps
 
 ---
 
-## 5. End-to-End Testing with Web Dashboard (`zoo-analytics-web`)
+## 5. End-to-End Testing with Web Dashboard (`zoo-vision-fe`)
 
 ### Step 1: Start Web Dashboard
 In a terminal window:
 ```powershell
-cd c:\Users\Magnet Busdev-2\Documents\temp\zoo-analytics-web
+cd c:\Users\Magnet Busdev-2\Documents\temp\zoo-vision-fe
 npm run dev     # Or: npm start
 ```
 Verify the dashboard is accessible at `http://localhost:3000`.
 
-### Step 2: Configure Environment in `zoo-analytics-web`
-Create or verify `.env.local` inside `zoo-analytics-web`:
+### Step 2: Configure Environment in `zoo-vision-fe`
+Create or verify `.env.local` inside `zoo-vision-fe`:
 ```env
 # URL of zoo-monitor AI engine API
 AI_ENGINE_URL=http://127.0.0.1:8000
@@ -183,7 +184,7 @@ In a second terminal window:
 ```powershell
 cd c:\Users\Magnet Busdev-2\Documents\temp\zoo-monitor
 .\.venv\Scripts\Activate.ps1
-python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" --pipeline restaurant --start-time 26:50 --infer-fps 15 --analytics
+uv run python test_video.py --video "C:/Users/Magnet Busdev-2/Downloads/restoran.mp4" --pipeline restaurant --start-time 26:50 --infer-fps 15 --analytics
 ```
 
 ### Step 4: Verify Dashboard Pages
@@ -239,10 +240,10 @@ MediaMTX acts as the zero-license video recorder and stream aggregator. For full
 1. **Launch MediaMTX**:
    ```powershell
    # Windows standalone binary:
-   .\mediamtx.exe configs\mediamtx.yml
+   .\mediamtx.exe deploy\mediamtx.yml
 
    # Or via Docker:
-   docker compose up -d mediamtx
+   docker compose -f deploy/docker-compose.yml up -d mediamtx
    ```
 
 2. **Publish a Test Stream via FFmpeg**:
@@ -263,24 +264,24 @@ MediaMTX acts as the zero-license video recorder and stream aggregator. For full
    ```
 
 5. **Connect to Web Dashboard**:
-   Ensure `MEDIAMTX_PLAYBACK_URL=http://127.0.0.1:9996` is configured in `zoo-analytics-web/.env.local`. When an alert triggers, click **Putar Klip (Play Clip)** in the dashboard event table!
+   Ensure `MEDIAMTX_PLAYBACK_URL=http://127.0.0.1:9996` is configured in `zoo-vision-fe/.env.local`. When an alert triggers, click **Putar Klip (Play Clip)** in the dashboard event table!
 
 ---
 
 ## 9. Common Troubleshooting & Gotchas
 
 ### Issue 1: "Could not open GUI window. Running in headless mode"
-* **Cause**: `opencv-python-headless` is installed or has shadowed `opencv-python`.
+* **Cause**: `opencv-python-headless` is installed or has shadowed `opencv-python` (the engine's `pyproject.toml` excludes it).
 * **Fix**: Ensure only full `opencv-python` is installed:
   ```powershell
-  pip uninstall -y opencv-python-headless
-  pip install --force-reinstall --no-deps opencv-python
+  # From services/engine/:
+  uv sync --reinstall-package opencv-python
   ```
 
 ### Issue 2: "Mesin AI belum terhubung" in Web Dashboard `/live`
-* **Cause**: `AI_ENGINE_URL` is missing from `zoo-analytics-web/.env.local`, or `test_video.py` was started without `--analytics`.
+* **Cause**: `AI_ENGINE_URL` is missing from `zoo-vision-fe/.env.local`, or `test_video.py` was started without `--analytics`.
 * **Fix**: 
-  1. Add `AI_ENGINE_URL=http://127.0.0.1:8000` to `zoo-analytics-web/.env.local`.
+  1. Add `AI_ENGINE_URL=http://127.0.0.1:8000` to `zoo-vision-fe/.env.local`.
   2. Restart the web dashboard (`npm run dev` or `npm start`).
   3. Ensure `test_video.py` includes the `--analytics` flag.
 
@@ -291,5 +292,5 @@ MediaMTX acts as the zero-license video recorder and stream aggregator. For full
 ### Issue 4: Running on Headless / Remote Server (No Display)
 * **Fix**: Add `--no-gui` to suppress the OpenCV window and run purely as a headless background daemon:
   ```powershell
-  python test_video.py --video sample.mp4 --pipeline restaurant --no-gui --analytics
+  uv run python test_video.py --video sample.mp4 --pipeline restaurant --no-gui --analytics
   ```

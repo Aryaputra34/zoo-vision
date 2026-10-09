@@ -1,147 +1,49 @@
-# Zoo & Safari Computer Vision System (with Nx Witness / Nx Meta)
+# Zoo Vision (backend)
 
-An intelligent video analytics (IVA) and revenue assurance system integrated with **Network Optix (Nx Witness / Nx Meta) VMS**, targeting **5 key attraction use cases** across a 300-camera park estate.
+AI video analytics for Taman Safari: a Python vision engine watches about 12 park cameras (cashier desks, restaurant
+occupancy and tables, the vehicle gate, horse rides), records them through MediaMTX and sends events, snapshots and clips
+to the web dashboard. This repo is the backend; the web UI lives in
+[zoo-vision-fe](https://github.com/Aryaputra34/zoo-vision-fe).
 
-> **Current architecture (2026-10-02, [ADR-008](docs/adr/ADR-008-python-analytics-mediamtx-dashboard-nx-optional.md)):**
-> about 12 cameras per site, and Nx is optional.
->
-> | Component | What it does |
-> | :--- | :--- |
-> | Python (`main.py`) | Runs all analytics, one worker per camera. |
-> | [MediaMTX](configs/mediamtx.yml) | Records the cameras and serves the event clips. |
-> | [zoo-analytics-web](../zoo-analytics-web) | The only UI: live annotated preview, a snapshot and clip for every event, reports, login. |
->
-> The C++ Nx plugin is frozen.
+> **Where things are going:** the production architecture is in
+> [the design spec](docs/superpowers/specs/2026-10-08-zoo-vision-production-architecture-design.md). Phase 0
+> (this layout) is done by [this plan](docs/superpowers/plans/2026-10-08-phase-0-restructure.md); the engine still reads
+> its cameras and rules from YAML until the API arrives in Phase 1.
 
----
+## Repo map
 
-## 📚 Complete Project Documentation
+| Folder | What it holds |
+| :--- | :--- |
+| [`services/engine/`](services/engine/) | Python vision engine (uv project): pipelines, configs, tests, Dockerfile |
+| [`integrations/nx/plugin/`](integrations/nx/plugin/) | Frozen C++ Nx Meta plugin, kept for a future Nx bridge |
+| [`deploy/`](deploy/) | Docker Compose for one park server, MediaMTX config, `.env.example` |
+| [`tools/`](tools/) | `fetch_models.py` (model weights), `export_model.py`, `pick_coordinates.py` |
+| [`docs/`](docs/) | Guides, ADRs, the design spec and phase plans |
+| [`.github/workflows/`](.github/workflows/) | CI: engine lint and tests, repo hygiene (no binaries in git) |
 
-All project documentation is structured inside the [`docs/`](docs/) folder:
+Later phases add `apps/api` (NestJS + Prisma) and `packages/contracts` (shared JSON Schemas).
 
-1. **[01_IMPLEMENTATION_PLAN.md](docs/01_IMPLEMENTATION_PLAN.md)**
-   * Executive scope across the 300-camera estate.
-   * Full 5 Use Case Matrix (Difficulty, Technical Approach, Dependencies).
-   * 4-Phase Delivery Schedule & Milestones (Phase 1 Quick Wins $\to$ Phase 4 Feeding Classifier).
-   * System Architecture, Nx Clustered Server Topology, and Project Directory Structure.
+## Quick start
 
-2. **[02_MODEL_BUILDING_GUIDE.md](docs/02_MODEL_BUILDING_GUIDE.md)**
-   * Framework selection rationale: **Why PyTorch (and why NOT TensorFlow)**.
-   * Transfer Learning Breakdown by Use Case (Tier 1 Zero Training vs. Tier 2 Fine-Tuning vs. Tier 3 Custom).
-   * Step-by-step Jupyter Notebook training workflow (Ultralytics YOLOv11 + ByteTrack).
-   * 1-Click NVIDIA TensorRT FP16 export guide (`model.export(format='engine')`).
-   * Indonesian License Plate OCR (PaddleOCR / EasyOCR + regex validation).
+| Task | Command | Details |
+| :--- | :--- | :--- |
+| Engine dev setup | `cd services/engine && uv sync` | [services/engine/README.md](services/engine/README.md) |
+| Model weights | `python tools/fetch_models.py` | [tools/README.md](tools/README.md) |
+| Run a pipeline on a video | `cd services/engine && uv run python test_video.py --video sample_data/cars.mp4 --pipeline gate` | [docs/08](docs/08_TESTING_GUIDE.md) |
+| Tests | `cd services/engine && uv run pytest` and `uvx --from "pytest>=8.3" pytest tools/tests` | |
+| Deploy on a server | `cd deploy && docker compose up -d --build` | [deploy/README.md](deploy/README.md) |
 
-3. **[03_HARDWARE_SPECIFICATIONS.md](docs/03_HARDWARE_SPECIFICATIONS.md)**
-   * Workload compute sizing for 5–10 cameras (~70 to 100 aggregate FPS).
-   * VRAM sizing breakdown (~6.0 GB required, 12GB GPU recommended).
-   * Bill of Materials: Workstation Build ($1,400–$1,850) vs. 4U Rackmount Server ($3,200–$4,500) vs. OEM (Dell/Lenovo/HPE).
-   * Single-NIC Nx-proxied network topology & UPS battery backup recommendations.
+Needs [uv](https://docs.astral.sh/uv/) and [git-lfs](https://git-lfs.com/) (the sample video is stored in LFS).
 
-4. **[04_ARCHITECTURE_DECISION_RECORDS.md](docs/04_ARCHITECTURE_DECISION_RECORDS.md)** & **[ADR Index](docs/adr/README.md)**
-   * Formal records of architectural choices (Multi-camera ROI, cashier dual-zone, model selection, queue filtering, Indonesian ANPR).
+## Documentation
 
-5. **[05_MODEL_EXPORT_GUIDE.md](docs/05_MODEL_EXPORT_GUIDE.md)**
-   * Universal Model Exporter CLI & Wizard (`export_model.py`).
-   * Exporting PyTorch (`.pt`) to ONNX, Intel OpenVINO, and NVIDIA TensorRT.
-   * 16:9 Widescreen CCTV aspect ratio optimization (`736x1280`) vs. square letterboxing.
-   * Dynamic shapes, FP16 half precision, and pipeline YAML configuration.
-
-6. **[06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md](docs/06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md)**
-   * Native C++ Analytics Plugin for Network Optix MetaVMS (`metavms-server`).
-   * Direct in-process execution, zero-copy YUV420 frame ingestion, and ONNX Runtime C++.
-   * Native Nx Desktop bounding box overlays, timeline bookmarks, and alarm rules.
-   * Automated Linux server build and deployment scripts ([`magnet_nx_plugin/`](magnet_nx_plugin/)).
-
-7. **[07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md)** ⭐
-   * End-to-end setup across bare-metal Python (Ubuntu & Windows), Docker GPU containers, and native C++ plugin.
-   * Configuration setup for `app_config.yaml` and `cameras.yaml`.
-   * Production systemd daemon configuration and troubleshooting FAQ.
-
-8. **[08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md)** 🧪
-   * Comprehensive testing instructions across all 5 attraction use cases.
-   * Running recorded MP4 evaluations via `test_video.py` and live multi-camera feeds via `main.py`.
-   * End-to-end integration with the Web Analytics Dashboard (`zoo-analytics-web`), live on-demand MJPEG preview, and event snapshots.
-   * Interactive GUI keyboard shortcuts, coordinate calibration, and troubleshooting.
-
-9. **[09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md)** 📹
-   * Standalone video streaming and 24/7 continuous recording backbone setup.
-   * Configuring `configs/mediamtx.yml`, local RTSP proxying (`:8554`), and HTTP playback API (`:9996`).
-   * Simulating IP cameras with FFmpeg and testing event clips in `zoo-analytics-web`.
-
----
-
-## ⚡ Quick Start & Installation
-
-Detailed instructions are available in [INSTALLATION.md](INSTALLATION.md), [docs/07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md), [docs/08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md), and [docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md).
-
-### 1. Python Environment Setup
-```bash
-# Clone and enter repo
-cd zoo-vision
-
-# Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate       # On Windows: .\.venv\Scripts\Activate.ps1
-
-# Install PyTorch with CUDA 12 & project requirements
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
-```
-
-### 2. Configure Settings
-```bash
-cp configs/app_config.yaml.example configs/app_config.yaml
-cp configs/cameras.yaml.example configs/cameras.yaml
-```
-
-### 3. Verify & Run
-```bash
-# Run smoke test without cameras:
-python test_synthetic_demo.py
-
-# Test video pipeline with interactive GUI and Web Dashboard analytics:
-python test_video.py --video sample_data/cars.mp4 --pipeline gate --analytics
-
-# Run master multi-camera service:
-python main.py
-```
-
-### 🐳 Docker Deployment
-```bash
-docker compose up -d --build
-docker compose logs -f zoo-ai-engine
-```
-
----
-
-## 🎯 The 5 Core Use Cases
-
-| # | Use Case | Difficulty | Models Used | Transfer Learning Required? |
-| :-: | :--- | :---: | :--- | :---: |
-| **1** | **Vehicle Entry/Exit & LPR** | **Easy** | YOLOv11s + ByteTrack + PaddleOCR | ❌ No (Pre-trained COCO + standard OCR) |
-| **2** | **Cashier Presence Check** | **Easy** | YOLOv11n (`person` @ 0.2 FPS) | ❌ No (Pre-trained COCO) |
-| **3** | **Restaurant People Counter**| **Easy** | YOLOv11s (`person`) + ByteTrack | ❌ No (Pre-trained COCO) |
-| **4** | **Horse-Riding Revenue Count**| **Easy–Med**| YOLOv11m + ByteTrack (Choke Point) | ⚠️ Minor (~200 frames for rider vs. handler) |
-| **5** | **Feeding-Item Classification**| **Hard** | Custom YOLOv11m/x (Carrots vs. Kresek)| ✅ Yes (Custom dataset across feeding windows) |
-
----
-
-## 🚀 4-Phase Delivery Schedule
-
-* **Phase 1: Foundation & Quick Wins (Est. 4–8 Weeks)**: Deploy ~5–6 clustered Nx Witness servers for live view of 300 cameras; launch Vehicle Gate, Cashier Presence, and Restaurant Counter on Day 1.
-* **Phase 2: Horse-Riding Revenue Audit (Est. 6–10 Weeks)**: Mount choke-point model fine-tuning, debounced line-crossing, and ticket reconciliation testing.
-* **Phase 3: Feeding Site Survey & Cabling (Pending Walk-Through)**: Physical survey of platforms, reframing vs. new close-in cameras, network drop cable runs.
-* **Phase 4: Feeding Classification Model (Est. 3–6+ Months)**: Dataset harvesting during daily feeding windows, fine-grained model training (plastic bags / wrappers), and operational SLA agreement.
-
----
-
-## 🛠️ Technology Stack Summary
-
-* **Deep Learning Framework**: PyTorch 2.3+ (CUDA 12)
-* **Object Detection Backbone**: Ultralytics YOLOv11 (`yolo11n`, `yolo11s`, `yolo11m`)
-* **Tracking Algorithm**: ByteTrack (Kalman Filter + motion trajectory)
-* **License Plate OCR**: PaddleOCR (PP-OCRv4) with Indonesian regex syntax
-* **Inference Accelerator**: NVIDIA TensorRT 10.x (FP16 `.engine`)
-* **VMS Platform**: Network Optix (Nx Witness / Nx Meta) via REST API v3 & RTSP restreaming
-* **Deployment**: Docker Engine + NVIDIA Container Toolkit on Ubuntu Server 22.04 LTS
+1. **[01_IMPLEMENTATION_PLAN.md](docs/01_IMPLEMENTATION_PLAN.md)**: original scope, use case matrix and delivery schedule (historical).
+2. **[02_MODEL_BUILDING_GUIDE.md](docs/02_MODEL_BUILDING_GUIDE.md)**: PyTorch/Ultralytics training workflow, transfer learning per use case, plate OCR.
+3. **[03_HARDWARE_SPECIFICATIONS.md](docs/03_HARDWARE_SPECIFICATIONS.md)**: compute and VRAM sizing, bill of materials.
+4. **[04_ARCHITECTURE_DECISION_RECORDS.md](docs/04_ARCHITECTURE_DECISION_RECORDS.md)** and the **[ADR index](docs/adr/README.md)**.
+5. **[05_MODEL_EXPORT_GUIDE.md](docs/05_MODEL_EXPORT_GUIDE.md)**: exporting `.pt` to ONNX, OpenVINO and TensorRT with `tools/export_model.py`.
+6. **[06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md](docs/06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md)**: the C++ Nx plugin (historical; code in `integrations/nx/plugin/`).
+7. **[07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md)**: bare-metal and Docker installs, configuration, systemd, troubleshooting.
+8. **[08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md)**: testing every use case with recorded video and the web dashboard.
+9. **[09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md)**: MediaMTX recording, RTSP proxy and clip playback.
+10. **[architecture_best_practice_recommendation.md](docs/architecture_best_practice_recommendation.md)**: the prototype-era Nx vs. Python comparison (historical).
