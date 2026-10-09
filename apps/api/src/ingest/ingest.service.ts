@@ -32,6 +32,44 @@ type Parsed =
 export const errorMessage = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
 
+const TRANSIENT_PRISMA = new Set(['P1001', 'P1017', 'P2024', 'P2028']);
+const TRANSIENT_SQLSTATE = /^(08...|40P01|40001|55P03|57014|57P0.)$/;
+
+/**
+ * True for errors that say nothing about the entry: lost connections, pool and transaction
+ * timeouts, deadlocks, serialization and lock failures, cancelled statements, shutdowns. Prisma
+ * puts the SQLSTATE of a failed query in `meta.driverAdapterError.cause.originalCode`.
+ */
+function isTransient(err: unknown): boolean {
+  const e = err as {
+    code?: unknown;
+    meta?: {
+      driverAdapterError?: {
+        cause?: { originalCode?: unknown; code?: unknown };
+      };
+    };
+  } | null;
+  const cause = e?.meta?.driverAdapterError?.cause;
+  return [e?.code, cause?.originalCode, cause?.code].some(
+    (code) =>
+      typeof code === 'string' &&
+      (TRANSIENT_PRISMA.has(code) || TRANSIENT_SQLSTATE.test(code)),
+  );
+}
+
+/** Postgres `text` cannot hold NUL; a raw one would make the dead letter itself fail forever. */
+const storable = (s: string) => s.replaceAll('\u0000', '\\u0000');
+
+const deadLetter = (entry: StreamEntry, reason: string): DeadLetter => ({
+  streamId: entry.id,
+  payload: storable(entry.msg ?? ''),
+  reason: storable(reason),
+});
+
+/** The entry's camera; null for system messages and entries that could not be read. */
+const cameraOf = (item: Parsed) =>
+  'message' in item ? item.message.cameraId : null;
+
 /**
  * Writes stream messages to Postgres. Every write is idempotent (Event by id, Interval by
  * sessionId, Metric by camera/name/minute), so an entry delivered twice changes nothing.
@@ -48,58 +86,72 @@ export class IngestService {
 
   /**
    * Applies `entries` in stream order in one transaction, then XACKs them. Invalid entries become
-   * DeadEvents. If the transaction fails, Postgres is probed: when it is down this rethrows with
-   * nothing acked, counted or dead-lettered; when it is up each entry gets its own transaction,
-   * and one that fails {@link MAX_ATTEMPTS} times (counted in {@link FAILURES}) is dead-lettered.
+   * DeadEvents. If the transaction fails with an error that says nothing about the entries (a
+   * transient one, or Postgres not answering `SELECT 1`), this rethrows with nothing acked,
+   * counted or dead-lettered. Otherwise each entry gets its own transaction, and one that fails
+   * {@link MAX_ATTEMPTS} times (counted in {@link FAILURES}) is dead-lettered.
    */
   async processBatch(entries: StreamEntry[]): Promise<void> {
     if (entries.length === 0) return;
+    const parsed = entries.map((entry) => this.parse(entry));
     let dead: DeadLetter[];
     try {
-      dead = await this.apply(entries);
+      dead = await this.apply(parsed);
     } catch (err) {
-      await this.assertDatabaseUp(err);
-      return this.oneByOne(entries);
+      await this.rethrowUnlessEntryFault(err);
+      return this.oneByOne(parsed);
     }
     await this.ack(entries.map((e) => e.id));
     this.warnDead(dead);
   }
 
-  private async oneByOne(entries: StreamEntry[]): Promise<void> {
-    for (const entry of entries) {
+  /**
+   * Keeps per-camera order: once an entry fails (and stays), the later entries of its camera wait
+   * for the next pass, unapplied, unacked and uncounted. A failed system entry (camera null) holds
+   * back everything after it, and a system entry waits behind any held-back camera.
+   */
+  private async oneByOne(parsed: Parsed[]): Promise<void> {
+    const held = new Set<string | null>();
+    for (const item of parsed) {
+      const camera = cameraOf(item);
+      const waits =
+        held.has(null) || (camera === null ? held.size > 0 : held.has(camera));
+      if (waits) continue;
       let dead: DeadLetter[];
       try {
-        dead = await this.apply([entry]);
+        dead = await this.apply([item]);
       } catch (err) {
-        // the database may have gone down since the probe; that is never the entry's fault
-        await this.assertDatabaseUp(err);
-        await this.countFailure(entry, err);
+        // a transient error, or the database gone since the probe, is never the entry's fault
+        await this.rethrowUnlessEntryFault(err);
+        if (!(await this.countFailure(item.entry, err))) held.add(camera);
         continue;
       }
-      await this.ack([entry.id]);
+      await this.ack([item.entry.id]);
       this.warnDead(dead);
     }
   }
 
-  private async countFailure(entry: StreamEntry, err: unknown): Promise<void> {
+  /** Counts a failed attempt. Returns true when it was the last one and the entry is dead. */
+  private async countFailure(
+    entry: StreamEntry,
+    err: unknown,
+  ): Promise<boolean> {
     const attempts = await this.redis.hincrby(FAILURES, entry.id, 1);
-    if (attempts < MAX_ATTEMPTS) return;
-    const dead = {
-      streamId: entry.id,
-      payload: entry.msg ?? '',
-      reason: errorMessage(err),
-    };
+    if (attempts < MAX_ATTEMPTS) return false;
+    const dead = deadLetter(entry, errorMessage(err));
     await this.prisma.deadEvent.create({ data: dead });
     await this.ack([entry.id]);
     this.warnDead([dead]);
+    return true;
   }
 
-  /** Rethrows `cause` when Postgres does not answer `SELECT 1`. */
-  private async assertDatabaseUp(cause: unknown): Promise<void> {
+  /** Rethrows `err` when it says nothing about the entry: transient, or Postgres is down. */
+  private async rethrowUnlessEntryFault(err: unknown): Promise<void> {
+    if (isTransient(err)) throw err;
     try {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
-      throw cause;
+      throw err;
     }
   }
 
@@ -114,9 +166,8 @@ export class IngestService {
     }
   }
 
-  /** One transaction for all of `entries`, in stream order. Returns the dead letters it wrote. */
-  private apply(entries: StreamEntry[]): Promise<DeadLetter[]> {
-    const parsed = entries.map((entry) => this.parse(entry));
+  /** One transaction for all of `parsed`, in stream order. Returns the dead letters it wrote. */
+  private apply(parsed: Parsed[]): Promise<DeadLetter[]> {
     return this.prisma.$transaction(async (tx) => {
       const cameras = await this.knownCameras(tx, parsed);
       const dead: DeadLetter[] = [];
@@ -126,11 +177,7 @@ export class IngestService {
             ? item.reason
             : await this.applyMessage(tx, item.message, cameras);
         if (reason === undefined) continue;
-        const letter = {
-          streamId: item.entry.id,
-          payload: item.entry.msg ?? '',
-          reason,
-        };
+        const letter = deadLetter(item.entry, reason);
         await tx.deadEvent.create({ data: letter });
         dead.push(letter);
       }
@@ -185,6 +232,11 @@ export class IngestService {
         return this.applyClose(tx, message);
       case 'metric':
         return this.applyMetric(tx, message);
+      default: {
+        // the envelope admits only the four kinds above; a new one must not be acked unwritten
+        const unsupported: never = message;
+        return `unsupported message ${String((unsupported as { message?: unknown }).message)}`;
+      }
     }
   }
 

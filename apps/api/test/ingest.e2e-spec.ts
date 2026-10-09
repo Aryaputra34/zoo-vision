@@ -230,6 +230,26 @@ describe('ingest: the events stream into Postgres', () => {
     expect(warnings[3]).toContain('unknown camera cam_missing');
   });
 
+  it('a msg containing a raw NUL char is dead-lettered (NUL escaped) and a later valid entry still lands', async () => {
+    await start();
+    // Postgres text cannot hold NUL; stored raw, this entry would block the stream for good
+    const nulId = await xadd('{"bad":"a\u0000b"}');
+    const ok = eventMsg();
+    await xadd(ok);
+    await drained();
+
+    expect(await ownerQuery(`SELECT "id" FROM "Event"`)).toEqual([
+      { id: ok.id },
+    ]);
+    expect(await deadEvents()).toEqual([
+      {
+        streamId: nulId,
+        payload: '{"bad":"a\\u0000b"}',
+        reason: 'invalid JSON',
+      },
+    ]);
+  });
+
   it('interval open then close sets end and endReason, and merges data', async () => {
     await start();
     const kept = openMsg({ data: { tableName: 'Table 1' } });
