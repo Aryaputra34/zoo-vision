@@ -1,0 +1,15 @@
+# Used by `docker build -f apps/api/Dockerfile .` (context = repo root, which also holds model
+# weights and videos): send only the two packages the image is built from.
+*
+!packages/contracts
+!apps/api
+
+**/node_modules
+packages/contracts/test
+apps/api/dist
+apps/api/src/generated
+apps/api/test
+apps/api/coverage
+apps/api/.env
+apps/api/Dockerfile
+apps/api/Dockerfile.dockerignore

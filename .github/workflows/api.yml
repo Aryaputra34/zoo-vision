@@ -1,0 +1,27 @@
+name: api
+on:
+  push:
+    paths: ["apps/api/**", "packages/contracts/**", ".github/workflows/api.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            packages/contracts/package-lock.json
+      - run: npm ci --omit=dev
+        working-directory: packages/contracts
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+      # Testcontainers uses the runner's Docker
+      - run: npm run test:e2e
