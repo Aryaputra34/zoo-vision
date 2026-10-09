@@ -1,0 +1,13 @@
+{
+  "message": "event",
+  "cameraId": null,
+  "useCase": "system",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "id": "evt_00000000000000000000000000000001",
+  "type": "engine_started",
+  "severity": "info",
+  "snapshotPath": null,
+  "data": { "bootId": "0123456789abcdef0123456789abcdef", "engineGroup": "default" }
+}

@@ -1,3 +1,5 @@
 # Ensure shell scripts always use LF line endings
 *.sh text eol=lf
 services/engine/sample_data/*.mp4 filter=lfs diff=lfs merge=lfs -text
+packages/contracts/generated/** text eol=lf
+services/engine/contracts/** text eol=lf

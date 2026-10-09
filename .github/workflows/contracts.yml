@@ -1,0 +1,23 @@
+name: contracts
+on:
+  push:
+    paths: ["packages/contracts/**", "services/engine/contracts/**", ".github/workflows/contracts.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: packages/contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/contracts/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+      - run: npm ci
+      - run: npm test
+      - run: npm run check

@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Message",
+  "type": "object",
+  "description": "A message on the Redis stream `events` (field `msg`). The `message` field selects the branch.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/EventMessage"
+    },
+    {
+      "$ref": "#/$defs/IntervalOpenMessage"
+    },
+    {
+      "$ref": "#/$defs/IntervalCloseMessage"
+    },
+    {
+      "$ref": "#/$defs/MetricMessage"
+    }
+  ],
+  "discriminator": {
+    "propertyName": "message"
+  },
+  "$defs": {
+    "Time": {
+      "title": "Time",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "MinuteTime": {
+      "title": "MinuteTime",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:00\\.000Z$"
+    },
+    "EventMessage": {
+      "title": "EventMessage",
+      "type": "object",
+      "properties": {
+        "message": {
+          "const": "event"
+        },
+        "cameraId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null only for the system use case"
+        },
+        "useCase": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "configVersion": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time": {
+          "$ref": "#/$defs/Time"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^evt_[0-9a-f]{32}$"
+        },
+        "type": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "critical"
+          ]
+        },
+        "snapshotPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "message",
+        "cameraId",
+        "useCase",
+        "schemaVersion",
+        "configVersion",
+        "time",
+        "id",
+        "type",
+        "severity",
+        "snapshotPath",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "IntervalOpenMessage": {
+      "title": "IntervalOpenMessage",
+      "type": "object",
+      "properties": {
+        "message": {
+          "const": "interval_open"
+        },
+        "cameraId": {
+          "type": "string"
+        },
+        "useCase": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "configVersion": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time": {
+          "$ref": "#/$defs/Time",
+          "description": "interval start"
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^ses_[0-9a-f]{32}$"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "subjectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "message",
+        "cameraId",
+        "useCase",
+        "schemaVersion",
+        "configVersion",
+        "time",
+        "sessionId",
+        "kind",
+        "subjectId",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "IntervalCloseMessage": {
+      "title": "IntervalCloseMessage",
+      "type": "object",
+      "properties": {
+        "message": {
+          "const": "interval_close"
+        },
+        "cameraId": {
+          "type": "string"
+        },
+        "useCase": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "configVersion": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time": {
+          "$ref": "#/$defs/Time",
+          "description": "interval end"
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^ses_[0-9a-f]{32}$"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "endReason": {
+          "enum": [
+            "ended",
+            "engine_stop"
+          ]
+        },
+        "data": {
+          "type": "object",
+          "description": "merged into the data of the open message"
+        }
+      },
+      "required": [
+        "message",
+        "cameraId",
+        "useCase",
+        "schemaVersion",
+        "configVersion",
+        "time",
+        "sessionId",
+        "kind",
+        "endReason",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "MetricMessage": {
+      "title": "MetricMessage",
+      "type": "object",
+      "properties": {
+        "message": {
+          "const": "metric"
+        },
+        "cameraId": {
+          "type": "string"
+        },
+        "useCase": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "configVersion": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time": {
+          "$ref": "#/$defs/MinuteTime",
+          "description": "start of the minute"
+        },
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "message",
+        "cameraId",
+        "useCase",
+        "schemaVersion",
+        "configVersion",
+        "time",
+        "name",
+        "value"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "engine_started": {
+      "title": "EngineStarted",
+      "type": "object",
+      "properties": {
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "engineGroup": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bootId",
+        "engineGroup"
+      ],
+      "additionalProperties": false
+    },
+    "events_dropped": {
+      "title": "EventsDropped",
+      "type": "object",
+      "properties": {
+        "engineGroup": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "engineGroup",
+        "count"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
