@@ -368,6 +368,31 @@ describe('ingest: the events stream into Postgres', () => {
     expect(await count('Event')).toBe(1);
   });
 
+  it('a late engine_started closes only intervals that started before it, not ones the new boot opened after it', async () => {
+    const app = await start();
+    const ingest = app.get(IngestService);
+    const before = openMsg({ time: '2026-10-09T09:59:59.999Z' });
+    const after = openMsg({
+      subjectId: 'T2',
+      time: '2026-10-09T10:00:00.001Z',
+    });
+    // both already stored when the engine_started arrives (e.g. retried in per-entry mode)
+    await ingest.processBatch([entry('1-1', before), entry('1-2', after)]);
+
+    await ingest.processBatch([
+      entry('1-0', engineStarted('default', '2026-10-09T10:00:00.000Z')),
+    ]);
+
+    expect(await interval(before.sessionId as string)).toMatchObject({
+      end: new Date('2026-10-09T10:00:00.000Z'),
+      endReason: 'engine_restart',
+    });
+    expect(await interval(after.sessionId as string)).toMatchObject({
+      end: null,
+      endReason: null,
+    });
+  });
+
   it('while Postgres is unreachable nothing is acked, counted or dead-lettered, and the consumer keeps retrying', async () => {
     const error = jest
       .spyOn(Logger.prototype, 'error')

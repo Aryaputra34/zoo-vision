@@ -196,8 +196,9 @@ export class IngestService {
               ${m.severity}::"Severity", ${m.configVersion}::int, ${m.schemaVersion}::int,
               ${m.snapshotPath}, ${JSON.stringify(m.data)}::jsonb)
       ON CONFLICT ("id") DO NOTHING`;
-    // Only a first delivery closes intervals: a redelivered engine_started must not close
-    // intervals the restarted engine has opened since.
+    // Closes the previous boot's intervals. Only a first delivery does it (a redelivered
+    // engine_started must not close what the restarted engine opened since), and only intervals
+    // that started before the restart (a late one, e.g. retried per entry, must not either).
     if (
       inserted === 1 &&
       m.useCase === 'system' &&
@@ -207,6 +208,7 @@ export class IngestService {
       await tx.$executeRaw`
         UPDATE "Interval" SET "end" = ${m.time}::timestamptz, "endReason" = 'engine_restart'
          WHERE "end" IS NULL AND "useCase" <> 'system'
+           AND "start" <= ${m.time}::timestamptz
            AND "cameraId" IN (SELECT "id" FROM "Camera" WHERE "engineGroup" = ${engineGroup})`;
     }
     return undefined;
