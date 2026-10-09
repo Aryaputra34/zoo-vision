@@ -98,6 +98,11 @@ Step 5: Export with FP16 half precision? (Useful for GPUs, not CPU) [y/N]: n
 
 For scripting, CI/CD, or automated builds, pass arguments directly.
 
+`--model` takes a path. Weights fetched by `tools/fetch_models.py` live in `services/engine/models/`; put other
+`.pt` files there too (or pass their full path). The export is written next to the `.pt`, so exporting into
+`services/engine/models/` replaces a fetched file with the same name (for example `yolo26s.onnx`), and the next
+`fetch_models.py` run puts the release version back. Rename an export you want to keep and add it to the manifest.
+
 #### 1. List All Available PyTorch Weights
 ```powershell
 uv run --project services/engine python tools/export_model.py --list
@@ -105,30 +110,30 @@ uv run --project services/engine python tools/export_model.py --list
 
 #### 2. Export to Dynamic ONNX (Standard 640)
 ```powershell
-uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format onnx --imgsz 640 --dynamic
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo11s.pt --format onnx --imgsz 640 --dynamic
 ```
 
 #### 3. Export for 16:9 Widescreen CCTV (Zero Letterbox Padding)
 ```powershell
 # Height 736, Width 1280 (Multiple of 32 for 16:9 aspect ratio)
-uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
 ```
 
 #### 4. Export for Native 1080p High-Fidelity
 ```powershell
-uv run --project services/engine python tools/export_model.py --model yolo26m.pt --format onnx --imgsz 1088 1920 --dynamic
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo26m.pt --format onnx --imgsz 1088 1920 --dynamic
 ```
 
 #### 5. Export to Intel OpenVINO (for Intel NUC / Core / Xeon CPUs)
 ```powershell
-uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format openvino --imgsz 640
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo11s.pt --format openvino --imgsz 640
 ```
 
 #### 6. Export to NVIDIA TensorRT FP16 (for Production Linux / GPU Servers)
 > [!NOTE]
 > TensorRT export requires an NVIDIA GPU with CUDA and the `tensorrt` Python package installed.
 ```powershell
-uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format engine --imgsz 640 --half
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo11s.pt --format engine --imgsz 640 --half
 ```
 
 ---
@@ -202,7 +207,7 @@ By exporting with rectangular 16:9 dimensions:
 
 ```powershell
 # Export 16:9 Widescreen Model for Gate and Highway cameras:
-uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo26s.pt --format onnx --imgsz 736 1280 --dynamic
 ```
 
 ### The Stride-32 Rule
@@ -226,7 +231,7 @@ YOLO architectures employ 5 downsampling convolutional stages ($2^5 = 32$). Ther
 
 ```powershell
 # Export fixed shape for embedded NPU:
-uv run --project services/engine python tools/export_model.py --model yolo11n.pt --format onnx --imgsz 640 --fixed
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo11n.pt --format onnx --imgsz 640 --fixed
 ```
 
 ---
@@ -238,7 +243,7 @@ uv run --project services/engine python tools/export_model.py --model yolo11n.pt
 
 ```powershell
 # Export FP16 model for NVIDIA GPU deployment:
-uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 640 --half
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo26s.pt --format onnx --imgsz 640 --half
 ```
 
 ---

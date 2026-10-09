@@ -34,8 +34,9 @@ python ../../tools/fetch_models.py --from DIR # offline: copy from a folder
 
 A rule file's `model_name` is looked up as given first, then in `models/` (or in `$ZOO_MODELS_DIR`
 if set). Ultralytics downloads its official `.pt` weights by name if they are missing. A missing
-`.onnx` or `.engine` file stops that camera with an error naming the fetch command; a missing plate
-detector only turns ANPR off.
+`.onnx` or `.engine` file stops the whole engine at startup with an error naming the file and the fetch
+command (under Docker it then restarts until the weights are there); a missing plate detector only turns
+ANPR off.
 
 ## Run
 

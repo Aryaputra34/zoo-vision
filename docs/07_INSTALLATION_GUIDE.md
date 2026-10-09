@@ -505,10 +505,10 @@ Use the included Universal Model Exporter CLI to generate hardware-optimized mod
 uv run --project services/engine python tools/export_model.py
 
 # Or direct 1-click export to 16:9 widescreen ONNX:
-uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format onnx --imgsz 736 1280 --dynamic
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo11s.pt --format onnx --imgsz 736 1280 --dynamic
 
 # Or export to NVIDIA TensorRT (FP16):
-uv run --project services/engine python tools/export_model.py --model yolo11s.pt --format engine --imgsz 640 --half
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo11s.pt --format engine --imgsz 640 --half
 ```
 
 For complete export syntax and benchmarks, consult [05_MODEL_EXPORT_GUIDE.md](05_MODEL_EXPORT_GUIDE.md).
@@ -661,7 +661,7 @@ journalctl -u zoo-vision.service -f
 * **Resolution**:
   1. In `services/engine/configs/cameras.yaml`, lower camera `target_fps` (e.g., reduce Cashier monitoring from 5 to 2 FPS, Restaurant from 5 to 2 FPS).
   2. Use smaller model architectures (switch from `yolo11m` to `yolo11s` or `yolo11n`).
-  3. Export models to **FP16 Half-Precision** via `uv run --project services/engine python tools/export_model.py --model yolo11s.pt --half --format engine`.
+  3. Export models to **FP16 Half-Precision** via `uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo11s.pt --half --format engine`.
   4. Refer to the VRAM budget breakdown in [03_HARDWARE_SPECIFICATIONS.md](03_HARDWARE_SPECIFICATIONS.md).
 
 ---

@@ -34,10 +34,12 @@ release. Install them with `--from <folder>` from a file share or USB stick.
 ## export_model.py: convert a model
 
 Exports a YOLO `.pt` model to ONNX, OpenVINO, TensorRT, TorchScript or TFLite (interactive wizard
-when run without `--model`). It needs the engine's Python environment:
+when run without `--model`). It needs the engine's Python environment. `--model` is a path; fetched weights are in
+`services/engine/models/`, and the export is written next to the `.pt` (so exporting there replaces a fetched file of
+the same name until the next `fetch_models.py` run):
 
 ```bash
-uv run --project services/engine python tools/export_model.py --model yolo26s.pt --format onnx --imgsz 736 1280
+uv run --project services/engine python tools/export_model.py --model services/engine/models/yolo26s.pt --format onnx --imgsz 736 1280
 uv run --project services/engine python tools/export_model.py --list    # local .pt files
 ```
 
