@@ -7,6 +7,7 @@ import { ENV, type Env } from './config/env';
 import { CamerasModule } from './cameras/cameras.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { HealthController } from './health/health.controller';
+import { IngestModule } from './ingest/ingest.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
@@ -28,6 +29,7 @@ export class AppModule {
         UsersModule,
         ApiTokensModule,
         CamerasModule,
+        IngestModule,
       ],
       controllers: [HealthController],
       providers: [{ provide: ENV, useValue: env }],
