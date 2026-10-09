@@ -5,12 +5,14 @@ import {
   HealthIndicatorService,
 } from '@nestjs/terminus';
 import Redis from 'ioredis';
+import { Public } from '../auth/decorators';
 import { PrismaService } from '../prisma/prisma.service';
 import { REDIS } from '../redis/redis.module';
 
 const PROBE_TIMEOUT_MS = 2000;
 
 /** GET /api/health: Postgres (`SELECT 1` as zoo_api) and Redis (`PING`). 503 when either is down. */
+@Public()
 @Controller({ path: 'health', version: VERSION_NEUTRAL })
 export class HealthController {
   constructor(

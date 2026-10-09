@@ -18,6 +18,7 @@ export async function createTestApp(
     DATABASE_URL: required('DATABASE_URL'),
     REDIS_URL: required('REDIS_URL'),
     CAMERA_URL_KEY: randomBytes(32).toString('base64'),
+    COOKIE_SECURE: 'false',
     SWAGGER: 'off',
     INGEST: 'off',
     ...env,
