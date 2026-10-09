@@ -27,6 +27,7 @@ Later phases add `apps/api` (NestJS + Prisma) and `packages/contracts` (shared J
 
 | Task | Command | Details |
 | :--- | :--- | :--- |
+| Run the whole stack locally | MediaMTX + engine + dashboard | [docs/10_LOCAL_QUICKSTART.md](docs/10_LOCAL_QUICKSTART.md) |
 | Engine dev setup | `cd services/engine && uv sync` | [services/engine/README.md](services/engine/README.md) |
 | Model weights | `python tools/fetch_models.py` | [tools/README.md](tools/README.md) |
 | Run a pipeline on a video | `cd services/engine && uv run python test_video.py --video sample_data/cars.mp4 --pipeline gate` | [docs/08](docs/08_TESTING_GUIDE.md) |
@@ -46,4 +47,5 @@ Needs [uv](https://docs.astral.sh/uv/) and [git-lfs](https://git-lfs.com/) (the 
 7. **[07_INSTALLATION_GUIDE.md](docs/07_INSTALLATION_GUIDE.md)**: bare-metal and Docker installs, configuration, systemd, troubleshooting.
 8. **[08_TESTING_GUIDE.md](docs/08_TESTING_GUIDE.md)**: testing every use case with recorded video and the web dashboard.
 9. **[09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](docs/09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md)**: MediaMTX recording, RTSP proxy and clip playback.
-10. **[architecture_best_practice_recommendation.md](docs/architecture_best_practice_recommendation.md)**: the prototype-era Nx vs. Python comparison (historical).
+10. **[10_LOCAL_QUICKSTART.md](docs/10_LOCAL_QUICKSTART.md)**: run MediaMTX, the engine and the dashboard on a dev laptop.
+11. **[architecture_best_practice_recommendation.md](docs/architecture_best_practice_recommendation.md)**: the prototype-era Nx vs. Python comparison (historical).
