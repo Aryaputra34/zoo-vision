@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "visit": {
+      "title": "Visit",
+      "type": "object",
+      "properties": {
+        "tableName": { "type": "string" },
+        "partySize": { "type": "integer" }
+      },
+      "required": ["tableName"],
+      "additionalProperties": false
+    }
+  }
+}

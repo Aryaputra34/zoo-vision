@@ -41,7 +41,11 @@ function newAjv(options = {}) {
 }
 
 const toErrors = (ajvErrors, prefix = '') =>
-  ajvErrors.map((e) => ({ path: prefix + e.instancePath, message: e.message ?? 'invalid' }));
+  ajvErrors.map((e) => ({
+    // point at the offending key rather than its parent object
+    path: prefix + e.instancePath + (e.keyword === 'additionalProperties' ? `/${e.params.additionalProperty}` : ''),
+    message: e.message ?? 'invalid',
+  }));
 
 const fail = (path_, message) => ({ ok: false, errors: [{ path: path_, message }] });
 
@@ -107,8 +111,9 @@ function createValidator(registry = loadRegistry()) {
     const def = Object.hasOwn(defs, message[field]) ? defs[message[field]] : undefined;
     if (!def) return fail(`/${field}`, `unknown ${field} '${message[field]}' for use case '${message.useCase}'`);
 
-    const key = `${message.useCase}:${message.message === 'event' ? 'event' : 'interval'}:${message[field]}`;
-    return check(key, def, message.data, '/data');
+    // Close data is a partial merged into the open data, so its keys are checked but none is required.
+    const schema = message.message === 'interval_close' ? { ...def, required: undefined } : def;
+    return check(`${message.useCase}:${message.message}:${message[field]}`, schema, message.data, '/data');
   }
 
   function duplicateListIds(schema, settings) {

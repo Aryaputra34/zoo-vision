@@ -104,3 +104,20 @@ test('reports data errors under /data', () => {
   assert.equal(r.ok, false);
   assert.equal(r.errors[0].path, '/data/n');
 });
+
+const sessionId = 'ses_' + 'a'.repeat(32);
+const open = (data) => ({ message: 'interval_open', ...base, sessionId, kind: 'visit', subjectId: 'T1', data });
+const close = (data) => ({ message: 'interval_close', ...base, sessionId, kind: 'visit', endReason: 'ended', data });
+
+test('interval_open data must carry the required fields', () => {
+  assert.deepEqual(v.validateMessage(open({ tableName: 'Table 1' })), { ok: true });
+  assert.equal(v.validateMessage(open({})).ok, false);
+});
+
+test('interval_close data is a partial: empty passes, unknown keys fail under /data', () => {
+  assert.deepEqual(v.validateMessage(close({})), { ok: true });
+  assert.deepEqual(v.validateMessage(close({ partySize: 3 })), { ok: true });
+  const r = v.validateMessage(close({ bogus: 1 }));
+  assert.equal(r.ok, false);
+  assert.equal(r.errors[0].path, '/data/bogus');
+});
