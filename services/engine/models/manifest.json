@@ -1,0 +1,41 @@
+{
+  "release": "models-v1",
+  "models": [
+    {
+      "file": "yolo11s.pt",
+      "sha256": "85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5",
+      "size": 19313732,
+      "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/yolo11s.pt"
+    },
+    {
+      "file": "yolo26s.pt",
+      "sha256": "646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b",
+      "size": 20422725,
+      "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/yolo26s.pt"
+    },
+    {
+      "file": "yolo11s.onnx",
+      "sha256": "ecb5a18b60da4c0382ca7222990831d35493825fce5d3dcb86d093416d996f29",
+      "size": 38051717,
+      "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/yolo11s.onnx"
+    },
+    {
+      "file": "yolo26s.onnx",
+      "sha256": "a0484e7fe8a52ab5c6376da405491511a806b359733135cdda838fd42e616382",
+      "size": 39172585,
+      "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/yolo26s.onnx"
+    },
+    {
+      "file": "yolo26l.onnx",
+      "sha256": "6a439ae269fef3ed42707b6a45f6295430816d90f31de375e867e0966f59c83b",
+      "size": 100037258,
+      "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/yolo26l.onnx"
+    },
+    {
+      "file": "license_plate_detector.onnx",
+      "sha256": "693133a1db97a3ba1e90068986f80afb72c3fcddb681e57181a89a9a3dc351d6",
+      "size": 10481682,
+      "url": "https://github.com/Aryaputra34/zoo-vision/releases/download/models-v1/license_plate_detector.onnx"
+    }
+  ]
+}

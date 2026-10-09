@@ -1,0 +1,38 @@
+# Zoo Vision on one park server. Run from this folder: docker compose up -d
+# Host data lives in ${ZOO_DATA_DIR} (default ./data): recordings, snapshots, models, logs. See README.md.
+services:
+  # Pulls every camera once, records it (mediamtx.yml), re-serves RTSP to the AI engine
+  # and serves event clips to the dashboard on :9996.
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.1
+    container_name: zoo_mediamtx
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - MTX_PATHDEFAULTS_RECORDPATH=/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - ${ZOO_DATA_DIR:-./data}/recordings:/recordings
+
+  zoo-ai-engine:
+    build: ../services/engine
+    image: zoo-vision-engine:${ZOO_VERSION:-dev}
+    container_name: zoo_vision_service
+    restart: unless-stopped
+    network_mode: "host" # Host networking for lowest latency RTSP & REST calls
+    depends_on:
+      - mediamtx
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # Passes your RTX 3060 / 4070 GPU directly inside
+              capabilities: [ gpu, video ] # Enables CUDA + NVDEC hardware video decoding
+    volumes:
+      - ../services/engine/configs:/app/configs # Edit camera configs without rebuilding image
+      - ${ZOO_DATA_DIR:-./data}/models:/app/models # Fetched by tools/fetch_models.py
+      - ${ZOO_DATA_DIR:-./data}/logs:/app/logs
+      - ${ZOO_DATA_DIR:-./data}/snapshots:/app/snapshots # Event JPEGs served to the dashboard
+    environment:
+      - PYTHONUNBUFFERED=1

@@ -10,7 +10,7 @@ As defined in **[ADR-008](adr/ADR-008-python-analytics-mediamtx-dashboard-nx-opt
 1. [MediaMTX Role & Architecture](#1-mediamtx-role--architecture)
 2. [Port Allocation & Network Map](#2-port-allocation--network-map)
 3. [Installation Methods (Windows & Docker)](#3-installation-methods-windows--docker)
-4. [Configuration (`configs/mediamtx.yml`) Explained](#4-configuration-configsmediamtxyml-explained)
+4. [Configuration (`deploy/mediamtx.yml`) Explained](#4-configuration-deploymediamtxyml-explained)
 5. [Step-by-Step Testing & Verification](#5-step-by-step-testing--verification)
    * [Step 1: Start MediaMTX](#step-1-start-mediamtx)
    * [Step 2: Publish Simulated Camera Feeds with FFmpeg](#step-2-publish-simulated-camera-feeds-with-ffmpeg)
@@ -45,7 +45,7 @@ graph TD
         Disp["Analytics Dispatcher"]
     end
 
-    subgraph Dashboard ["zoo-analytics-web (:3000)"]
+    subgraph Dashboard ["zoo-vision-fe (:3000)"]
         LivePage["/live Camera Grid"]
         EventsPage["/events Table<br/>[Bukti: Snapshot + Play Clip]"]
         ClipProxy["/api/clip Proxy"]
@@ -80,7 +80,7 @@ graph TD
 | Port | Protocol | Purpose | Consumer |
 |---|---|---|---|
 | **`8554`** | RTSP (TCP) | RTSP stream proxy / re-broadcast | `zoo-monitor` (`main.py` cameras.yaml `source`) |
-| **`9996`** | HTTP | Archive playback & clip extraction API | `zoo-analytics-web` (`/api/clip` endpoint) |
+| **`9996`** | HTTP | Archive playback & clip extraction API | `zoo-vision-fe` (`/api/clip` endpoint) |
 | **`8889`** | HTTP/WebRTC | Low-latency raw browser video stream | Optional browser fallback |
 
 ---
@@ -92,28 +92,28 @@ MediaMTX is a single standalone executable with no external runtime dependencies
 
 1. Download the latest Windows release (`mediamtx_v1.21.1_windows_amd64.zip`):
    - Direct GitHub link: [https://github.com/bluenviron/mediamtx/releases](https://github.com/bluenviron/mediamtx/releases)
-2. Extract `mediamtx.exe` into a folder (e.g. `c:\Users\Magnet Busdev-2\Documents\temp\zoo-monitor\mediamtx\` or place directly in project).
+2. Extract `mediamtx.exe` into the repository root (it is git-ignored; the repo no longer ships the binary).
 3. Verify by running in PowerShell:
    ```powershell
    .\mediamtx.exe --version
    ```
 
 ### Option B: Docker / Docker Compose (Linux or Windows with Docker Desktop)
-A complete service definition is already configured in [`docker-compose.yml`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/docker-compose.yml):
+A complete service definition is already configured in [`deploy/docker-compose.yml`](../deploy/docker-compose.yml):
 
 ```powershell
 # Start MediaMTX service in the background:
-docker compose up -d mediamtx
+docker compose -f deploy/docker-compose.yml up -d mediamtx
 
 # Check logs:
-docker compose logs -f mediamtx
+docker compose -f deploy/docker-compose.yml logs -f mediamtx
 ```
 
 ---
 
-## 4. Configuration (`configs/mediamtx.yml`) Explained
+## 4. Configuration (`deploy/mediamtx.yml`) Explained
 
-The project configuration file is located at [`configs/mediamtx.yml`](file:///c:/Users/Magnet%20Busdev-2/Documents/temp/zoo-monitor/configs/mediamtx.yml):
+The project configuration file is located at [`deploy/mediamtx.yml`](../deploy/mediamtx.yml):
 
 ```yaml
 authInternalUsers:
@@ -185,8 +185,8 @@ Follow these steps to verify MediaMTX locally on your machine without physical c
 Run MediaMTX pointing to the project configuration:
 
 ```powershell
-# From zoo-monitor directory:
-.\mediamtx.exe configs\mediamtx.yml
+# From the repository root:
+.\mediamtx.exe deploy\mediamtx.yml
 ```
 
 You should see log output confirming:
@@ -263,9 +263,9 @@ curl "http://127.0.0.1:9996/get?path=cam_restaurant_01&start=$now&duration=30&fo
 
 ## 6. End-to-End Integration with Web Dashboard & AI Engine
 
-Once MediaMTX is verified, connect both `zoo-monitor` and `zoo-analytics-web`:
+Once MediaMTX is verified, connect both the engine and `zoo-vision-fe`:
 
-### 1. Configure `zoo-monitor/configs/cameras.yaml`
+### 1. Configure `services/engine/configs/cameras.yaml`
 Point the camera source to MediaMTX and specify `recording_path`:
 
 ```yaml
@@ -280,7 +280,7 @@ cameras:
     rule_config: "configs/rules/restaurant_counter.yaml"
 ```
 
-### 2. Configure `zoo-analytics-web/.env.local`
+### 2. Configure `zoo-vision-fe/.env.local`
 Enable the playback URL in the dashboard:
 
 ```env
@@ -290,8 +290,8 @@ MEDIAMTX_PLAYBACK_URL=http://127.0.0.1:9996
 
 ### 3. Run the Multi-Camera Service
 ```powershell
-cd c:\Users\Magnet Busdev-2\Documents\temp\zoo-monitor
-python main.py
+cd c:\Users\Magnet Busdev-2\Documents\temp\zoo-monitor\services\engine
+uv run python main.py
 ```
 
 ### 4. Verify in Web Dashboard
@@ -306,7 +306,7 @@ python main.py
 
 ### 1. "MediaMTX unreachable" in Dashboard
 * **Check**: Is MediaMTX running? Test by opening `http://127.0.0.1:9996` in your browser.
-* **Check**: Verify `MEDIAMTX_PLAYBACK_URL=http://127.0.0.1:9996` is set in `zoo-analytics-web/.env.local` and restart `npm start`.
+* **Check**: Verify `MEDIAMTX_PLAYBACK_URL=http://127.0.0.1:9996` is set in `zoo-vision-fe/.env.local` and restart `npm start`.
 
 ### 2. "recording not available" (HTTP 404)
 * **Check**: MediaMTX only serves clips for times that have **already elapsed** and were actually recorded on disk. If you just started publishing 5 seconds ago, request clips from the current minute.
@@ -323,6 +323,6 @@ python main.py
 ### 5. "reader is too slow, discarding frames" in MediaMTX / "Could not find ref with POC" in Python
 * **Cause**: MediaMTX is streaming at native camera speed (~15–25 FPS per camera = ~80 FPS total across 4 cameras), but the Python AI engine is running on **CPU**. A desktop CPU can process ~5 to 8 YOLO detections per second total. When Python falls behind, MediaMTX drops buffered frames to prevent latency lag.
 * **Fix**:
-  * **For CPU testing**: Lower camera `target_fps` in [`configs/cameras.yaml`](cameras.yaml) (e.g. 2–5 FPS), or test cameras individually using [`test_video.py`](../test_video.py).
-  * **For Production**: Set `device: "cuda:0"` in [`configs/app_config.yaml`](app_config.yaml) on an NVIDIA GPU (RTX 3060/4060 or TensorRT) to process 120+ FPS in real time with zero dropped frames.
+  * **For CPU testing**: Lower camera `target_fps` in [`services/engine/configs/cameras.yaml`](../services/engine/configs/cameras.yaml.example) (e.g. 2–5 FPS), or test cameras individually using [`test_video.py`](../services/engine/test_video.py).
+  * **For Production**: Set `device: "cuda:0"` in [`services/engine/configs/app_config.yaml`](../services/engine/configs/app_config.yaml.example) on an NVIDIA GPU (RTX 3060/4060 or TensorRT) to process 120+ FPS in real time with zero dropped frames.
 

@@ -1,34 +1,41 @@
-configs/app_config.yaml
-configs/cameras.yaml
-__pycache__
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
 .env
-.venv
-.pytest_cache
 
-demo_restaurant.mp4
+# Local operator config (camera URLs with passwords, API keys), including renamed copies such as
+# cameras.yaml.bak: only the *.example files and rules/ are tracked
+services/engine/configs/*
+!services/engine/configs/*.example
+!services/engine/configs/rules/
 
-yolo11l.pt
-yolo11s.pt
-yolo11x.pt
-yolo11m.pt
-yolo11n.pt
-yolo26l.pt
-yolo26m.pt
-yolo26s.pt
-yolo26x.pt
-rtdetr-l.pt
+# Model weights: fetched by tools/fetch_models.py; only the manifest is tracked
 *.pt
-*.mp4
-*.jpg
 *.onnx
+*.engine
 *.xml
 *.bin
-scratch
-yolo11s_openvino_model
-!models/license_plate_detector.onnx
+yolo11s_openvino_model/
+services/engine/models/*
+!services/engine/models/manifest.json
 
-metavms-server_plugin_sdk-6.1.2.42921-universal/server_plugin_sdk/*
+# Videos and images (small test videos go through Git LFS, see .gitattributes)
+*.mp4
+*.jpg
 
-# Event snapshots (core/snapshot_store.py) and MediaMTX recordings
+# Runtime output
 snapshots/
 recordings/
+logs/
+deploy/data/
+
+# Local binaries and SDKs (deployment uses the bluenviron/mediamtx image)
+/mediamtx.exe
+/mediamtx.yml
+/mediamtx/
+metavms-server_plugin_sdk-*/
+
+# Personal experiments
+scratch/

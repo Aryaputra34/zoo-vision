@@ -1,0 +1,20 @@
+name: engine
+on:
+  push:
+    paths: ["services/engine/**", ".github/workflows/engine.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+          enable-cache: true
+          cache-dependency-glob: services/engine/uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run pytest -q

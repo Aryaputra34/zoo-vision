@@ -1,0 +1,12 @@
+name: repo
+# Every push, no path filter: a binary or weight file can be added anywhere
+on: [push]
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.10"
+      - run: uvx --from "pytest>=8.3" pytest -q tools/tests

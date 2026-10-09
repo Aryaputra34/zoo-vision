@@ -1,0 +1,55 @@
+[project]
+name = "zoo-vision-engine"
+version = "0.1.0"
+description = "Zoo Vision AI engine: per-camera YOLO + ByteTrack pipelines"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # from the prototype's requirements.txt
+    "ultralytics>=8.3.0",
+    "supervision>=0.23.0,<0.31",  # 0.31 removes sv.ByteTrack (vehicle_gate_pipeline.py)
+    "shapely>=2.0.3",
+    "easyocr>=1.7.0",
+    "requests>=2.31.0",
+    "urllib3>=2.2.1",
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.1",
+    "tqdm>=4.66.2",
+    # declared so Ultralytics never pip-installs them at runtime (fails on offline sites)
+    "torch>=2.4",
+    "torchvision>=0.19",
+    "onnx>=1.16",
+    "onnxruntime>=1.18; sys_platform != 'linux'",
+    "onnxruntime-gpu>=1.18; sys_platform == 'linux'",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.16"]
+
+[tool.uv]
+package = false
+# easyocr pulls the headless OpenCV build, which would shadow cv2's GUI used by test_video.py
+override-dependencies = ["opencv-python-headless; sys_platform == 'never'"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+# Phase 0: syntax errors and undefined names only (the prototype passes this today)
+select = ["E9", "F63", "F7", "F82"]
