@@ -9,5 +9,8 @@ def test_local_operator_files_are_git_ignored(path):
 
 
 def test_dockerignore_keeps_local_files_out_of_image():
-    lines = {line.strip() for line in (ENGINE_DIR / ".dockerignore").read_text().splitlines()}
-    assert {"configs/cameras.yaml", "configs/app_config.yaml", ".env", "models/", ".venv/"} <= lines
+    lines = [line.strip() for line in (ENGINE_DIR / ".dockerignore").read_text().splitlines()]
+    assert {".env", "models/", ".venv/"} <= set(lines)
+    # every local config file (cameras.yaml, cameras.yaml.bak, site copies...) stays out; examples and rules go in
+    assert lines.index("configs/*") < lines.index("!configs/*.example")
+    assert lines.index("configs/*") < lines.index("!configs/rules")

@@ -5,9 +5,11 @@ __pycache__/
 .ruff_cache/
 .env
 
-# Local operator config (camera URLs with passwords, API keys); only *.example files are tracked
-services/engine/configs/app_config.yaml
-services/engine/configs/cameras.yaml
+# Local operator config (camera URLs with passwords, API keys), including renamed copies such as
+# cameras.yaml.bak: only the *.example files and rules/ are tracked
+services/engine/configs/*
+!services/engine/configs/*.example
+!services/engine/configs/rules/
 
 # Model weights: fetched by tools/fetch_models.py; only the manifest is tracked
 *.pt

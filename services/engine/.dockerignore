@@ -12,6 +12,7 @@ logs/
 *.pt
 *.onnx
 *.engine
-configs/cameras.yaml
-configs/app_config.yaml
+configs/*
+!configs/*.example
+!configs/rules
 .env

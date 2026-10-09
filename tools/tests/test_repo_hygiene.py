@@ -33,6 +33,23 @@ def test_local_files_are_ignored(path):
     assert subprocess.run(["git", "check-ignore", "-q", path], cwd=REPO).returncode == 0
 
 
+# Operator config holds camera passwords and API keys. Checked here because repo.yml runs on every push,
+# including a .gitignore-only change that the path-filtered engine workflow would not see.
+@pytest.mark.parametrize("path", ["services/engine/configs/cameras.yaml", "services/engine/configs/app_config.yaml",
+                                  "services/engine/.env", "services/engine/configs/cameras.yaml.bak",
+                                  "services/engine/configs/cameras_site2.yaml"])
+def test_operator_config_is_ignored(path):
+    assert subprocess.run(["git", "check-ignore", "-q", path], cwd=REPO).returncode == 0
+
+
+@pytest.mark.parametrize("path", ["services/engine/configs/cameras.yaml.example",
+                                  "services/engine/configs/app_config.yaml.example",
+                                  "services/engine/configs/rules/vehicle_gate.yaml"])
+def test_config_examples_and_rules_stay_tracked(path):
+    # --no-index: test the ignore patterns themselves, not just the fact that the file is tracked
+    assert subprocess.run(["git", "check-ignore", "--no-index", "-q", path], cwd=REPO).returncode == 1
+
+
 def test_model_manifest_is_not_ignored():
     assert subprocess.run(["git", "check-ignore", "-q", "services/engine/models/manifest.json"],
                           cwd=REPO).returncode == 1
