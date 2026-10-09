@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Inject,
   Post,
+  Put,
   Req,
   Res,
   UseGuards,
@@ -12,10 +14,12 @@ import {
 import { ApiBody, ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import type { CookieOptions, Request, Response } from 'express';
+import { setAudit, SkipAudit } from '../audit/audit-context';
 import { ENV, type Env } from '../config/env';
 import type { Actor, ActorRequest } from './actor';
 import { SESSION_COOKIE } from './auth.guard';
 import { AuthService, type LoginUser } from './auth.service';
+import { ChangePasswordDto } from './change-password.dto';
 import { CurrentActor, Public } from './decorators';
 import { LocalAuthGuard } from './local-auth.guard';
 import { LoginThrottlerGuard } from './login-throttler.guard';
@@ -54,6 +58,7 @@ export class AuthController {
 
   /** The credentials are checked by LocalAuthGuard (LocalStrategy), which leaves the result on req.user. */
   @Public()
+  @SkipAudit()
   @ApiBody({ type: LoginDto })
   @UseGuards(LoginThrottlerGuard, LocalAuthGuard)
   @HttpCode(200)
@@ -71,6 +76,7 @@ export class AuthController {
     return user;
   }
 
+  @SkipAudit()
   @HttpCode(204)
   @Post('logout')
   async logout(
@@ -86,5 +92,30 @@ export class AuthController {
   @Get('me')
   me(@CurrentActor() actor: Actor): Actor {
     return actor;
+  }
+
+  /** Session users only; an API token cannot change a password. Other sessions end, this one stays. */
+  @HttpCode(204)
+  @Put('password')
+  async changePassword(
+    @CurrentActor() actor: Actor,
+    @Req() req: ActorRequest,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    if (actor.type === 'token') {
+      throw new ForbiddenException('API tokens cannot change passwords');
+    }
+    const token = (req.cookies as Record<string, string>)[SESSION_COOKIE];
+    await this.auth.changePassword(
+      actor.id,
+      dto.currentPassword,
+      dto.newPassword,
+      token,
+    );
+    setAudit(req, {
+      action: 'user.password',
+      entity: 'user',
+      entityId: actor.id,
+    });
   }
 }

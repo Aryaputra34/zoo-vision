@@ -1,9 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { normalizeUsername } from './auth/auth.service';
-import { hashPassword } from './auth/password';
+import { hashPassword, MIN_PASSWORD_LENGTH } from './auth/password';
 import { PrismaClient } from './generated/prisma/client';
-
-export const MIN_PASSWORD_LENGTH = 10;
 
 type NewSuperadmin = { username: string; name: string; password: string };
 

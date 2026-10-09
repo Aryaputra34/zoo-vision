@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   HttpException,
   Injectable,
@@ -7,7 +8,7 @@ import {
 import { LoginResult, Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { LockoutService } from './lockout.service';
-import { DUMMY_HASH, verifyPassword } from './password';
+import { DUMMY_HASH, hashPassword, verifyPassword } from './password';
 import { SessionService } from './session.service';
 
 export type RequestMeta = { ip?: string; userAgent?: string };
@@ -80,6 +81,27 @@ export class AuthService {
     await this.sessions.destroy(token);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     await this.record('LOGOUT', user?.username ?? userId, userId, meta);
+  }
+
+  /**
+   * Sets a new password after checking the current one (400 when it is wrong) and ends the
+   * user's other sessions; the one named by `keepToken` stays.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    keepToken: string | undefined,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+      throw new BadRequestException('Current password is wrong');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await hashPassword(newPassword) },
+    });
+    await this.sessions.revokeAllForUser(userId, keepToken);
   }
 
   /** Appends a LoginLog row (the API role can insert into it but never update it). */

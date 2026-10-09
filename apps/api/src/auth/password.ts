@@ -2,6 +2,11 @@ import bcrypt from 'bcrypt';
 
 const COST = 12;
 
+/** The shortest password anyone may set (CLI, user admin, password change). */
+export const MIN_PASSWORD_LENGTH = 10;
+/** bcrypt only reads the first 72 bytes, so longer input would silently be cut. */
+export const MAX_PASSWORD_LENGTH = 72;
+
 export function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, COST);
 }
