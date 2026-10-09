@@ -13,7 +13,7 @@ import numpy as np
 import supervision as sv
 
 from core.base_pipeline import BasePipeline
-from core.table_manager import TableOccupancyEngine
+from core.table_manager import TableOccupancyEngine, TableSessions
 from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("TableOccupancyPipeline")
@@ -21,6 +21,7 @@ logger = logging.getLogger("TableOccupancyPipeline")
 
 class TableOccupancyPipeline(BasePipeline):
     use_case = "restaurant_table"
+    metric_fields = {"occupiedTables": "occupied_tables", "occupancyRatePct": "table_occupancy_pct"}
 
     def __init__(
         self,
@@ -79,6 +80,7 @@ class TableOccupancyPipeline(BasePipeline):
         if "show_summary_card" not in table_cfg:
             table_cfg["show_summary_card"] = True
 
+        self.table_sessions = TableSessions(self)
         self.table_engine = TableOccupancyEngine(
             config=table_cfg,
             on_event_callback=self._handle_table_event
@@ -130,9 +132,10 @@ class TableOccupancyPipeline(BasePipeline):
         return dets[np.array(sorted(keep), dtype=int)]
 
     def _handle_table_event(self, event_type: str, data: Dict[str, Any], severity: str):
-        """Dispatches table events to Web Analytics Dashboard and Nx Meta Bookmarks."""
-        # 1. Forward to web dashboard
-        self.emit(event_type, data, severity)
+        """Turns table state changes into table_session intervals and Nx Meta Bookmarks."""
+        # 1. Open / close the table session
+        if event_type == "table_state_change":
+            self.table_sessions.on_change(data)
 
         # 2. Bookmark significant table state transitions in Nx Meta VMS
         if self.nx_client and event_type == "table_state_change":

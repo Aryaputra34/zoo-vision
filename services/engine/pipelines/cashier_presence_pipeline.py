@@ -24,6 +24,7 @@ logger = logging.getLogger("CashierPipeline")
 
 class CashierPresencePipeline(BasePipeline):
     use_case = "cashier_presence"
+    metric_fields = {"visitorCount": "queue_length", "clerkCount": "clerk_count"}
 
     def __init__(
         self,
@@ -68,6 +69,7 @@ class CashierPresencePipeline(BasePipeline):
 
         # State tracking
         self.last_presence_time = 0.0
+        self.desk_session: Optional[str] = None  # open desk_unattended interval
         self.last_visitor_waiting_time = 0.0
         self.last_alert_time = 0.0
         self.current_state = "INIT"
@@ -164,6 +166,9 @@ class CashierPresencePipeline(BasePipeline):
         annotated_frame = frame.copy()
 
         if self.clerk_present:
+            if self.desk_session:
+                self.close_interval(self.desk_session)
+                self.desk_session = None
             self.last_presence_time = current_time
             self.last_visitor_waiting_time = 0.0
 
@@ -177,6 +182,9 @@ class CashierPresencePipeline(BasePipeline):
                 self.clerk_annotator.color = sv.Color.GREEN
         else:
             absent_duration = int(current_time - self.last_presence_time)
+            if absent_duration >= self.absence_timeout_sec and not self.desk_session:
+                now_ms = int(time.time() * 1000)
+                self.desk_session = self.open_interval("desk_unattended", time_ms=now_ms - absent_duration * 1000)
 
             if self.visitor_present:
                 if self.last_visitor_waiting_time == 0.0:

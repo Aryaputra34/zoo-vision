@@ -13,22 +13,20 @@ import numpy as np
 import yaml
 from ultralytics import YOLO
 
-from core.analytics_dispatcher import new_event_id
+from core.event_stream import EventStream
+from core.messages import event_message, interval_close_message, interval_open_message, metric_message, new_id
+from core.metrics import MinuteMetrics
 from core.model_store import resolve_model_path
 from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("BasePipeline")
 
-# Live-state heartbeat interval for the web dashboard (zoo-vision-fe src/lib/util.ts STATUS_SEC must match).
-STATUS_INTERVAL_SEC = 30
-
 
 class BasePipeline(ABC):
-    use_case = ""       # dashboard use case id, set by each subclass
-    analytics = None    # AnalyticsDispatcher, assigned by main.py / test_video.py; None = dashboard disabled
+    use_case = ""       # contract use case id, set by each subclass
+    events: Optional[EventStream] = None  # assigned by main.py / test_video.py; None = nothing is sent
     snapshots = None    # SnapshotStore, assigned likewise; None = events carry no snapshot
-    recording_path = None  # MediaMTX path that records this camera; lets the dashboard play the clip of an event
-    _last_status = 0.0
+    metric_fields: Dict[str, str] = {}  # status field -> metric name, averaged per minute
 
     def __init__(
         self,
@@ -55,6 +53,8 @@ class BasePipeline(ABC):
         self.last_frame_at = 0.0
         self.fps = 0.0
         self._pending: Optional[list] = None  # events raised inside run(), sent once the annotated frame exists
+        self._open_intervals: Dict[str, str] = {}  # session id -> interval kind
+        self._metrics = MinuteMetrics(self._send_metric)
 
         # 1. Load base rule parameters from YAML file if available
         self.rules = self._load_rules(rule_config_path) if rule_config_path else {}
@@ -111,22 +111,57 @@ class BasePipeline(ABC):
             return {}
 
     def emit(self, event_type: str, data: Dict[str, Any], severity: str = "info"):
-        """Sends an event to the web dashboard (no-op when analytics is not configured).
-        Inside run(), non-status events wait for the end of the frame so they can carry its snapshot."""
-        if not self.analytics:
+        """Sends an event (no-op when no event stream is configured).
+        Inside run(), events wait for the end of the frame so they can carry its snapshot."""
+        if not self.events:
             return
-        if self._pending is not None and event_type != "status":
+        if self._pending is not None:
             self._pending.append((event_type, data, severity, int(time.time() * 1000)))
         else:
-            self.analytics.dispatch(
-                self.use_case, event_type, self.camera_id, self.camera_name, data, severity, self.nx_camera_id
-            )
+            self.events.send(event_message(
+                self.camera_id, self.use_case, event_type, data, severity, time_ms=int(time.time() * 1000)
+            ))
+
+    def open_interval(
+        self, kind: str, subject_id: Optional[str] = None, data: Optional[Dict[str, Any]] = None,
+        time_ms: Optional[int] = None
+    ) -> str:
+        """Opens an interval and returns its session id (also when no event stream is configured)."""
+        if time_ms is None:
+            time_ms = int(time.time() * 1000)
+        msg = interval_open_message(self.camera_id, self.use_case, kind, subject_id, data, time_ms)
+        self._open_intervals[msg["sessionId"]] = kind
+        if self.events:
+            self.events.send(msg)
+        return msg["sessionId"]
+
+    def close_interval(self, session_id: str, data: Optional[Dict[str, Any]] = None, end_reason: str = "ended"):
+        kind = self._open_intervals.pop(session_id, None)
+        if kind is None:
+            return
+        if self.events:
+            self.events.send(interval_close_message(
+                self.camera_id, self.use_case, kind, session_id, data,
+                time_ms=int(time.time() * 1000), end_reason=end_reason
+            ))
 
     def emit_status(self, data: Dict[str, Any]):
-        """Live state + heartbeat, at most once per STATUS_INTERVAL_SEC (wall clock)."""
-        if self.analytics and time.time() - self._last_status >= STATUS_INTERVAL_SEC:
-            self._last_status = time.time()
-            self.emit("status", data)
+        """Samples the numeric status fields listed in metric_fields; the minute means go out as metrics."""
+        now = time.time()
+        for field, name in self.metric_fields.items():
+            value = data.get(field)
+            if value is not None:
+                self._metrics.sample(name, value, now)
+
+    def shutdown(self):
+        """Closes the open intervals and sends the metrics of the minute in progress."""
+        for session_id in list(self._open_intervals):
+            self.close_interval(session_id, end_reason="engine_stop")
+        self._metrics.flush()
+
+    def _send_metric(self, name: str, minute_ms: int, value: float):
+        if self.events:
+            self.events.send(metric_message(self.camera_id, self.use_case, name, minute_ms, value))
 
     def run(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
         """process_frame() plus event snapshots, live preview frame and FPS."""
@@ -151,18 +186,12 @@ class BasePipeline(ABC):
                 self.last_frame_at = now
 
     def _send_with_evidence(self, event_type: str, data: Dict[str, Any], severity: str, ts: int, frame: np.ndarray):
-        event_id = new_event_id()
-        data = dict(data)
-        if self.snapshots:
-            rel = self.snapshots.save(self.camera_id, event_id, frame)
-            if rel:
-                data["snapshot"] = rel
-        if self.recording_path:
-            data["recordingPath"] = self.recording_path
-        self.analytics.dispatch(
-            self.use_case, event_type, self.camera_id, self.camera_name, data, severity, self.nx_camera_id,
-            timestamp_ms=ts, event_id=event_id
-        )
+        event_id = new_id("evt")
+        rel = self.snapshots.save(self.camera_id, event_id, frame) if self.snapshots else None
+        self.events.send(event_message(
+            self.camera_id, self.use_case, event_type, data, severity,
+            time_ms=ts, snapshot_path=rel, event_id=event_id
+        ))
 
     def latest_frame(self) -> Optional[np.ndarray]:
         """Most recent annotated frame (do not modify it; the preview encodes it from another thread)."""

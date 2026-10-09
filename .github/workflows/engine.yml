@@ -1,10 +1,20 @@
 name: engine
 on:
   push:
-    paths: ["services/engine/**", ".github/workflows/engine.yml"]
+    paths:
+      - "services/engine/**"
+      - ".github/workflows/engine.yml"
+      - "packages/contracts/usecases/**"
+      - "services/engine/contracts/**"
 jobs:
   test:
     runs-on: ubuntu-24.04
+    services:
+      redis:
+        image: redis:7.4.11-alpine
+        ports: ["6379:6379"]
+    env:
+      REDIS_URL: redis://localhost:6379/0
     defaults:
       run:
         working-directory: services/engine

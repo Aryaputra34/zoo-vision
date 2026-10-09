@@ -22,12 +22,6 @@ ai_engine:
   model_cache_dir: "models"
   default_confidence: 0.35
 
-# Web Analytics Dashboard (zoo-vision-fe)
-analytics:
-  enabled: true
-  api_url: "http://localhost:3000/api/events"
-  api_key: ""                   # = INGEST_API_KEY in the dashboard's .env.local; empty = no auth
-
 # AI engine API for the dashboard: annotated live preview, event snapshots, health.
 # The dashboard proxies it (AI_ENGINE_URL / AI_ENGINE_API_KEY); browsers never call it directly.
 api_server:
@@ -36,7 +30,7 @@ api_server:
   port: 8000
   api_key: ""                   # = AI_ENGINE_API_KEY in the dashboard's .env.local; set it whenever host is not 127.0.0.1
 
-# One annotated JPEG per dashboard event (not for status heartbeats), served by api_server
+# One annotated JPEG per event (saved whenever REDIS_URL is set), served by api_server
 snapshots:
   enabled: true
   dir: "snapshots"

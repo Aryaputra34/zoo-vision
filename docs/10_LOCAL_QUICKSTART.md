@@ -45,9 +45,19 @@ copy .env.example .env.local                  # defaults already point at 127.0.
   `cam_restaurant_01`, `cam_gate_entry_01`, `cam_horse_01`).
 * `deploy\mediamtx.yml`: each camera path has a `runOnInit: ffmpeg ... -i "<video>"` loop. Change the four
   video paths to recordings on your machine.
-* `services\engine\configs\app_config.yaml`: `analytics.enabled: true` and
-  `api_url: http://localhost:3000/api/events` (the defaults). If you set `INGEST_API_KEY` or
-  `AI_ENGINE_API_KEY` in `.env.local`, put the same values in `analytics.api_key` and `api_server.api_key`.
+* `services\engine\configs\app_config.yaml`: if you set `AI_ENGINE_API_KEY` in `.env.local`, put the same
+  value in `api_server.api_key`.
+
+**Start a local Redis.** The engine sends its events, intervals and minute metrics to a Redis stream:
+
+```powershell
+docker run -d --name zoo-redis -p 6379:6379 redis:7.4.11-alpine
+$env:REDIS_URL = "redis://localhost:6379/0"      # set it in the terminal that runs the engine
+docker exec zoo-redis redis-cli XREVRANGE events + - COUNT 5     # the last five messages
+```
+
+Without `REDIS_URL` the engine runs but sends nothing. The dashboard (zoo-vision-fe) receives no events from
+Phase 1 until Phase 3; its live preview still works, because that goes through the engine's API server.
 
 ## Check that it works (no cameras needed)
 
