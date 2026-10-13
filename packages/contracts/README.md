@@ -21,8 +21,29 @@ npm run check      # generate, then fail if the committed output differs
 npm test           # validator + example tests
 ```
 
-Contract rules: only add optional fields, never change a field's meaning; a breaking change bumps
-that use case's `schemaVersion` in `usecase.json`.
+## Change rules (design spec section 3)
+
+* Only add optional fields. Never change the meaning of an existing field, never remove or rename one.
+* A breaking change bumps that use case's `schemaVersion` in `usecase.json`. Events and config versions store the
+  `schemaVersion` they were written with, so old rows stay readable.
+* Analytics data is stored by shape (`Event`, `Interval`, `Metric`), not by use case, so a new use case needs no
+  database migration. Hot `data` fields that a report filters on may get an expression index later.
+* Camera settings are validated against `settings.schema.json` on write (API) and on load (engine).
+
+## Add a use case
+
+1. Create `usecases/<id>/` (the id is the camera `useCase` slug, lower snake case) with:
+   * `usecase.json`: `{ "label": "...", "schemaVersion": 1 }`;
+   * `events.schema.json`: one schema per event `type` the use case emits;
+   * `intervals.schema.json`: the `kind` values and their `data` (omit when the use case has no intervals);
+   * `metrics.json`: the metric names with `label` and `unit`;
+   * `settings.schema.json` (optional): the per-camera settings. Reuse `common/geometry.schema.json` for
+     points, polygons and lines (coordinates 0-1);
+   * `examples/messages/*.json` and `examples/settings/*.json`: sample payloads. `npm test` validates every
+     example, so add at least one valid example per event, interval and metric.
+2. `npm run generate`, then commit the changes under `generated/` and `services/engine/contracts/`.
+3. `npm test && npm run check`.
+4. Make the engine pipeline emit the messages (`services/engine/core/messages.py` builds the envelope).
 
 ## Use from JavaScript
 

@@ -7,21 +7,21 @@ to the web dashboard. This repo is the backend; the web UI lives in
 
 > **Where things are going:** the production architecture is in
 > [the design spec](docs/superpowers/specs/2026-10-08-zoo-vision-production-architecture-design.md). Phase 0
-> (this layout) is done by [this plan](docs/superpowers/plans/2026-10-08-phase-0-restructure.md); the engine still reads
-> its cameras and rules from YAML until the API arrives in Phase 1.
+> (the layout) and Phase 1 (the backbone: API, Postgres, Redis stream, contracts) are done. The engine still reads its
+> cameras and rules from YAML; the API stores them and `tools/import_yaml_config.py` copies the YAML into it.
 
 ## Repo map
 
 | Folder | What it holds |
 | :--- | :--- |
-| [`services/engine/`](services/engine/) | Python vision engine (uv project): pipelines, configs, tests, Dockerfile |
+| [`services/engine/`](services/engine/) | Python vision engine (uv project): pipelines, configs, tests, Dockerfile; sends events to the Redis stream |
+| [`apps/api/`](apps/api/) | NestJS + Prisma API: users, tokens, cameras and config versions, Redis stream ingest into Postgres |
+| [`packages/contracts/`](packages/contracts/) | JSON Schemas for the stream messages and per-use-case settings, with generated TypeScript and Pydantic models |
 | [`integrations/nx/plugin/`](integrations/nx/plugin/) | Frozen C++ Nx Meta plugin, kept for a future Nx bridge |
-| [`deploy/`](deploy/) | Docker Compose for one park server, MediaMTX config, `.env.example` |
-| [`tools/`](tools/) | `fetch_models.py` (model weights), `export_model.py`, `pick_coordinates.py` |
+| [`deploy/`](deploy/) | Docker Compose for one park server (Postgres, Redis, API, MediaMTX, engine), `.env.example` |
+| [`tools/`](tools/) | `fetch_models.py` (model weights), `export_model.py`, `pick_coordinates.py`, `import_yaml_config.py` (YAML into the API) |
 | [`docs/`](docs/) | Guides, ADRs, the design spec and phase plans |
 | [`.github/workflows/`](.github/workflows/) | CI: engine lint and tests, repo hygiene (no binaries in git) |
-
-Later phases add `apps/api` (NestJS + Prisma) and `packages/contracts` (shared JSON Schemas).
 
 ## Quick start
 
@@ -31,8 +31,9 @@ Later phases add `apps/api` (NestJS + Prisma) and `packages/contracts` (shared J
 | Engine dev setup | `cd services/engine && uv sync` | [services/engine/README.md](services/engine/README.md) |
 | Model weights | `python tools/fetch_models.py` | [tools/README.md](tools/README.md) |
 | Run a pipeline on a video | `cd services/engine && uv run python test_video.py --video sample_data/cars.mp4 --pipeline gate` | [docs/08](docs/08_TESTING_GUIDE.md) |
-| Tests | `cd services/engine && uv run pytest` and `uvx --from "pytest>=8.3" pytest tools/tests` | |
-| Deploy on a server | `cd deploy && docker compose up -d --build` | [deploy/README.md](deploy/README.md) |
+| Backend (API, Postgres, Redis) | `cd deploy && docker compose up -d --build postgres redis api-migrate api` | [Backend in the quickstart](docs/10_LOCAL_QUICKSTART.md#backend-api-postgres-redis) |
+| Tests | `cd services/engine && uv run pytest`, `cd apps/api && npm test`, `cd packages/contracts && npm test`, `uvx --from "pytest>=8.3" --with pyyaml --with jsonschema --with requests pytest tools/tests` | |
+| Deploy on a server | `cd deploy && docker compose up -d --build` (GPU server only) | [deploy/README.md](deploy/README.md) |
 
 Needs [uv](https://docs.astral.sh/uv/) and [git-lfs](https://git-lfs.com/) (the sample video is stored in LFS).
 

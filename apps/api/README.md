@@ -65,3 +65,11 @@ Build from the repository root (the image includes `packages/contracts`):
 ```
 docker build -f apps/api/Dockerfile -t zoo-vision-api:dev .
 ```
+
+## Run it with Compose
+
+`deploy/docker-compose.yml` runs Postgres, Redis, a one-shot `api-migrate` and this API. See
+[`deploy/README.md`](../../deploy/README.md) for the secrets and the laptop (no GPU) command, and
+[`docs/10_LOCAL_QUICKSTART.md`](../../docs/10_LOCAL_QUICKSTART.md) for creating the first superadmin and importing
+cameras. The CLI inside the image: `node dist/cli.js create-superadmin --username admin --name "..."` with
+`ZOO_ADMIN_PASSWORD` in the environment.
