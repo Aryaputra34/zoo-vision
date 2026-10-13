@@ -52,6 +52,32 @@ Run the engine from source against it; see [docs/10_LOCAL_QUICKSTART.md](../docs
 Stop: `docker compose stop api redis postgres`. Start again: `docker compose start postgres redis api`.
 `docker compose down -v` also deletes the `pgdata` and `redisdata` volumes.
 
+## Updating to a new backend version
+
+Run from `deploy/` after `git pull`. Events keep queueing in Redis while the API restarts, so nothing is lost.
+
+1. Compare `.env.example` with your `.env` and add any new keys.
+2. Back up the database first. Migrations only go forward; going back means restoring this file and the
+   previous version:
+   ```bash
+   docker compose exec -T postgres pg_dump -U zoo_owner -Fc -f /tmp/zoo.dump zoo_vision
+   docker compose cp postgres:/tmp/zoo.dump ./zoo-$(date +%Y%m%d).dump
+   ```
+   In Git Bash on Windows, run `export MSYS_NO_PATHCONV=1` first; otherwise `/tmp/...` is rewritten into a
+   Windows path.
+3. Rebuild the API, apply new migrations and restart it:
+   `docker compose up -d --build api-migrate api`. `api-migrate` must exit 0 (`docker compose ps -a`); if it
+   fails, the API does not start, and `docker compose logs api-migrate` says why.
+4. If the update changed the `postgres` or `redis` services, also run `docker compose up -d postgres redis`.
+   The containers are recreated; the data stays in the `pgdata` and `redisdata` volumes.
+5. Engine: on a laptop, `cd services/engine && uv sync`, then restart it. On the GPU server,
+   `docker compose up -d --build zoo-ai-engine`.
+6. Check: `docker compose ps` (all healthy) and `curl -s http://127.0.0.1:3001/api/health`.
+
+Restore a backup: `docker compose cp ./zoo-YYYYMMDD.dump postgres:/tmp/zoo.dump`, then
+`docker compose exec postgres pg_restore -U zoo_owner -d zoo_vision --clean --if-exists /tmp/zoo.dump`.
+Phase 5 adds install/update scripts, nightly backups and the offline (USB) update path.
+
 ## Database access (Navicat, psql)
 
 Postgres publishes no port by default; the API reaches it inside the compose network. To browse it,
