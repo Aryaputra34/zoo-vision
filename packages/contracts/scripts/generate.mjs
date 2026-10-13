@@ -6,10 +6,13 @@
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import $RefParser from '@apidevtools/json-schema-ref-parser';
 import { compile } from 'json-schema-to-typescript';
 import { derefSettings } from './deref.mjs';
+
+const { walkSchema } = createRequire(import.meta.url)('../src/index.js');
 
 // Pin the formatters too: their output is part of the generated files, so a release must not change it silently.
 const DATAMODEL_CODEGEN_VERSION = '0.83.0';
@@ -123,12 +126,13 @@ codegen(bundledPath('envelope/message.schema.json'), join(pyOut, 'envelope.py'))
 writeText(join(pyOut, '__init__.py'), `${PY_HEADER}\n`);
 
 // JSON pointers of the lists whose items need unique ids (`x-geometry: polygon-list`): Pydantic cannot express
-// that, so the registry carries them and core/settings.py checks them like validateSettings does.
-const listPointers = (schema, pointer = '') =>
-  Object.entries(schema?.properties ?? {}).flatMap(([key, child]) => [
-    ...(child['x-geometry'] === 'polygon-list' ? [`${pointer}/${key}`] : []),
-    ...listPointers(child, `${pointer}/${key}`),
-  ]);
+// that, so the registry carries them and core/settings.py checks them like validateSettings does. `*` stands
+// for any array index. Same walk as the JS validator's.
+const listPointers = (schema) => {
+  const pointers = new Set();
+  if (schema) walkSchema(schema, (node, pointer) => node['x-geometry'] === 'polygon-list' && pointers.add(pointer));
+  return [...pointers];
+};
 
 const registryImports = [];
 const registryEntries = [];

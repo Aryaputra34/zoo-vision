@@ -2,6 +2,10 @@
 
 export type ModelName = string;
 /**
+ * AiModel id. When set, the camera runs this registry model instead of model_name.
+ */
+export type ModelId = string;
+/**
  * Inference size: one integer for a square, or [height, width].
  */
 export type ImageSize = number | [unknown, unknown];
@@ -50,6 +54,7 @@ export type TableList = Table[];
 
 export interface RestaurantCounterSettings {
   model_name?: ModelName;
+  model_id?: ModelId;
   imgsz?: ImageSize;
   confidence_threshold?: ConfidenceThreshold;
   mode?: "area_occupancy" | "tripwire";

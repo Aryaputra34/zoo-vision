@@ -44,3 +44,14 @@ def test_use_case_without_settings(use_case):
 
 def test_defaulted_fields_are_not_optional():
     assert REGISTRY["horse_riding"].settings.model_fields["lost_track_buffer"].annotation is int
+
+
+def test_unique_ids_are_checked_at_every_match_of_a_wildcard_pointer():
+    from core.settings import _check_unique_ids
+
+    room = {"id": "R1"}
+    doc = {"floors": [{"rooms": [room]}, {"rooms": [room, room]}], "other": {"rooms": [room, room]}}
+    with pytest.raises(SettingsError) as e:
+        _check_unique_ids(("/floors/*/rooms",), doc)
+    assert e.value.path == "/floors/1/rooms/1/id"
+    _check_unique_ids(("/floors/*/rooms", "/missing/*/x"), {"floors": [{"rooms": [room]}]})

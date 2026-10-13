@@ -49,6 +49,16 @@ class RestaurantTableSettings(BaseModel):
     model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
         'yolo11s.onnx', title='ModelName'
     )
+    model_id: (
+        constr(
+            pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        )
+        | None
+    ) = Field(
+        None,
+        description='AiModel id. When set, the camera runs this registry model instead of model_name.',
+        title='ModelId',
+    )
     imgsz: (
         conint(ge=32, le=4096) | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
     ) = Field(

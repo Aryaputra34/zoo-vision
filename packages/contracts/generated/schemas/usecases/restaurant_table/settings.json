@@ -10,6 +10,13 @@
       "type": "string",
       "pattern": "^[\\w.-]+\\.(onnx|pt|engine)$"
     },
+    "model_id": {
+      "description": "AiModel id. When set, the camera runs this registry model instead of model_name.",
+      "x-minRole": "SUPERADMIN",
+      "title": "ModelId",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
     "imgsz": {
       "default": 1920,
       "x-minRole": "SUPERADMIN",

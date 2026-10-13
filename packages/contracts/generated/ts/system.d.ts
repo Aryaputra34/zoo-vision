@@ -19,3 +19,20 @@ export interface EventsDropped {
   engineGroup: string;
   count: number;
 }
+/**
+ * This interface was referenced by `SystemEvents`'s JSON-Schema
+ * via the `definition` "config_rejected".
+ */
+export interface ConfigRejected {
+  version: number;
+  reason: string;
+}
+
+export interface SystemIntervals {
+  [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `SystemIntervals`'s JSON-Schema
+ * via the `definition` "camera_offline".
+ */
+export interface CameraOffline {}

@@ -59,6 +59,7 @@ test('rejects duplicate ids in a polygon list', () => {
 
 test('restrictedFields lists x-minRole properties', () => {
   assert.deepEqual(v.restrictedFields('demo'), [
+    { path: '/zones/*/sensitivity', minRole: 'SUPERADMIN' },
     { path: '/model_name', minRole: 'SUPERADMIN' },
     { path: '/tracker/lost_track_buffer', minRole: 'SUPERADMIN' },
   ]);
@@ -124,4 +125,15 @@ test('interval_close data is a partial: empty passes, unknown keys fail under /d
   const r = v.validateMessage(close({ bogus: 1 }));
   assert.equal(r.ok, false);
   assert.equal(r.errors[0].path, '/data/bogus');
+});
+
+test('restrictedFields reaches into array items', () => {
+  assert.ok(v.restrictedFields('demo').some((f) => f.path === '/zones/*/sensitivity'));
+});
+
+test('duplicate ids are found in a polygon list inside oneOf', () => {
+  const room = { id: 'R1', name: 'a', polygon: [[0, 0], [1, 0], [1, 1]] };
+  const minimal = { zone: room.polygon, tables: [] };
+  const r = v.validateSettings('demo', { ...minimal, layout: { kind: 'rooms', rooms: [room, room] } });
+  assert.deepEqual(r.errors.map((e) => e.path), ['/layout/rooms/1/id']);
 });

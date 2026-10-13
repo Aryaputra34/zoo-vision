@@ -25,3 +25,11 @@ class EventsDropped(BaseModel):
     )
     engineGroup: str
     count: conint(ge=1)
+
+
+class ConfigRejected(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    version: conint(ge=1)
+    reason: constr(min_length=1, max_length=500)

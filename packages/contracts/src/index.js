@@ -62,15 +62,38 @@ function deref(root, node) {
   return node;
 }
 
-/** Calls visit(schemaNode, jsonPointer) for every schema node reachable through object `properties`. */
-function walkProperties(root, visit) {
+/**
+ * Calls visit(schemaNode, pointer) for every schema node reachable through `properties`, `items`, `prefixItems`
+ * and the `anyOf` / `oneOf` / `allOf` branches. The pointer is a JSON pointer into the settings document in which
+ * any array index is the wildcard segment `*`; the branches of a combinator share their parent's pointer.
+ */
+function walkSchema(root, visit) {
   const go = (node, pointer, depth) => {
     node = deref(root, node);
     if (!node || typeof node !== 'object' || depth > 32) return;
     visit(node, pointer);
     for (const [key, child] of Object.entries(node.properties ?? {})) go(child, `${pointer}/${key}`, depth + 1);
+    for (const child of [node.items, ...(node.prefixItems ?? [])]) {
+      if (child && typeof child === 'object') go(child, `${pointer}/*`, depth + 1);
+    }
+    for (const keyword of ['anyOf', 'oneOf', 'allOf']) {
+      for (const child of node[keyword] ?? []) go(child, pointer, depth + 1);
+    }
   };
   go(root, '', 0);
+}
+
+/** Every concrete pointer (and its value) in `doc` that a `*` pointer matches. */
+function expandPointer(doc, pointer) {
+  let matches = [{ path: '', value: doc }];
+  for (const key of pointer.split('/').slice(1)) {
+    matches = matches.flatMap(({ path: at, value }) => {
+      if (key === '*') return Array.isArray(value) ? value.map((item, i) => ({ path: `${at}/${i}`, value: item })) : [];
+      const child = value !== null && typeof value === 'object' && !Array.isArray(value) ? value[key] : undefined;
+      return child === undefined ? [] : [{ path: `${at}/${key}`, value: child }];
+    });
+  }
+  return matches;
 }
 
 function createValidator(registry = loadRegistry()) {
@@ -117,19 +140,20 @@ function createValidator(registry = loadRegistry()) {
   }
 
   function duplicateListIds(schema, settings) {
-    const errors = [];
-    walkProperties(schema, (node, pointer) => {
+    const errors = new Map(); // a list reached through two branches reports once
+    walkSchema(schema, (node, pointer) => {
       if (node['x-geometry'] !== 'polygon-list') return;
-      let list = settings;
-      for (const key of pointer.split('/').slice(1)) list = list?.[key];
-      if (!Array.isArray(list)) return;
-      const seen = new Set();
-      list.forEach((item, index) => {
-        if (seen.has(item?.id)) errors.push({ path: `${pointer}/${index}/id`, message: `duplicate id '${item.id}'` });
-        seen.add(item?.id);
-      });
+      for (const { path: listPath, value: list } of expandPointer(settings, pointer)) {
+        if (!Array.isArray(list)) continue;
+        const seen = new Set();
+        list.forEach((item, index) => {
+          const at = `${listPath}/${index}/id`;
+          if (seen.has(item?.id)) errors.set(at, { path: at, message: `duplicate id '${item.id}'` });
+          seen.add(item?.id);
+        });
+      }
     });
-    return errors;
+    return [...errors.values()];
   }
 
   function validateSettings(useCaseId, settings) {
@@ -154,11 +178,11 @@ function createValidator(registry = loadRegistry()) {
   function restrictedFields(useCaseId) {
     const schema = registry.useCases.get(useCaseId)?.settings;
     if (!schema) return [];
-    const fields = [];
-    walkProperties(schema, (node, pointer) => {
-      if (node['x-minRole'] && pointer) fields.push({ path: pointer, minRole: node['x-minRole'] });
+    const fields = new Map();
+    walkSchema(schema, (node, pointer) => {
+      if (node['x-minRole'] && pointer) fields.set(`${pointer} ${node['x-minRole']}`, { path: pointer, minRole: node['x-minRole'] });
     });
-    return fields;
+    return [...fields.values()];
   }
 
   function assignableUseCases() {
@@ -168,4 +192,4 @@ function createValidator(registry = loadRegistry()) {
   return { validateMessage, validateSettings, withDefaults, restrictedFields, assignableUseCases };
 }
 
-module.exports = { loadRegistry, createValidator };
+module.exports = { loadRegistry, createValidator, walkSchema };

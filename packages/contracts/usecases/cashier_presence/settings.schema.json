@@ -8,6 +8,11 @@
       "default": "yolo11s.onnx",
       "x-minRole": "SUPERADMIN"
     },
+    "model_id": {
+      "$ref": "../../common/detection.schema.json#/$defs/ModelId",
+      "description": "AiModel id. When set, the camera runs this registry model instead of model_name.",
+      "x-minRole": "SUPERADMIN"
+    },
     "imgsz": {
       "$ref": "../../common/detection.schema.json#/$defs/ImageSize",
       "default": 640,

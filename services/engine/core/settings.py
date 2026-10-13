@@ -67,17 +67,29 @@ def parse_settings(use_case: str, settings: dict, *, strict: bool = True) -> Bas
     return model
 
 
+def _matches(doc: Any, parts: list[str], at: str = ""):
+    """Yields (pointer, value) for every place in `doc` that the pointer `parts` reaches; `*` is any array index."""
+    if not parts:
+        yield at, doc
+        return
+    key, rest = parts[0], parts[1:]
+    if key == "*":
+        if isinstance(doc, list):
+            for index, item in enumerate(doc):
+                yield from _matches(item, rest, f"{at}/{index}")
+    elif isinstance(doc, dict) and key in doc:
+        yield from _matches(doc[key], rest, f"{at}/{key}")
+
+
 def _check_unique_ids(pointers: tuple[str, ...], settings: dict) -> None:
     """Pydantic cannot say "items have unique ids"; validateSettings in the JS validator does."""
     for pointer in pointers:
-        items: Any = settings
-        for key in pointer.split("/")[1:]:
-            items = items.get(key) if isinstance(items, dict) else None
-        if not isinstance(items, list):
-            continue
-        seen = set()
-        for index, item in enumerate(items):
-            item_id = item.get("id") if isinstance(item, dict) else None
-            if item_id in seen:
-                raise SettingsError(f"{pointer}/{index}/id", f"duplicate id '{item_id}'")
-            seen.add(item_id)
+        for list_at, items in _matches(settings, pointer.split("/")[1:]):
+            if not isinstance(items, list):
+                continue
+            seen = set()
+            for index, item in enumerate(items):
+                item_id = item.get("id") if isinstance(item, dict) else None
+                if item_id in seen:
+                    raise SettingsError(f"{list_at}/{index}/id", f"duplicate id '{item_id}'")
+                seen.add(item_id)
