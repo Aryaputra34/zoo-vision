@@ -201,10 +201,6 @@ def test_video(
     # and the live preview API, so the run looks like a real camera
     events = snapshots = api_server = None
     if analytics:
-        app_cfg = {}
-        if os.path.exists("configs/app_config.yaml"):
-            with open("configs/app_config.yaml", "r") as f:
-                app_cfg = yaml.safe_load(f) or {}
         redis_url = os.environ.get("REDIS_URL")
         if redis_url:
             events = EventStream(redis_url, engine_group=ENGINE_GROUP)
@@ -213,16 +209,17 @@ def test_video(
             pipeline.events = events
         else:
             logger.warning("REDIS_URL is not set: events, intervals and metrics are not sent.")
-        snap_cfg = app_cfg.get("snapshots", {})
-        if snap_cfg.get("enabled", True):
-            snapshots = SnapshotStore(root=snap_cfg.get("dir", "snapshots"), retention_days=snap_cfg.get("retention_days", 30))
-            pipeline.snapshots = snapshots
-        api_cfg = app_cfg.get("api_server", {})
-        if api_cfg.get("enabled", True):
+        # The engine's environment variables (core/env.py), with their defaults
+        snapshots = SnapshotStore(root=os.environ.get("SNAPSHOT_DIR", "snapshots"),
+                                  retention_days=int(os.environ.get("SNAPSHOT_RETENTION_DAYS", "30")))
+        pipeline.snapshots = snapshots
+        preview_port = int(os.environ.get("PREVIEW_PORT", "8000"))
+        if preview_port:
             api_server = start_api_server(
-                create_app({pipeline.camera_id: pipeline}, snapshots, api_cfg.get("api_key") or None),
-                host=api_cfg.get("host", "127.0.0.1"),
-                port=api_cfg.get("port", 8000),
+                create_app(lambda: {pipeline.camera_id: pipeline}, snapshots,
+                           os.environ.get("PREVIEW_API_KEY") or None),
+                host=os.environ.get("PREVIEW_HOST", "127.0.0.1"),
+                port=preview_port,
             )
 
     # Seek to start time if provided
@@ -398,7 +395,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
     parser.add_argument("--device", default="cpu", help="Inference device, e.g. cpu or cuda:0 (default: cpu)")
-    parser.add_argument("--analytics", action="store_true", help="Send events, intervals and metrics to the Redis stream (REDIS_URL) with snapshots, and serve the live preview (configs/app_config.yaml)")
+    parser.add_argument("--analytics", action="store_true", help="Send events, intervals and metrics to the Redis stream (REDIS_URL) with snapshots, and serve the live preview (SNAPSHOT_DIR, PREVIEW_* environment variables)")
     args = parser.parse_args()
 
     test_video(

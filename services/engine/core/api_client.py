@@ -1,0 +1,56 @@
+"""The engine's client of the API's internal routes. Every request carries `Authorization: Bearer <token>`.
+
+Errors never carry the token or the base URL (it may hold credentials): ApiError names the status or the kind of
+failure only. A camera entry that does not parse is skipped and logged by id, never by URL.
+"""
+
+import logging
+from urllib.parse import quote
+
+import requests
+
+from core.camera_config import ApiError, CameraConfig
+
+logger = logging.getLogger("EngineApi")
+
+
+class EngineApi:
+    def __init__(self, base_url: str, token: str, group: str, *, timeout: float = 5.0, session=None):
+        self._base = base_url.rstrip("/")
+        self._group, self._timeout = group, timeout
+        self._session = session or requests.Session()
+        self._headers = {"Authorization": f"Bearer {token}"}
+
+    def cameras(self) -> list[CameraConfig]:
+        body = self._request("GET", "/internal/engine/cameras", params={"group": self._group})
+        entries = body.get("cameras") if isinstance(body, dict) else None
+        if not isinstance(entries, list):
+            raise ApiError("the API answer has no 'cameras' list")
+        cameras = []
+        for entry in entries:
+            try:
+                cameras.append(CameraConfig.from_api(entry))
+            except ValueError as e:
+                camera_id = entry.get("id") if isinstance(entry, dict) else None
+                logger.warning("Skipping a malformed camera entry (id %s): %s", camera_id if isinstance(camera_id, str)
+                               else "unknown", e)
+        return cameras
+
+    def report_validation(self, model_id: str, body: dict) -> None:
+        self._request("POST", f"/internal/engine/models/{quote(model_id, safe='')}/validation", json=body)
+
+    def report_conversion(self, model_id: str, body: dict) -> None:
+        self._request("POST", f"/internal/engine/models/{quote(model_id, safe='')}/conversion", json=body)
+
+    def _request(self, method: str, path: str, **kwargs):
+        try:
+            response = self._session.request(method, self._base + path, headers=self._headers,
+                                             timeout=self._timeout, **kwargs)
+        except requests.RequestException as e:
+            raise ApiError(f"{method} {path}: {type(e).__name__}") from None
+        if not response.ok:
+            raise ApiError(f"{method} {path}: HTTP {response.status_code}")
+        try:
+            return response.json()
+        except ValueError:
+            raise ApiError(f"{method} {path}: the answer is not JSON") from None

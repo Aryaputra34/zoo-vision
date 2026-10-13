@@ -4,6 +4,7 @@ AI Engine HTTP API for the web dashboard (zoo-vision-fe proxies it behind its lo
   GET /frame/{camera_id}       latest annotated frame, one JPEG
   GET /stream/{camera_id}      annotated live preview as MJPEG; frames are encoded only while someone watches
   GET /snapshots/{path}        event snapshots saved by SnapshotStore
+`pipelines` returns the live pipelines; every route calls it once per request, so a config change shows up.
 Runs uvicorn in a daemon thread next to the inference workers. With api_key set, every request needs
 "Authorization: Bearer <api_key>".
 """
@@ -13,7 +14,7 @@ import time
 import asyncio
 import logging
 import threading
-from typing import Dict, Optional
+from typing import Callable, Mapping, Optional
 
 import cv2
 import numpy as np
@@ -40,7 +41,7 @@ def _encode(frame: np.ndarray, quality: int = 70) -> Optional[bytes]:
 
 
 def create_app(
-    pipelines: Dict[str, BasePipeline],
+    pipelines: Callable[[], Mapping[str, BasePipeline]],
     snapshots: Optional[SnapshotStore] = None,
     api_key: Optional[str] = None,
 ) -> FastAPI:
@@ -55,7 +56,7 @@ def create_app(
     no_store = {"Cache-Control": "no-store, no-transform"}
 
     def pipeline_or_404(camera_id: str) -> BasePipeline:
-        p = pipelines.get(camera_id)
+        p = pipelines().get(camera_id)
         if p is None:
             raise HTTPException(404, "unknown camera")
         return p
@@ -72,7 +73,7 @@ def create_app(
                     "fps": round(p.fps, 1),
                     "online": now - p.last_frame_at < ONLINE_SEC,
                 }
-                for cid, p in pipelines.items()
+                for cid, p in pipelines().items()
             ]
         }
 

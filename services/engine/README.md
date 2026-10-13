@@ -13,12 +13,11 @@ Every command below runs from this folder (`services/engine/`). Paths in the con
 
 ## Configs
 
-Copy the examples and edit them. Both copies are git-ignored, because they hold camera URLs with
-passwords and API keys:
+Copy the example and edit it. The copy is git-ignored, because it holds camera URLs with passwords. The
+engine itself takes its static settings from environment variables and its cameras from the API:
 
 ```bash
 cp configs/cameras.yaml.example configs/cameras.yaml
-cp configs/app_config.yaml.example configs/app_config.yaml
 ```
 
 Rules per use case live in `configs/rules/*.yaml`.
