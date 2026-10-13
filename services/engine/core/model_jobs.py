@@ -12,7 +12,9 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import statistics
+import tempfile
 import threading
 import time
 
@@ -67,13 +69,21 @@ def validate_model(path: str, device: str, *, loader=None) -> dict:
         return _error(e)
 
 
-def convert_to_onnx(src: str, out: str, imgsz, *, loader=None) -> dict:
+def convert_to_onnx(src: str, out: str, imgsz, *, loader=None, work_dir: str | None = None) -> dict:
     """Exports `src` to ONNX (dynamic shapes, opset 19, simplified) and moves the file to `out` in one step, so a
-    partial file never sits at `out`. Returns the SHA-256 of the file at `out`."""
+    partial file never sits at `out`. Returns the SHA-256 of the file at `out`.
+
+    Ultralytics writes the export next to the model it loaded, replacing a file of that name. So it exports a copy
+    of `src` inside a private directory under `work_dir` (the same disk as `out` when given), which is removed
+    afterwards: nothing beside `src` is created or overwritten."""
+    work = None
     try:
-        model = (loader or _default_loader)(src)
-        exported = model.export(format="onnx", imgsz=imgsz, dynamic=True, half=False, opset=19, simplify=True)
         os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+        work = tempfile.mkdtemp(prefix=".convert-", dir=work_dir or os.path.dirname(os.path.abspath(out)))
+        copy = os.path.join(work, os.path.basename(src))
+        shutil.copyfile(src, copy)
+        model = (loader or _default_loader)(copy)
+        exported = model.export(format="onnx", imgsz=imgsz, dynamic=True, half=False, opset=19, simplify=True)
         os.replace(exported, out)
         digest = hashlib.sha256()
         with open(out, "rb") as f:
@@ -82,6 +92,9 @@ def convert_to_onnx(src: str, out: str, imgsz, *, loader=None) -> dict:
         return {"ok": True, "sha256": digest.hexdigest()}
     except Exception as e:
         return _error(e)
+    finally:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 class OutsideModelsDir(ValueError):
@@ -149,7 +162,7 @@ class ModelJobs(threading.Thread):
             src, out = self._inside(job["path"]), self._inside(job["outPath"])
         except OutsideModelsDir as e:
             return {"ok": False, "error": str(e)}
-        result = convert_to_onnx(src, out, job["imgsz"], loader=self._loader)
+        result = convert_to_onnx(src, out, job["imgsz"], loader=self._loader, work_dir=self._root)
         if result["ok"]:
             result["path"] = job["outPath"]
         return result

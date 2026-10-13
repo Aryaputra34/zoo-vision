@@ -2,9 +2,11 @@ import logging
 from pathlib import Path
 
 import pytest
+import redis
 from conftest import FakeYOLO
 from core.camera_config import ApiError
 from core.model_jobs import ModelJobs, convert_to_onnx, validate_model
+from conftest import wait_until
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +56,7 @@ def test_validate_truncates_a_long_error():
 
 def test_convert_moves_the_export_to_out_path_and_hashes_it(tmp_path):
     src, out = tmp_path / "m.pt", tmp_path / "registry" / "7.onnx"
+    src.write_bytes(b"weights")
     result = convert_to_onnx(str(src), str(out), [640, 480], loader=FakeYOLO)
     import hashlib
 
@@ -63,10 +66,22 @@ def test_convert_moves_the_export_to_out_path_and_hashes_it(tmp_path):
                                      simplify=True)]
 
 
-def test_convert_failure_leaves_nothing_at_out_path(tmp_path):
-    out = tmp_path / "7.onnx"
-    result = convert_to_onnx(str(tmp_path / "missing.pt"), str(out), 640, loader=FakeYOLO)
-    assert result["ok"] is False and "FileNotFoundError" in result["error"] and not out.exists()
+def test_convert_never_touches_files_beside_the_source(tmp_path):
+    src, sibling, out = tmp_path / "m.pt", tmp_path / "m.onnx", tmp_path / "registry" / "7.onnx"
+    src.write_bytes(b"weights")
+    sibling.write_bytes(b"the original onnx")
+    result = convert_to_onnx(str(src), str(out), 640, loader=FakeYOLO, work_dir=str(tmp_path))
+    assert result["ok"] is True and out.read_bytes() == b"fake onnx"
+    assert sibling.read_bytes() == b"the original onnx" and src.read_bytes() == b"weights"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["m.onnx", "m.pt", "registry"]
+
+
+def test_convert_failure_leaves_nothing_behind(tmp_path):
+    src, out = tmp_path / "missing.pt", tmp_path / "7.onnx"
+    src.write_bytes(b"weights")
+    result = convert_to_onnx(str(src), str(out), 640, loader=FakeYOLO, work_dir=str(tmp_path))
+    assert result["ok"] is False and "FileNotFoundError" in result["error"]
+    assert sorted(p.name for p in tmp_path.rglob("*")) == ["missing.pt"]
 
 
 def test_handle_routes_jobs_and_reports(tmp_path):
@@ -75,6 +90,7 @@ def test_handle_routes_jobs_and_reports(tmp_path):
     [(model_id, body)] = api.validations
     assert model_id == "m1" and body["ok"] is True and body["device"] == "cpu"
 
+    (tmp_path / "a.pt").write_bytes(b"weights")
     jobs.handle({"type": "convert", "modelId": "m1", "targetId": "m2", "path": "a.pt",
                  "outPath": "registry/m2.onnx", "imgsz": 640})
     [(target, body)] = api.conversions
@@ -108,3 +124,30 @@ def test_a_failed_report_is_logged(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         jobs.handle({"type": "validate", "modelId": "m1", "path": "a.onnx"})
     assert "HTTP 500" in caplog.text
+
+
+def test_the_loop_survives_a_redis_outage(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.model_jobs.BACKOFF_START_S", 0.01)
+
+    class Client:
+        def __init__(self):
+            self.calls = 0
+
+        def brpop(self, queue, timeout):
+            self.calls += 1
+            if self.calls <= 2:
+                raise redis.ConnectionError("down")
+            if self.calls == 3:
+                return queue, b'{"type": "validate", "modelId": "m1", "path": "a.onnx"}'
+            return None
+
+    api = RecordingApi()
+    jobs = ModelJobs(Client(), api, str(tmp_path), "cpu", loader=FakeYOLO)
+    jobs.start()
+    try:
+        assert wait_until(lambda: len(api.validations) == 1)
+        assert jobs.is_alive()
+    finally:
+        jobs.stop()
+        jobs.join(5)
+    assert not jobs.is_alive()
