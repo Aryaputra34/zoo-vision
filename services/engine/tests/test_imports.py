@@ -3,9 +3,15 @@ from importlib import metadata
 import pytest
 from conftest import ENGINE_DIR
 
-SCRIPTS = ["main", "test_video", "simulate_demo", "test_synthetic_demo"]
-PACKAGES = ["core", "pipelines", "nx_integration"]
-MODULES = SCRIPTS + sorted(f"{d}.{p.stem}" for d in PACKAGES for p in (ENGINE_DIR / d).glob("*.py"))
+SCRIPTS = ["main", "test_video"]
+PACKAGES = ["core", "nx_integration"]
+USE_CASES = sorted(d.name for d in (ENGINE_DIR / "usecases").iterdir() if (d / "pipeline.py").is_file())
+MODULES = (
+    SCRIPTS
+    + sorted(f"{d}.{p.stem}" for d in PACKAGES for p in (ENGINE_DIR / d).glob("*.py"))
+    + ["usecases"]
+    + [f"usecases.{u}.pipeline" for u in USE_CASES]
+)
 
 
 @pytest.mark.parametrize("module", MODULES)

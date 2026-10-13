@@ -10,10 +10,10 @@ from typing import Any, Optional, Dict, List, Tuple
 import cv2
 import numpy as np
 import supervision as sv
-import yaml
 
-from core.base_pipeline import BasePipeline
-from nx_integration.nx_client import NxClient
+from contracts.horse_riding.settings import HorseRidingSettings
+from core.base_pipeline import BasePipeline, CameraInfo
+from core.model_pool import Detector
 
 logger = logging.getLogger("HorseRidingPipeline")
 
@@ -22,51 +22,19 @@ class HorseRidingPipeline(BasePipeline):
     use_case = "horse_riding"
     metric_fields = {"activeHorses": "active_horses"}
 
-    def __init__(
-        self,
-        camera_id: str,
-        camera_name: str,
-        nx_camera_id: str,
-        rule_config_path: Optional[str] = None,
-        nx_client: Optional[NxClient] = None,
-        device: str = "cpu",
-        roi: Optional[Any] = None,
-        rules: Optional[dict] = None
-    ):
-        # 1. Determine model name from overrides or rule config
-        model_name = "yolo11m.pt"
-        if rules and "model_name" in rules:
-            model_name = rules["model_name"]
-        elif rule_config_path:
-            try:
-                with open(rule_config_path, "r") as f:
-                    cfg = yaml.safe_load(f) or {}
-                    model_name = cfg.get("model_name", "yolo11m.pt")
-            except Exception:
-                pass
+    settings: HorseRidingSettings
 
-        super().__init__(
-            camera_id=camera_id,
-            camera_name=camera_name,
-            nx_camera_id=nx_camera_id,
-            rule_config_path=rule_config_path,
-            nx_client=nx_client,
-            model_name=model_name,
-            device=device,
-            roi=roi,
-            rules=rules
-        )
+    def __init__(self, camera: CameraInfo, settings: HorseRidingSettings, model: Detector, **kwargs):
+        super().__init__(camera, settings, model, **kwargs)
 
-        self.conf_thresh = float(self.rules.get("confidence_threshold", 0.35))
-        self.track_horses_only = bool(self.rules.get("track_horses_only", True))
+        self.conf_thresh = float(settings.confidence_threshold)
+        self.track_horses_only = bool(settings.track_horses_only)
 
         # Display wording. The COCO class is "horse", but the attraction may be signed otherwise
         # (e.g. "KUDA PONI TUNGGANG" = pony riding), and clients read the overlay, not the class id.
-        self.label_singular = str(self.rules.get("display_label", "Horse"))
-        self.label_plural = str(self.rules.get("display_label_plural", self.label_singular + "s"))
-        self.attraction_title = str(
-            self.rules.get("attraction_title", f"{self.label_singular} Riding Attraction")
-        )
+        self.label_singular = str(settings.display_label)
+        self.label_plural = str(settings.display_label_plural or self.label_singular + "s")
+        self.attraction_title = str(settings.attraction_title or f"{self.label_singular} Riding Attraction")
 
         # 2. Resolve class IDs from loaded YOLO model
         # Target 'horse' dynamically to support both COCO and custom fine-tuned weights
@@ -80,10 +48,10 @@ class HorseRidingPipeline(BasePipeline):
         logger.info(f"[{self.camera_name}] Target horse class ID(s): {self.horse_class_ids}")
 
         # 3. ByteTrack Tracker tuned for horses (large quadrupeds with deliberate motion)
-        activation_thresh = float(self.rules.get("track_activation_thresh", 0.25))
-        lost_buffer = int(self.rules.get("lost_track_buffer", 60))
-        matching_thresh = float(self.rules.get("matching_thresh", 0.70))
-        frame_rate = int(self.rules.get("frame_rate", 15))
+        activation_thresh = float(settings.track_activation_thresh)
+        lost_buffer = int(settings.lost_track_buffer)
+        matching_thresh = float(settings.matching_thresh)
+        frame_rate = int(settings.frame_rate)
 
         self.tracker = sv.ByteTrack(
             track_activation_threshold=activation_thresh,
@@ -93,7 +61,7 @@ class HorseRidingPipeline(BasePipeline):
         )
 
         # Trajectory smoother to eliminate bounding box jitter
-        smoothing_frames = int(self.rules.get("smoothing_frames", 4))
+        smoothing_frames = int(settings.smoothing_frames)
         self.smoother = sv.DetectionsSmoother(length=smoothing_frames)
 
         # 4. Supervision Annotators
@@ -111,7 +79,7 @@ class HorseRidingPipeline(BasePipeline):
             text_position=sv.Position.TOP_LEFT
         )
         
-        trace_length = int(self.rules.get("trace_length", 45))
+        trace_length = int(settings.trace_length)
         self.trace_annotator = sv.TraceAnnotator(
             color=self.box_color,
             thickness=3,
@@ -120,15 +88,12 @@ class HorseRidingPipeline(BasePipeline):
         )
 
         # Display flags (can be toggled for clean client demos)
-        self.show_boxes = bool(self.rules.get("show_boxes", True))
-        self.show_labels = bool(self.rules.get("show_labels", True))
-        self.show_traces = bool(self.rules.get("show_traces", True))
+        self.show_boxes = bool(settings.show_boxes)
+        self.show_labels = bool(settings.show_labels)
+        self.show_traces = bool(settings.show_traces)
 
         # 5. Virtual Tripwire & ROI zones
-        self.tripwire_enabled = False
-        tripwire_cfg = self.rules.get("tripwire", {})
-        if isinstance(tripwire_cfg, dict) and tripwire_cfg.get("enabled", False):
-            self.tripwire_enabled = True
+        self.tripwire_enabled = bool(settings.tripwire.enabled)
 
         self.line_zone: Optional[sv.LineZone] = None
         self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
@@ -144,8 +109,8 @@ class HorseRidingPipeline(BasePipeline):
 
         # Nx Event debouncing
         self.last_alert_time: float = 0.0
-        self.debounce_alert_sec = float(self.rules.get("debounce_alert_sec", 15.0))
-        self.nx_bookmark_cfg = self.rules.get("nx_bookmark", {})
+        self.debounce_alert_sec = float(settings.debounce_alert_sec)
+        self.nx_bookmark_cfg = settings.nx_bookmark
 
     def _init_zones_if_needed(self, frame_shape: Tuple[int, int, int]):
         """Initializes tripwire LineZone and ROI PolygonZone lazily on first frame."""
@@ -153,8 +118,8 @@ class HorseRidingPipeline(BasePipeline):
 
         # Initialize Tripwire if enabled
         if self.tripwire_enabled and self.line_zone is None:
-            raw_start = self.rules.get("tripwire", {}).get("start", [0.20, 0.60])
-            raw_end = self.rules.get("tripwire", {}).get("end", [0.80, 0.60])
+            raw_start = self.settings.tripwire.start
+            raw_end = self.settings.tripwire.end
             self.set_tripwire(raw_start, raw_end, frame_shape)
             self.line_zone_annotator = sv.LineZoneAnnotator(
                 thickness=3,
@@ -167,7 +132,7 @@ class HorseRidingPipeline(BasePipeline):
 
         # Initialize ROI Polygon if provided
         if self.roi_zone is None:
-            raw_roi = self.rules.get("roi_polygon")
+            raw_roi = self.settings.roi_polygon
             if raw_roi and len(raw_roi) >= 3:
                 self.roi_pts = np.array(
                     [[int(p[0] * w), int(p[1] * h)] for p in raw_roi],
@@ -229,7 +194,7 @@ class HorseRidingPipeline(BasePipeline):
             frame,
             classes=self.horse_class_ids,
             conf=self.conf_thresh,
-            imgsz=self.imgsz,
+            imgsz=self.settings.imgsz,
             verbose=False,
             device=self.device
         )[0]
@@ -328,10 +293,10 @@ class HorseRidingPipeline(BasePipeline):
         # Debounce alerts sent to Nx Meta
         if self.nx_client and (now - self.last_alert_time >= self.debounce_alert_sec):
             self.last_alert_time = now
-            tag = self.nx_bookmark_cfg.get("tag", "#horse_audit")
+            tag = (self.nx_bookmark_cfg and self.nx_bookmark_cfg.tag) or "#horse_audit"
             title = f"[RIDE AUDIT] Horse #{tracker_id} {direction}"
             self.nx_client.create_bookmark(
-                camera_id=self.nx_camera_id,
+                camera_id=self.nx_id,
                 title=title,
                 description=desc,
                 tags=[tag, "#riding_attraction"],

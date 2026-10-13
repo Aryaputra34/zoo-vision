@@ -10,9 +10,10 @@ import cv2
 import numpy as np
 import supervision as sv
 
-from core.base_pipeline import BasePipeline
+from contracts.vehicle_gate.settings import VehicleGateSettings
+from core.base_pipeline import BasePipeline, CameraInfo
 from core.anpr_engine import AnprEngine
-from nx_integration.nx_client import NxClient
+from core.model_pool import Detector
 
 logger = logging.getLogger("VehicleGatePipeline")
 
@@ -24,49 +25,19 @@ CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 class VehicleGatePipeline(BasePipeline):
     use_case = "vehicle_gate"
 
-    def __init__(
-        self,
-        camera_id: str,
-        camera_name: str,
-        nx_camera_id: str,
-        rule_config_path: Optional[str] = None,
-        nx_client: Optional[NxClient] = None,
-        device: str = "cpu",
-        roi: Optional[Any] = None,
-        rules: Optional[dict] = None
-    ):
-        model_name = "yolo26s.onnx"
-        if rules and "model_name" in rules:
-            model_name = rules["model_name"]
-        elif rule_config_path:
-            try:
-                with open(rule_config_path, "r") as f:
-                    import yaml
-                    cfg = yaml.safe_load(f) or {}
-                    model_name = cfg.get("model_name", "yolo26s.onnx")
-            except Exception:
-                pass
+    settings: VehicleGateSettings
 
-        super().__init__(
-            camera_id=camera_id,
-            camera_name=camera_name,
-            nx_camera_id=nx_camera_id,
-            rule_config_path=rule_config_path,
-            nx_client=nx_client,
-            model_name=model_name,
-            device=device,
-            roi=roi,
-            rules=rules
-        )
+    def __init__(self, camera: CameraInfo, settings: VehicleGateSettings, model: Detector, **kwargs):
+        super().__init__(camera, settings, model, **kwargs)
 
-        self.conf_thresh = self.rules.get("confidence_threshold", 0.30)
+        self.conf_thresh = settings.confidence_threshold
 
         # ByteTrack Tracker tuned for vehicle gate / barrier stop-and-go
         self.tracker = sv.ByteTrack(
-            track_activation_threshold=self.rules.get("track_activation_thresh", 0.25),
-            lost_track_buffer=self.rules.get("lost_track_buffer", 75),  # 5s memory at 15 FPS
-            minimum_matching_threshold=self.rules.get("matching_thresh", 0.70),
-            frame_rate=self.rules.get("frame_rate", 15)
+            track_activation_threshold=settings.track_activation_thresh,
+            lost_track_buffer=settings.lost_track_buffer,
+            minimum_matching_threshold=settings.matching_thresh,
+            frame_rate=settings.frame_rate
         )
         self.smoother = sv.DetectionsSmoother(length=4)
 
@@ -85,17 +56,17 @@ class VehicleGatePipeline(BasePipeline):
         self.roi_pts: Optional[np.ndarray] = None
 
         # Indonesian License Plate Recognition (ANPR / LPR) Engine
-        self.anpr_cfg = self.rules.get("anpr", {})
-        self.anpr_enabled = bool(self.anpr_cfg.get("enabled", True))
+        self.anpr_cfg = settings.anpr
+        self.anpr_enabled = bool(self.anpr_cfg.enabled)
         self.anpr_engine: Optional[AnprEngine] = None
         if self.anpr_enabled:
-            plate_model_path = self.anpr_cfg.get("model_path", "models/license_plate_detector.onnx")
-            min_plate_conf = float(self.anpr_cfg.get("min_plate_confidence", 0.25))
+            plate_model_path = self.anpr_cfg.model_path
+            min_plate_conf = float(self.anpr_cfg.min_plate_confidence)
             try:
                 self.anpr_engine = AnprEngine(
                     detector_model_path=plate_model_path,
                     conf_threshold=min_plate_conf,
-                    gpu=(device == "cuda")
+                    gpu=(self.device == "cuda")
                 )
                 logger.info(f"[{self.camera_name}] Indonesian ANPR Engine active (model: {plate_model_path}).")
             except Exception as e:
@@ -111,8 +82,8 @@ class VehicleGatePipeline(BasePipeline):
             return
 
         h, w = frame_shape[:2]
-        raw_start = self.rules.get("tripwire", {}).get("start", [0.760, 0.580])
-        raw_end = self.rules.get("tripwire", {}).get("end", [0.050, 0.430])
+        raw_start = self.settings.tripwire.start
+        raw_end = self.settings.tripwire.end
 
         self.set_tripwire(raw_start, raw_end, frame_shape)
 
@@ -125,7 +96,7 @@ class VehicleGatePipeline(BasePipeline):
         )
 
         # Initialize Roadway ROI Polygon (filters out building walls, sky, etc.)
-        raw_roi = self.rules.get("roi_polygon", None)
+        raw_roi = self.settings.roi_polygon
         if raw_roi:
             self.roi_pts = np.array([[int(p[0] * w), int(p[1] * h)] for p in raw_roi], dtype=np.int32)
             self.roi_zone = sv.PolygonZone(polygon=self.roi_pts)
@@ -160,7 +131,7 @@ class VehicleGatePipeline(BasePipeline):
             frame,
             classes=VEHICLE_CLASS_IDS,
             conf=self.conf_thresh,
-            imgsz=self.imgsz,
+            imgsz=self.settings.imgsz,
             verbose=False,
             device=self.device
         )[0]
@@ -300,11 +271,12 @@ class VehicleGatePipeline(BasePipeline):
         clean_tag = f"#{plate_number.replace(' ', '_').lower()}" if plate_number != "UNIDENTIFIED" else "#unidentified"
         tags = ["#vehicle_audit", f"#{direction.lower()}", f"#{vehicle_type.lower()}", clean_tag]
 
-        self.nx_client.create_bookmark(
-            camera_id=self.nx_camera_id,
-            title=title,
-            description=description,
-            tags=tags,
-            start_time_ms=timestamp_ms,
-            duration_ms=10000
-        )
+        if self.nx_client:
+            self.nx_client.create_bookmark(
+                camera_id=self.nx_id,
+                title=title,
+                description=description,
+                tags=tags,
+                start_time_ms=timestamp_ms,
+                duration_ms=10000
+            )

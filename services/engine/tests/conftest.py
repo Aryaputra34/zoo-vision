@@ -1,3 +1,4 @@
+import json
 import threading
 from pathlib import Path
 
@@ -5,8 +6,12 @@ import pytest
 import torch
 import ultralytics
 import yaml
+from core.base_pipeline import CameraInfo
 from core.messages import validate
 from core.model_pool import ModelPool
+from core.settings import parse_settings
+from nx_integration.nx_client import NxClient
+from usecases import create_pipeline
 from ultralytics.engine.results import Results
 
 ENGINE_DIR = Path(__file__).resolve().parents[1]
@@ -88,11 +93,9 @@ class FakeReader:
 @pytest.fixture
 def fake_yolo(monkeypatch):
     FakeYOLO.reset()
-    monkeypatch.setattr("core.base_pipeline.YOLO", FakeYOLO)
     monkeypatch.setattr("core.anpr_engine.YOLO", FakeYOLO)
     monkeypatch.setattr("core.anpr_engine.easyocr.Reader", FakeReader)
-    # pipelines need no weights on disk; ANPR keeps the real lookup (see the gate wiring test)
-    monkeypatch.setattr("core.base_pipeline.resolve_model_path", lambda name, models_dir=None: name)
+    # ANPR keeps the real model lookup (see the gate wiring test)
     yield FakeYOLO
     FakeYOLO.gate.set()
     FakeYOLO.load_gate.set()
@@ -124,3 +127,34 @@ class RecordingStream:
 @pytest.fixture
 def stream():
     return RecordingStream()
+
+
+EXAMPLES_DIR = ENGINE_DIR.parents[1] / "packages" / "contracts" / "usecases"
+
+
+def example_dict(use_case: str) -> dict:
+    """The settings the prototype's rule file for `use_case` produced (the contract's current_rules example)."""
+    path = EXAMPLES_DIR / use_case / "examples" / "settings" / "valid" / "current_rules.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def example_settings(use_case: str):
+    return parse_settings(use_case, example_dict(use_case), strict=False)
+
+
+def make_pipeline(use_case: str, settings=None, stream=None):
+    """A pipeline built through the registry on a FakeYOLO. `settings` is a model or a dict (parsed leniently)."""
+    if settings is None:
+        settings = example_settings(use_case)
+    elif isinstance(settings, dict):
+        settings = parse_settings(use_case, settings, strict=False)
+    pipeline = create_pipeline(
+        CameraInfo("cam_test", "Test Cam"), use_case, settings, FakeYOLO(),
+        device="cpu", nx_client=NxClient(mock_mode=True),
+    )
+    pipeline.events = stream
+    return pipeline
+
+
+def table_change(status):
+    return {"tableId": "T1", "tableName": "Table 1", "oldStatus": "", "status": status, "dwellSec": 0, "timestampMs": 1}

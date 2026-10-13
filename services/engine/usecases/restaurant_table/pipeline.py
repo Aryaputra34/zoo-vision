@@ -6,15 +6,15 @@ Provides real-time table status (VACANT / OCCUPIED), dwell duration, and turnaro
 
 import time
 import logging
-from typing import Optional, Any, Dict, List, Tuple
-import yaml
+from typing import Any, Dict
 import cv2
 import numpy as np
 import supervision as sv
 
-from core.base_pipeline import BasePipeline
+from contracts.restaurant_table.settings import RestaurantTableSettings
+from core.base_pipeline import BasePipeline, CameraInfo
+from core.model_pool import Detector
 from core.table_manager import TableOccupancyEngine, TableSessions
-from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("TableOccupancyPipeline")
 
@@ -23,62 +23,26 @@ class TableOccupancyPipeline(BasePipeline):
     use_case = "restaurant_table"
     metric_fields = {"occupiedTables": "occupied_tables", "occupancyRatePct": "table_occupancy_pct"}
 
-    def __init__(
-        self,
-        camera_id: str,
-        camera_name: str,
-        nx_camera_id: str,
-        rule_config_path: Optional[str] = None,
-        nx_client: Optional[NxClient] = None,
-        device: str = "cpu",
-        roi: Optional[Any] = None,
-        rules: Optional[Dict[str, Any]] = None
-    ):
-        # Pre-read model_name from rules config if available
-        model_name = "yolo11s.onnx"
-        if rules and "model_name" in rules:
-            model_name = rules["model_name"]
-        elif rule_config_path:
-            try:
-                with open(rule_config_path, "r") as f:
-                    cfg = yaml.safe_load(f) or {}
-                    model_name = cfg.get("model_name", "yolo11s.onnx")
-            except Exception:
-                pass
+    settings: RestaurantTableSettings
 
-        super().__init__(
-            camera_id=camera_id,
-            camera_name=camera_name,
-            nx_camera_id=nx_camera_id,
-            rule_config_path=rule_config_path,
-            nx_client=nx_client,
-            model_name=model_name,
-            device=device,
-            roi=roi,
-            rules=rules
-        )
+    def __init__(self, camera: CameraInfo, settings: RestaurantTableSettings, model: Detector, **kwargs):
+        super().__init__(camera, settings, model, **kwargs)
 
-        self.imgsz = self.rules.get("imgsz", 1920)
-        self.conf_thresh = float(self.rules.get("confidence_threshold", 0.20))
-        self.deduplication_enabled = bool(self.rules.get("deduplication_enabled", True))
-        self.iou_threshold = float(self.rules.get("iou_threshold", 0.45))
-        self.containment_threshold = float(self.rules.get("containment_threshold", 0.65))
+        self.conf_thresh = float(settings.confidence_threshold)
+        self.deduplication_enabled = bool(settings.deduplication_enabled)
+        self.iou_threshold = float(settings.iou_threshold)
+        self.containment_threshold = float(settings.containment_threshold)
 
         # Visual settings
-        self.show_boxes = bool(self.rules.get("show_person_boxes", False))
-        self.show_labels = bool(self.rules.get("show_person_labels", False))
+        self.show_boxes = bool(settings.show_person_boxes)
+        self.show_labels = bool(settings.show_person_labels)
         self.box_annotator = sv.BoxAnnotator(thickness=1)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.4, text_thickness=1)
 
-        # Initialize Table Occupancy Engine
-        table_cfg = self.rules.get("table_monitoring", self.rules)
-        # If the root config contains 'tables', pass the whole dictionary
-        if "tables" in self.rules and "tables" not in table_cfg:
-            table_cfg["tables"] = self.rules["tables"]
-
-        # Ensure summary HUD card is rendered for standalone table camera
-        if "show_summary_card" not in table_cfg:
-            table_cfg["show_summary_card"] = True
+        # Initialize Table Occupancy Engine. It takes a plain dict; unset (None) options fall back to its defaults.
+        table_cfg = settings.model_dump(
+            include={"show_overlay", "show_labels", "show_summary_card", "dwell_time", "tables"}, exclude_none=True
+        )
 
         self.table_sessions = TableSessions(self)
         self.table_engine = TableOccupancyEngine(
@@ -90,7 +54,7 @@ class TableOccupancyPipeline(BasePipeline):
         self.last_summary: Dict[str, Any] = {}
 
         logger.info(
-            f"[{self.camera_name}] Initialized Standalone Table Occupancy Pipeline with model '{model_name}' "
+            f"[{self.camera_name}] Initialized Standalone Table Occupancy Pipeline with model '{settings.model_name}' "
             f"({len(self.table_engine.tables)} tables active, dwell_tracking={self.table_engine.track_dwell_time})."
         )
 
@@ -155,7 +119,7 @@ class TableOccupancyPipeline(BasePipeline):
 
             ts_ms = data.get("timestampMs") or int(time.time() * 1000)
             self.nx_client.create_bookmark(
-                camera_id=self.nx_camera_id,
+                camera_id=self.nx_id,
                 title=title,
                 description=desc,
                 tags=tags,
@@ -169,7 +133,7 @@ class TableOccupancyPipeline(BasePipeline):
             frame,
             classes=[0],
             conf=self.conf_thresh,
-            imgsz=self.imgsz,
+            imgsz=self.settings.imgsz,
             verbose=False,
             device=self.device
         )[0]

@@ -13,22 +13,47 @@ Usage Examples:
 import os
 import sys
 import time
+import typing
 import uuid
 import argparse
 import logging
 import cv2
 import yaml
+from pydantic import BaseModel
 
+from contracts.registry import REGISTRY
+from core.base_pipeline import CameraInfo
 from core.event_stream import EventStream
 from core.messages import event_message
 from core.api_server import create_app, start_api_server
+from core.model_pool import ModelPool
+from core.settings import SettingsError, parse_settings
 from core.snapshot_store import SnapshotStore
 from nx_integration.nx_client import NxClient
-from pipelines.vehicle_gate_pipeline import VehicleGatePipeline
-from pipelines.cashier_presence_pipeline import CashierPresencePipeline
-from pipelines.restaurant_pipeline import RestaurantCounterPipeline
-from pipelines.table_occupancy_pipeline import TableOccupancyPipeline
-from pipelines.horse_riding_pipeline import HorseRidingPipeline
+from usecases import create_pipeline
+
+ENGINE_GROUP = "test_video"  # never the real engine's ENGINE_GROUP
+
+# --pipeline name -> use case
+PIPELINES = {
+    "gate": "vehicle_gate", "vehicle_gate": "vehicle_gate",
+    "cashier": "cashier_presence", "cashier_presence": "cashier_presence",
+    "restaurant": "restaurant_counter", "restaurant_counter": "restaurant_counter",
+    "horse": "horse_riding", "horse_riding": "horse_riding",
+    "restaurant_table": "restaurant_table", "table": "restaurant_table", "tables": "restaurant_table",
+}
+# use case -> (default rule file, default camera name, camera id, Nx camera id)
+DEFAULTS = {
+    "vehicle_gate": ("vehicle_gate", "Main Vehicle Gate 1", "cam_gate_test", "00000000-0000-0000-0000-000000000003"),
+    "cashier_presence": ("cashier_presence", "Loket Mini Train Cashier", "cam_cashier_test",
+                         "00000000-0000-0000-0000-000000000001"),
+    "restaurant_counter": ("restaurant_counter", "Safari Cafe Dining Hall", "cam_restaurant_test",
+                           "00000000-0000-0000-0000-000000000002"),
+    "horse_riding": ("horse_riding", "Pony Riding Attraction", "cam_horse_test",
+                     "00000000-0000-0000-0000-000000000005"),
+    "restaurant_table": ("restaurant_table", "Safari Cafe Table Monitor", "cam_table_test",
+                         "00000000-0000-0000-0000-000000000002"),
+}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +77,59 @@ def parse_time_str(val: str) -> float:
     return float(val)
 
 
+def _model_types(annotation) -> list:
+    """The Pydantic models inside a field annotation (through unions, lists and tuples)."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return [annotation]
+    found = []
+    for arg in typing.get_args(annotation):
+        found += _model_types(arg)
+    return found
+
+
+def prune_unknown(model: type[BaseModel], value):
+    """Drops what the settings model does not define (prototype rule files carry `rule_name`, `target_class`,
+    ...), and empty polygons, the way tools/import_yaml_config.py does."""
+    if not isinstance(value, dict):
+        return value
+    out = {}
+    for key, item in value.items():
+        field = model.model_fields.get(key)
+        if field is None:
+            logger.info(f"[RULES] Ignoring '{key}': not a setting of this use case.")
+            continue
+        if item == []:
+            continue
+        nested = _model_types(field.annotation)
+        if nested and isinstance(item, dict):
+            item = prune_unknown(nested[0], item)
+        elif nested and isinstance(item, list):
+            item = [prune_unknown(nested[0], x) for x in item]
+        out[key] = item
+    return out
+
+
+def load_settings(use_case: str, rule_path: str, no_anpr: bool, hide_boxes: bool, show_boxes: bool) -> BaseModel:
+    """Rule YAML -> typed settings. The display flags are set in the settings, before parsing."""
+    model = REGISTRY[use_case].settings
+    with open(rule_path, "r") as f:
+        rules = prune_unknown(model, yaml.safe_load(f) or {})
+    if no_anpr and "anpr" in model.model_fields:
+        rules["anpr"] = {**rules.get("anpr", {}), "enabled": False}
+    if hide_boxes or show_boxes:
+        # the table pipeline's person boxes are show_person_boxes
+        flag = hide_boxes is False
+        for boxes, labels in (("show_boxes", "show_labels"), ("show_person_boxes", "show_person_labels")):
+            if boxes in model.model_fields:
+                rules[boxes] = rules[labels] = flag
+                logger.info("[DISPLAY] " + ("Debug Mode: Bounding boxes and confidence labels visible." if flag else
+                                            "Clean Client Demo Mode: Bounding boxes hidden (HUD only)."))
+    try:
+        return parse_settings(use_case, rules, strict=False)
+    except SettingsError as e:
+        raise SystemExit(f"Rule file {rule_path} does not satisfy the {use_case} settings: {e}")
+
+
 def test_video(
     video_path: str,
     pipeline_type: str = "restaurant",
@@ -66,7 +144,8 @@ def test_video(
     no_gui: bool = False,
     no_anpr: bool = False,
     duration: str = None,
-    analytics: bool = False
+    analytics: bool = False,
+    device: str = "cpu"
 ):
     if not os.path.exists(video_path):
         logger.error(f"Video file not found: '{video_path}'")
@@ -102,77 +181,21 @@ def test_video(
     # 1. Initialize Mock Nx Client
     nx_client = NxClient(mock_mode=True)
 
-    # 2. Select Pipeline
-    if pipeline_type in ["gate", "vehicle_gate"]:
-        rule_cfg = rule_path or "configs/rules/vehicle_gate.yaml"
-        c_name = camera_name or "Main Vehicle Gate 1"
-        gate_rules = {"anpr": {"enabled": False}} if no_anpr else None
-        pipeline = VehicleGatePipeline(
-            camera_id="cam_gate_test",
-            camera_name=c_name,
-            nx_camera_id="00000000-0000-0000-0000-000000000003",
-            rule_config_path=rule_cfg,
-            nx_client=nx_client,
-            device="cpu",
-            rules=gate_rules
-        )
-    elif pipeline_type == "cashier":
-        rule_cfg = rule_path or "configs/rules/cashier_presence.yaml"
-        c_name = camera_name or "Loket Mini Train Cashier"
-        pipeline = CashierPresencePipeline(
-            camera_id="cam_cashier_test",
-            camera_name=c_name,
-            nx_camera_id="00000000-0000-0000-0000-000000000001",
-            rule_config_path=rule_cfg,
-            nx_client=nx_client,
-            device="cpu"
-        )
-    elif pipeline_type == "restaurant":
-        rule_cfg = rule_path or "configs/rules/restaurant_counter.yaml"
-        c_name = camera_name or "Safari Cafe Dining Hall"
-        pipeline = RestaurantCounterPipeline(
-            camera_id="cam_restaurant_test",
-            camera_name=c_name,
-            nx_camera_id="00000000-0000-0000-0000-000000000002",
-            rule_config_path=rule_cfg,
-            nx_client=nx_client,
-            device="cuda:0"
-        )
-    elif pipeline_type in ["horse", "horse_riding"]:
-        rule_cfg = rule_path or "configs/rules/horse_riding.yaml"
-        c_name = camera_name or "Pony Riding Attraction"
-        pipeline = HorseRidingPipeline(
-            camera_id="cam_horse_test",
-            camera_name=c_name,
-            nx_camera_id="00000000-0000-0000-0000-000000000005",
-            rule_config_path=rule_cfg,
-            nx_client=nx_client,
-            device="cpu"
-        )
-    elif pipeline_type in ["restaurant_table", "table", "tables"]:
-        rule_cfg = rule_path or "configs/rules/restaurant_table.yaml"
-        c_name = camera_name or "Safari Cafe Table Monitor"
-        pipeline = TableOccupancyPipeline(
-            camera_id="cam_table_test",
-            camera_name=c_name,
-            nx_camera_id="00000000-0000-0000-0000-000000000002",
-            rule_config_path=rule_cfg,
-            nx_client=nx_client,
-            device="cpu"
-        )
-    else:
+    # 2. Select Pipeline: rule YAML -> typed settings, shared model from the pool
+    use_case = PIPELINES.get(pipeline_type)
+    if use_case is None:
         logger.error(f"Unknown pipeline: {pipeline_type}")
         return
-
-    # Apply display overrides if requested
-    if hide_boxes and hasattr(pipeline, "show_boxes"):
-        pipeline.show_boxes = False
-        pipeline.show_labels = False
-        logger.info("[DISPLAY] Clean Client Demo Mode: Bounding boxes hidden (HUD only).")
-    elif show_boxes and hasattr(pipeline, "show_boxes"):
-        pipeline.show_boxes = True
-        pipeline.show_labels = True
-        logger.info("[DISPLAY] Debug Mode: Bounding boxes and confidence labels visible.")
+    rule_name, default_name, camera_id, nx_camera_id = DEFAULTS[use_case]
+    settings = load_settings(
+        use_case, rule_path or f"configs/rules/{rule_name}.yaml", no_anpr, hide_boxes, show_boxes
+    )
+    pool = ModelPool(device)
+    model = pool.acquire(settings.model_name, settings.imgsz)
+    pipeline = create_pipeline(
+        CameraInfo(camera_id, camera_name or default_name, nx_camera_id), use_case, settings, model,
+        device=device, nx_client=nx_client,
+    )
 
     # Optionally send events, intervals and metrics to the Redis stream (REDIS_URL), with event snapshots
     # and the live preview API, so the run looks like a real camera
@@ -184,10 +207,9 @@ def test_video(
                 app_cfg = yaml.safe_load(f) or {}
         redis_url = os.environ.get("REDIS_URL")
         if redis_url:
-            engine_group = os.environ.get("ENGINE_GROUP", "default")
-            events = EventStream(redis_url, engine_group=engine_group)
+            events = EventStream(redis_url, engine_group=ENGINE_GROUP)
             events.send(event_message(None, "system", "engine_started",
-                                      {"bootId": uuid.uuid4().hex, "engineGroup": engine_group}))
+                                      {"bootId": uuid.uuid4().hex, "engineGroup": ENGINE_GROUP}))
             pipeline.events = events
         else:
             logger.warning("REDIS_URL is not set: events, intervals and metrics are not sent.")
@@ -341,6 +363,8 @@ def test_video(
     if api_server:
         api_server.should_exit = True
     pipeline.shutdown()
+    pool.release(model)
+    pool.close()
     if snapshots:
         snapshots.stop()
     if events:
@@ -357,7 +381,7 @@ if __name__ == "__main__":
     parser.add_argument("--video", required=True, help="Path to .mp4 video file")
     parser.add_argument(
         "--pipeline",
-        choices=["gate", "vehicle_gate", "cashier", "cashier_presence", "restaurant", "restaurant_counter", "restaurant_table", "table", "horse", "horse_riding"],
+        choices=list(PIPELINES),
         default="horse",
         help="Pipeline type (default: horse)"
     )
@@ -373,6 +397,7 @@ if __name__ == "__main__":
     parser.add_argument("--preview", action="store_true", help="Optional/compatibility flag; GUI is shown by default unless --no-gui is passed")
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
+    parser.add_argument("--device", default="cpu", help="Inference device, e.g. cpu or cuda:0 (default: cpu)")
     parser.add_argument("--analytics", action="store_true", help="Send events, intervals and metrics to the Redis stream (REDIS_URL) with snapshots, and serve the live preview (configs/app_config.yaml)")
     args = parser.parse_args()
 
@@ -390,5 +415,6 @@ if __name__ == "__main__":
         no_gui=args.no_gui,
         no_anpr=args.no_anpr,
         duration=args.duration,
-        analytics=args.analytics
+        analytics=args.analytics,
+        device=args.device
     )
