@@ -143,8 +143,8 @@ $h = @{ Authorization = "Bearer <token>" }
 $api = "http://127.0.0.1:3001/api/v1/cameras"
 # 1. Disable every other camera (repeat for each id).
 Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"enabled":false}' "$api/<other id>"
-# 2. Point the gate camera at the file, at 1 fps.
-Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"mainStreamUrl":"sample_data/cars.mp4","targetFps":1}' "$api/<gate id>"
+# 2. Point the gate camera at the file, at 1 fps. sourceType FILE is required: the import made it MEDIAMTX, and the API refuses a non-RTSP URL for that type.
+Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"sourceType":"FILE","mainStreamUrl":"sample_data/cars.mp4","targetFps":1}' "$api/<gate id>"
 # 3. Read its config. Note "version" and the settings.
 Invoke-RestMethod -Headers $h "$api/<gate id>/config" | ConvertTo-Json -Depth 20
 ```
@@ -187,6 +187,7 @@ Data stays in the `pgdata` and `redisdata` volumes; `docker compose down -v` del
 
 ```powershell
 cd zoo-vision\services\engine
+$env:ZOO_MODELS_DIR = "..\..\deploy\data\models"                           # test_video.py needs yolo26l.onnx from here
 uv run pytest                                                              # about a minute, no GPU or models needed
 uv run python test_video.py --video sample_data\cars.mp4 --pipeline gate   # one pipeline in a window; q quits
 ```
@@ -222,7 +223,7 @@ Stop everything with Ctrl+C in each terminal. Recordings collect in `zoo-vision\
 | Symptom | Cause and fix |
 | :--- | :--- |
 | `warning: VIRTUAL_ENV=... does not match the project environment` | An old venv is still active in this terminal. Run `deactivate`; `uv` uses `services\engine\.venv`. |
-| `Model 'x.onnx' not found ... Run: python tools/fetch_models.py` | Weights are missing, or `ZOO_MODELS_DIR` points at another folder. Run `python tools\fetch_models.py --dest deploy\data\models` from the repo root. |
+| `Model 'x.onnx' not found ... Run: python tools/fetch_models.py` | Weights are missing, or `ZOO_MODELS_DIR` points at another folder. For `test_video.py`, set `$env:ZOO_MODELS_DIR = "..\..\deploy\data\models"` in that terminal (from `services\engine`). To fetch the weights, run `python tools\fetch_models.py --dest deploy\data\models` from the repo root. |
 | `invalid engine environment: ...` | `REDIS_URL` or `ENGINE_TOKEN` is unset or bad; the message names each bad variable. `ENGINE_TOKEN` must equal the API's and be at least 32 characters. |
 | `cars.mp4` won't open | git-lfs isn't installed, so the file is a small pointer. Install git-lfs, then `git lfs pull`. |
 | A camera never connects | Its stream URL in the API differs from the MediaMTX path name, or FFmpeg can't find the video in `deploy\mediamtx.yml`. Check the MediaMTX terminal. |

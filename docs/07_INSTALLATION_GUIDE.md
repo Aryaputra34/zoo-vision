@@ -24,7 +24,7 @@ This document provides complete, step-by-step instructions for installing, confi
    - [Pipeline Rules Configuration (`services/engine/configs/rules/`)](#63-pipeline-rules-configuration-servicesengineconfigsrules)
    - [Model Weights & Acceleration Artifacts](#64-model-weights--acceleration-artifacts)
 7. [Verification & Smoke Testing](#7-verification--smoke-testing)
-   - [Quick Smoke Test (Synthetic Frames)](#71-quick-smoke-test-synthetic-frames)
+   - [Quick Smoke Test (Automated Tests)](#71-quick-smoke-test-automated-tests)
    - [Interactive ROI Calibration Tool](#72-interactive-roi-calibration-tool)
    - [Standalone Pipeline Video Tester](#73-standalone-pipeline-video-tester)
    - [Full Master Orchestrator Launch](#74-full-master-orchestrator-launch)
