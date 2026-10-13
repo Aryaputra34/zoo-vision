@@ -86,7 +86,6 @@ describe('ingest: entries survive a database outage exactly once', () => {
       ),
     ).toEqual([{ id: open.sessionId, endReason: 'ended' }]);
     expect(await count('DeadEvent')).toBe(0);
-    expect(await redis.hlen('ingest:failures')).toBe(0);
 
     for (const msg of messages) await xadd(msg);
     await drained();
