@@ -55,8 +55,8 @@ describe('ingest: entries survive a database outage exactly once', () => {
     const close = closeMsg({ sessionId: open.sessionId });
     const messages = [...events, open, close];
     // XADDed before the consumer starts, so one read takes all five: while an entry is pending,
-    // the consumer re-reads only its pending list, and entries XADDed one by one would reach it
-    // one per retry
+    // the consumer re-reads only its pending list and never reaches the '>' read, so entries
+    // XADDed after its first read stay unread until the database is back
     for (const msg of messages) await xadd(msg);
     const appA = await start({ DATABASE_URL: unreachable.toString() });
 
@@ -65,6 +65,8 @@ describe('ingest: entries survive a database outage exactly once', () => {
         ingestFailures() > 0 && (await pendingCount().catch(() => 0)) === 5, // NOGROUP until the group exists
       'five pending entries and a logged ingest failure',
     );
+    // transient errors must not count towards dead-lettering: checked while the database fails
+    expect(await redis.hlen('ingest:failures')).toBe(0);
     await appA.close();
     apps = apps.filter((app) => app !== appA);
 
@@ -106,6 +108,7 @@ describe('ingest: entries survive a database outage exactly once', () => {
         'a logged ingest failure',
       );
       expect(await pendingCount()).toBe(2);
+      expect(await redis.hlen('ingest:failures')).toBe(0);
       expect(await count('DeadEvent')).toBe(0);
       expect(await count('Event')).toBe(0);
 
