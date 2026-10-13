@@ -36,7 +36,8 @@ class FakeYOLO:
     overlaps = 0
     gate = threading.Event()
     load_gate = threading.Event()
-    _busy = threading.Lock()
+    gate.set()
+    load_gate.set()
     _record = threading.Lock()
 
     @classmethod
@@ -54,12 +55,13 @@ class FakeYOLO:
             raise FileNotFoundError(model)
         with type(self)._record:
             type(self).loads += 1
+        self._busy = threading.Lock()  # overlap is per model object: separate models may run at once
         self.model_name, self.names = model, dict(COCO_NAMES)
 
     def __call__(self, source, **kwargs):
         cls = type(self)
         frames = list(source) if isinstance(source, (list, tuple)) else [source]
-        if not cls._busy.acquire(blocking=False):
+        if not self._busy.acquire(blocking=False):
             cls.overlaps += 1
             raise AssertionError("FakeYOLO was called by two threads at once")
         try:
@@ -69,7 +71,7 @@ class FakeYOLO:
             cls.gate.wait(10)
             results = [Results(orig_img=f, path="", names=self.names, boxes=cls.boxes) for f in frames]
         finally:
-            cls._busy.release()
+            self._busy.release()
         return results
 
 

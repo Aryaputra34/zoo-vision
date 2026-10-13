@@ -181,7 +181,11 @@ def test_concurrent_first_acquires_load_once(fake_pool):
     FakeYOLO.load_gate.clear()
     handles = []
     ts = run_in_threads([lambda: handles.append(fake_pool.acquire("m.onnx", 640)) for _ in range(3)])
-    wait_until(lambda: sum(e.refs for e in fake_pool._entries.values()) == 3)
+    def refs():
+        with fake_pool._lock:
+            return sum(e.refs for e in fake_pool._entries.values())
+
+    wait_until(lambda: refs() == 3)
     FakeYOLO.load_gate.set()
     for t in ts:
         t.join(10)
@@ -197,6 +201,46 @@ def test_call_timeout(make_pool):
     FakeYOLO.gate.clear()
     with pytest.raises(TimeoutError):
         det(frame(0))
+
+
+def test_abandoned_requests_are_not_run(make_pool):
+    pool = make_pool(call_timeout=0.2)
+    det = pool.acquire("m.onnx", 640)
+    FakeYOLO.gate.clear()
+    outcomes = []
+
+    def call(i):
+        try:
+            det(frame(i))
+        except TimeoutError as e:
+            outcomes.append(e)
+
+    first = run_in_threads([lambda: call(0)])
+    wait_until(lambda: FakeYOLO.batches == [1])
+    queued = run_in_threads([lambda: call(1), lambda: call(2)])
+    for t in first + queued:
+        t.join(10)
+    assert len(outcomes) == 3  # every caller timed out
+    FakeYOLO.gate.set()
+    pool.release(det)  # joins the thread after it drained the queue
+    assert FakeYOLO.batches == [1]  # requests 1 and 2 were skipped, not run
+
+
+def test_release_returns_within_the_bound_while_a_model_call_hangs(make_pool):
+    pool = make_pool(call_timeout=0.3)
+    det = pool.acquire("m.onnx", 640)
+    thread = det._entry.thread
+    FakeYOLO.gate.clear()
+    caller = run_in_threads([lambda: pytest.raises(TimeoutError, det, frame(0))])
+    wait_until(lambda: FakeYOLO.batches == [1])
+    started = time.monotonic()
+    pool.release(det)
+    assert time.monotonic() - started < 5
+    assert thread.is_alive()  # abandoned, still stuck in the model call
+    FakeYOLO.gate.set()
+    thread.join(10)
+    assert not thread.is_alive()
+    caller[0].join(10)
 
 
 def test_release_to_zero_stops_the_thread_and_later_calls_fail(fake_pool):

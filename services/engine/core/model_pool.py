@@ -11,6 +11,7 @@ Locking:
     it is answered by the thread before it exits.
 """
 
+import logging
 import queue
 import threading
 from typing import Any, Callable, Optional, Protocol, Union
@@ -19,6 +20,7 @@ from core.model_store import resolve_model_path
 
 ImgSize = Union[int, tuple]
 _STOP = object()
+log = logging.getLogger(__name__)
 
 
 class Detector(Protocol):
@@ -30,13 +32,14 @@ class Detector(Protocol):
 
 
 class _Request:
-    __slots__ = ("frame", "kwargs", "done", "result", "error")
+    __slots__ = ("frame", "kwargs", "done", "result", "error", "abandoned")
 
     def __init__(self, frame, kwargs):
         self.frame, self.kwargs = frame, kwargs
         self.done = threading.Event()
         self.result: Any = None
         self.error: Optional[BaseException] = None
+        self.abandoned = False  # set by a caller that stopped waiting; the thread skips such requests
 
     def finish(self, result=None, error=None):
         self.result, self.error = result, error
@@ -44,8 +47,8 @@ class _Request:
 
 
 class _Entry:
-    def __init__(self, key, max_batch: int):
-        self.key, self.max_batch = key, max_batch
+    def __init__(self, key, max_batch: int, join_timeout: float):
+        self.key, self.max_batch, self.join_timeout = key, max_batch, join_timeout
         self.refs = 0
         self.ready = threading.Event()  # set when loading finished (successfully or not)
         self.load_error: Optional[BaseException] = None
@@ -73,7 +76,9 @@ class _Entry:
             self.stopping = True
             self.queue.put(_STOP)
         if self.thread is not None:
-            self.thread.join()
+            self.thread.join(self.join_timeout)
+            if self.thread.is_alive():
+                log.warning("Model thread %s is stuck in a model call; abandoning it", self.thread.name)
         self.model = None
 
     def _run(self):
@@ -100,6 +105,9 @@ class _Entry:
             self._infer(batch)
 
     def _infer(self, batch):
+        batch = [r for r in batch if not r.abandoned]
+        if not batch:
+            return
         try:
             results = self.model([r.frame for r in batch], **batch[0].kwargs)
             if len(results) != len(batch):
@@ -127,6 +135,7 @@ class _Handle:
         request = _Request(source, kwargs)
         self._entry.submit(request)
         if not request.done.wait(self._call_timeout):
+            request.abandoned = True
             raise TimeoutError(f"No answer from the model within {self._call_timeout} s")
         if request.error is not None:
             raise request.error
@@ -157,7 +166,7 @@ class ModelPool:
             entry = self._entries.get(key)
             creator = entry is None
             if creator:
-                entry = self._entries[key] = _Entry(key, self.max_batch)
+                entry = self._entries[key] = _Entry(key, self.max_batch, self.call_timeout)
             entry.refs += 1
         if creator:
             self._load(entry)
