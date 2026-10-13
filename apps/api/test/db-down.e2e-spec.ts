@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { createTestApp } from './app';
@@ -26,15 +26,21 @@ describe('Postgres down', () => {
 
   it('API reads answer 503 "Service unavailable", without the driver error text', async () => {
     const { cookie } = await asRole(live, 'SUPERADMIN');
+    const error = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
 
     const res = await request(down.getHttpServer())
       .get('/api/v1/cameras')
       .set('Cookie', cookie)
       .expect(503);
+    const logged = error.mock.calls.map(([m]) => String(m));
+    error.mockRestore();
 
     expect(res.body).toEqual({
       statusCode: 503,
       message: 'Service unavailable',
     });
+    expect(logged[0]).toMatch(/^database unavailable \(P1001\): /);
   });
 });
