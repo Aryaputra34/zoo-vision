@@ -7,6 +7,8 @@ export type Env = Readonly<{
   REDIS_URL: string;
   /** AES-256 key for the stored camera stream URLs (decoded from base64). */
   CAMERA_URL_KEY: Buffer;
+  /** Shared secret of the Python engine for /internal/engine/* (Authorization: Bearer). */
+  ENGINE_TOKEN: string;
   COOKIE_SECURE: boolean;
   SWAGGER: 'public' | 'off';
   PORT: number;
@@ -43,6 +45,9 @@ const key32: Check<Buffer> = (value) => {
     ? bytes
     : undefined;
 };
+
+const token32: Check<string> = (value) =>
+  value.length >= 32 ? value : undefined;
 
 const port: Check<number> = (value) => {
   const n = Number(value);
@@ -84,6 +89,11 @@ export function loadEnv(source: Source = process.env): Env {
       'CAMERA_URL_KEY',
       key32,
       'base64 that decodes to 32 bytes (openssl rand -base64 32)',
+    ),
+    ENGINE_TOKEN: read(
+      'ENGINE_TOKEN',
+      token32,
+      'at least 32 characters (openssl rand -hex 32)',
     ),
     COOKIE_SECURE:
       read('COOKIE_SECURE', oneOf('true', 'false'), 'true or false', 'true') ===

@@ -192,6 +192,44 @@ describe('cameras', () => {
     await patch({ name: 'x' }, 'nope_cam').expect(404);
   });
 
+  it('MANAGER PATCH {inferenceStream: "SUB"} → 403 with fields ["inferenceStream"]; SUPERADMIN → 200 and cfg:changed is published', async () => {
+    await create();
+    const sub = new Redis(process.env.REDIS_URL as string);
+    const messages: string[] = [];
+    sub.on('message', (_c, m: string) => messages.push(m));
+    await sub.subscribe('cfg:changed');
+    try {
+      const mgr = await asRole(app, 'MANAGER');
+      const denied = await http()
+        .patch('/api/v1/cameras/cam_test_01')
+        .set('Cookie', mgr.cookie)
+        .send({ inferenceStream: 'SUB' })
+        .expect(403);
+      expect((denied.body as { fields: string[] }).fields).toEqual([
+        'inferenceStream',
+      ]);
+
+      const admin = await asRole(app, 'SUPERADMIN');
+      const res = await http()
+        .patch('/api/v1/cameras/cam_test_01')
+        .set('Cookie', admin.cookie)
+        .send({ inferenceStream: 'SUB' })
+        .expect(200);
+      expect(res.body).toMatchObject({ inferenceStream: 'SUB' });
+      for (let i = 0; i < 100 && messages.length < 1; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(messages).toEqual(['{"cameraId":"cam_test_01","version":1}']);
+      const view = await http()
+        .get('/api/v1/cameras/cam_test_01')
+        .set('Cookie', mgr.cookie)
+        .expect(200);
+      expect(view.body).toMatchObject({ inferenceStream: 'SUB' });
+    } finally {
+      await sub.quit();
+    }
+  });
+
   it('SUPERADMIN PATCH changes URLs and clears nullable fields; audit has streamUrlsChanged', async () => {
     await create();
     const { cookie } = await asRole(app, 'SUPERADMIN');

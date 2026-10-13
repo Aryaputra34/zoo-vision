@@ -6,6 +6,9 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { loadEnv } from '../src/config/env';
 
+/** The default ENGINE_TOKEN of {@link createTestApp}. */
+export const TEST_ENGINE_TOKEN = 'test-engine-token-0123456789abcdef-xyz';
+
 /**
  * Builds and initialises the whole API the way main.ts does, against the Testcontainers
  * Postgres (as zoo_api) and Redis from the global setup. `env` overrides the defaults; an
@@ -18,6 +21,7 @@ export async function createTestApp(
     DATABASE_URL: required('DATABASE_URL'),
     REDIS_URL: required('REDIS_URL'),
     CAMERA_URL_KEY: randomBytes(32).toString('base64'),
+    ENGINE_TOKEN: TEST_ENGINE_TOKEN,
     COOKIE_SECURE: 'false',
     SWAGGER: 'off',
     INGEST: 'off',

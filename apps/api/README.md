@@ -20,6 +20,7 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `DATABASE_URL` | Postgres as the `zoo_api` role (the running API) |
 | `REDIS_URL` | `redis://[:password@]host:port/db` |
 | `CAMERA_URL_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts stored camera stream URLs |
+| `ENGINE_TOKEN` | at least 32 characters (`openssl rand -hex 32`); the engine sends it as `Authorization: Bearer` to `/internal/engine/*` |
 | `COOKIE_SECURE` | `true` (default) or `false` (plain HTTP, before TLS) |
 | `SWAGGER` | `off` (default) or `public` |
 | `PORT` | default `3001` |
@@ -90,6 +91,17 @@ Rules that keep migrations safe:
 Deployments run `npx prisma migrate deploy` in the API image with `DATABASE_MIGRATE_URL` set: the
 one-shot `api-migrate` service applies the pending migrations in order before the API starts
 (`docker compose up -d --build api-migrate api`).
+
+## Engine routes
+
+`/internal/engine/*` belongs to the Python engine. The routes sit outside the `api` prefix and outside
+URI versioning, are never routed by Caddy, and are left out of Swagger. Each needs
+`Authorization: Bearer <ENGINE_TOKEN>` (compared in constant time); a user session or API token is not
+accepted. Anything else is 401.
+
+| Route | Returns |
+|---|---|
+| `GET /internal/engine/cameras?group=<g>` | `{"cameras": EngineCamera[]}`: the enabled cameras of engine group `g` (`^[a-z0-9_-]{1,32}$`, else 400), sorted by id. Each has its active settings with schema defaults filled in, the decrypted `sourceUrl` (the sub stream when `inferenceStream` is `SUB` and a sub URL is set), `targetFps`, `nxCameraId` and `model` |
 
 ## Docker
 

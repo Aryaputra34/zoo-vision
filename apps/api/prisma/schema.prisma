@@ -113,6 +113,7 @@ model Camera {
   auditCamera      Boolean               @default(false)
   recordingEnabled Boolean               @default(true)
   recordingStream  StreamChoice          @default(MAIN)
+  inferenceStream  StreamChoice          @default(MAIN)
   retentionDays    Int? // null = site default
   clipBeforeSec    Int                   @default(15)
   clipAfterSec     Int                   @default(15)

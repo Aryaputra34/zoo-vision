@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { ENV, type Env } from './config/env';
 import { CamerasModule } from './cameras/cameras.module';
 import { ContractsModule } from './contracts/contracts.module';
+import { EngineInternalModule } from './engine-internal/engine-internal.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -31,6 +32,7 @@ export class AppModule {
         UsersModule,
         ApiTokensModule,
         CamerasModule,
+        EngineInternalModule,
         IngestModule,
       ],
       controllers: [HealthController],

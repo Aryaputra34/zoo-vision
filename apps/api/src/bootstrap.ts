@@ -1,5 +1,6 @@
 import {
   INestApplication,
+  RequestMethod,
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
@@ -16,7 +17,10 @@ export function configureApp(app: INestApplication): void {
   const env = app.get<Env>(ENV);
 
   app.use(cookieParser());
-  app.setGlobalPrefix('api');
+  // /internal/engine/* is the Python engine's, outside the `api` prefix (and URI versioning)
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: 'internal/{*path}', method: RequestMethod.ALL }],
+  });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.useGlobalPipes(
     new ValidationPipe({

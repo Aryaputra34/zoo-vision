@@ -6,6 +6,7 @@ const required = {
   DATABASE_URL: 'postgresql://zoo_api:secret-db-pw@localhost:5432/zoo_vision',
   REDIS_URL: 'redis://:secret-redis-pw@localhost:6379/0',
   CAMERA_URL_KEY: key.toString('base64'),
+  ENGINE_TOKEN: 'e'.repeat(32),
 };
 
 const errorOf = (source: Record<string, string>): string => {
@@ -23,6 +24,7 @@ describe('loadEnv', () => {
       DATABASE_URL: required.DATABASE_URL,
       REDIS_URL: required.REDIS_URL,
       CAMERA_URL_KEY: key,
+      ENGINE_TOKEN: required.ENGINE_TOKEN,
       COOKIE_SECURE: true,
       SWAGGER: 'off',
       PORT: 3001,
@@ -66,6 +68,7 @@ describe('loadEnv', () => {
       'DATABASE_URL',
       'REDIS_URL',
       'CAMERA_URL_KEY',
+      'ENGINE_TOKEN',
       'COOKIE_SECURE',
       'SWAGGER',
       'PORT',
@@ -84,6 +87,19 @@ describe('loadEnv', () => {
     expect(errorOf({ ...required, CAMERA_URL_KEY: value })).toMatch(
       /CAMERA_URL_KEY: must be base64 that decodes to 32 bytes/,
     );
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['31 characters', 'x'.repeat(31)],
+  ])('names ENGINE_TOKEN when it is %s, without its value', (_label, value) => {
+    const rest: Record<string, string> = { ...required };
+    delete rest.ENGINE_TOKEN;
+    const message = errorOf(
+      value === undefined ? rest : { ...rest, ENGINE_TOKEN: value },
+    );
+    expect(message).toMatch(/^ {2}ENGINE_TOKEN: /m);
+    if (value !== undefined) expect(message).not.toContain(value);
   });
 
   it('never echoes secret values in the error', () => {

@@ -61,6 +61,7 @@ services:
       DATABASE_URL: postgresql://zoo_api:${ZOO_API_DB_PASSWORD}@postgres:5432/zoo_vision
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CAMERA_URL_KEY: ${CAMERA_URL_KEY:?set CAMERA_URL_KEY in .env}
+      ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
       COOKIE_SECURE: "false" # no TLS until Caddy in Phase 3
       SWAGGER: public
     ports:

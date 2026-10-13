@@ -110,6 +110,9 @@ export class CamerasService {
           ...(dto.auditCamera !== undefined && {
             auditCamera: dto.auditCamera,
           }),
+          ...(dto.inferenceStream !== undefined && {
+            inferenceStream: dto.inferenceStream,
+          }),
           ...(dto.recording?.enabled !== undefined && {
             recordingEnabled: dto.recording.enabled,
           }),
@@ -194,6 +197,14 @@ export class CamerasService {
     }
     if (dto.auditCamera !== undefined) {
       set('auditCamera', 'auditCamera', dto.auditCamera, before.auditCamera);
+    }
+    if (dto.inferenceStream !== undefined) {
+      set(
+        'inferenceStream',
+        'inferenceStream',
+        dto.inferenceStream,
+        before.inferenceStream,
+      );
     }
     if (dto.nxCameraId !== undefined) {
       set('nxCameraId', 'nxCameraId', dto.nxCameraId, before.nxCameraId);
