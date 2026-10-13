@@ -10,11 +10,17 @@ from core.supervisor import Supervisor
 from usecases.restaurant_table.pipeline import TableOccupancyPipeline
 
 
+class _Snapshot(list):
+    skipped_ids: frozenset = frozenset()
+
+
 class FakeApi:
-    """cameras() returns `configs`, or raises ApiError(error) while `error` is set. Records the time of each call."""
+    """cameras() returns `configs` (and `skipped` as the ids of malformed entries), or raises ApiError(error) while
+    `error` is set. Records the time of each call."""
 
     def __init__(self, configs=(), error=None):
         self.configs = list(configs)
+        self.skipped: set[str] = set()
         self.error = error
         self.times: list[float] = []
 
@@ -22,7 +28,9 @@ class FakeApi:
         self.times.append(time.monotonic())
         if self.error:
             raise ApiError(self.error)
-        return list(self.configs)
+        snapshot = _Snapshot(self.configs)
+        snapshot.skipped_ids = frozenset(self.skipped)
+        return snapshot
 
     @property
     def calls(self) -> int:
@@ -246,3 +254,62 @@ def test_a_restart_keeps_running_the_applied_version_when_the_newest_was_rejecte
     assert new.config.version == 2 and new.pipeline.camera_name == "Renamed"
     assert new.config_error.startswith("v2 rejected: ")
     assert len([m for m in stream.sent if m["message"] == "event" and m["type"] == "config_rejected"]) == 1
+
+
+def test_a_worker_whose_thread_died_is_restarted(make_sup, stream, monkeypatch):
+    from core.worker import CameraWorker
+
+    sup = make_sup(FakeApi(), stall_sec=0.3)
+    sup.reconcile([cfg(id="a")])
+    old = sup.workers["a"]
+    assert wait_until(lambda: old.state == "running")
+    frame_done = CameraWorker._frame_done
+
+    def dying(self):
+        if self is old:
+            raise RuntimeError("a bug outside the pipeline call")
+        frame_done(self)
+
+    monkeypatch.setattr(CameraWorker, "_frame_done", dying)
+    assert wait_until(lambda: old.state == "stopped")  # the thread ended without a stop()
+
+    def replaced():
+        sup.check_stalls()
+        return sup.workers["a"] is not old
+
+    assert wait_until(replaced)
+    new = sup.workers["a"]
+    assert new.restarts == 1 and wait_until(lambda: new.state == "running" and new.applied_version == 1)
+
+
+def test_a_malformed_entry_leaves_its_camera_as_it_is(make_sup, streams):
+    api = FakeApi([cfg(id="a"), cfg(id="b")])
+    sup = make_sup(api)
+    assert sup.sync()
+    a = sup.workers["a"]
+    assert wait_until(lambda: a.state == "running")
+    api.configs, api.skipped = [cfg(id="b")], {"a"}  # a's entry did not parse
+    assert sup.sync()
+    assert sup.workers["a"] is a and a.state == "running" and streams.stopped() == 0
+    api.skipped = set()  # a is gone from the snapshot
+    assert sup.sync()
+    assert "a" not in sup.workers and a.state == "stopped"
+
+
+def test_before_the_first_answer_retries_stay_short(make_sup, run_sup, monkeypatch):
+    monkeypatch.setattr("core.supervisor.RETRY_MIN_S", 0.05)
+    monkeypatch.setattr("core.supervisor.FIRST_SYNC_RETRY_MAX_S", 0.2, raising=False)
+    api = FakeApi([cfg(id="a")], error="connection refused")  # the API is not up yet at first boot
+    sup = make_sup(api, resync_sec=60.0, debounce_sec=0.01)
+    run_sup(sup)
+    assert wait_until(lambda: api.calls >= 7, timeout=3.0)
+    gaps = [b - a for a, b in zip(api.times, api.times[1:])]
+    assert max(gaps[:6]) < 0.35  # doubling stops at 0.2 s while the API never answered
+    api.error = None
+    assert wait_until(lambda: "a" in sup.workers)
+    api.error = "503 Service Unavailable"  # a later outage backs off up to resync_sec
+    calls = api.calls
+    sup.request_sync()
+    assert wait_until(lambda: api.calls >= calls + 5, timeout=3.0)
+    gaps = [b - a for a, b in zip(api.times[calls:], api.times[calls + 1:])]
+    assert max(gaps) >= 0.35

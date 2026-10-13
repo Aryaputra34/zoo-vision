@@ -25,6 +25,7 @@ logger = logging.getLogger("Supervisor")
 
 STALL_CHECK_S = 1.0
 RETRY_MIN_S = 1.0  # after a failed sync, retry after 1 s, doubling up to resync_sec
+FIRST_SYNC_RETRY_MAX_S = 5.0  # ... but only up to 5 s until the API answered once (a late API at first boot)
 STOP_POLL_S = 0.1  # how quickly run() notices its stop event
 WORKER_STOP_S = 10.0  # CameraWorker.stop's wait for its thread
 
@@ -50,18 +51,20 @@ class Supervisor:
     def pipelines(self) -> dict[str, BasePipeline]:
         return {camera_id: w.pipeline for camera_id, w in self.workers.items() if w.pipeline is not None}
 
-    def reconcile(self, configs: list[CameraConfig]) -> None:
-        """Starts the workers of new cameras, stops the ones no longer listed (config_change), updates the rest."""
+    def reconcile(self, configs: list[CameraConfig], keep: Iterable[str] = ()) -> None:
+        """Starts the workers of new cameras, stops the ones no longer listed (config_change), updates the rest. A
+        camera in `keep` (its snapshot entry did not parse) is left as it is."""
         wanted: dict[str, CameraConfig] = {}
         for config in configs:
             if config.id in wanted:
                 logger.warning("[%s] The camera is listed twice; using its last entry", config.id)
             wanted[config.id] = config
+        listed = set(wanted) | set(keep)
         with self._lock:
             if self._closed:
                 return
-            removed = [w for c, w in self.workers.items() if c not in wanted]
-            self.workers = {c: w for c, w in self.workers.items() if c in wanted}
+            removed = [w for c, w in self.workers.items() if c not in listed]
+            self.workers = {c: w for c, w in self.workers.items() if c in listed}
             for worker in removed:
                 logger.info("[%s] Camera removed from the snapshot: stopping it", worker.id)
             for camera_id, config in wanted.items():
@@ -90,7 +93,7 @@ class Supervisor:
         if self._api_down:
             self._api_down = False
             logger.info("The API answers again")
-        self.reconcile(configs)
+        self.reconcile(configs, keep=getattr(configs, "skipped_ids", ()))
         return True
 
     def request_sync(self) -> None:
@@ -101,15 +104,20 @@ class Supervisor:
         self._wake.set()
 
     def check_stalls(self) -> None:
-        """Stops (engine_stop) and restarts every stalled worker; the new worker's restarts is one more. A stalled
-        worker leaves `workers` before it is stopped, and its successor joins after the stop and on_stop."""
+        """Stops (engine_stop) and restarts every stalled worker, and every worker whose thread died more than
+        stall_sec ago; the new worker's restarts is one more. Such a worker leaves `workers` before it is stopped,
+        and its successor joins after the stop and on_stop."""
         now = self.clock()
         with self._lock:
             if self._closed:
                 return
-            stalled = [w for w in self.workers.values() if w.stalled(now, self.stall_sec)]
+            dead = [w for w in self.workers.values() if w.died(now, self.stall_sec)]
+            hung = [w for w in self.workers.values() if w not in dead and w.stalled(now, self.stall_sec)]
+            stalled = dead + hung
             self.workers = {c: w for c, w in self.workers.items() if w not in stalled}
-        for worker in stalled:
+        for worker in dead:
+            logger.warning("[%s] The camera worker ended on an error: restarting the camera", worker.id)
+        for worker in hung:
             logger.warning("[%s] The stream delivers but no frame was processed for %.0f s: restarting the camera",
                            worker.id, self.stall_sec)
         self._stop_workers(stalled, "engine_stop")
@@ -127,11 +135,13 @@ class Supervisor:
                     logger.exception("[%s] Could not restart the camera", worker.id)
 
     def run(self, stop: threading.Event) -> None:
-        """Syncs at once, then on request or every resync_sec (sooner while the API gives no answer); checks for
-        stalls every second. Returns once `stop` is set."""
+        """Syncs at once, then on request or every resync_sec (sooner while the API gives no answer: 1 s, doubling
+        to 5 s until it answered once, then to resync_sec); checks for stalls every second. Returns once `stop` is
+        set."""
         next_sync = time.monotonic()
         next_stall_check = next_sync + STALL_CHECK_S
         retry = RETRY_MIN_S
+        retry_max = min(FIRST_SYNC_RETRY_MAX_S, self.resync_sec)
         while not stop.is_set():
             now = time.monotonic()
             with self._requests:
@@ -140,11 +150,11 @@ class Supervisor:
                     self._sync_due = None  # this fetch starts after every request made so far
             if due_now:
                 if self._safe_sync():
-                    retry = RETRY_MIN_S
+                    retry, retry_max = RETRY_MIN_S, self.resync_sec
                     next_sync = time.monotonic() + self.resync_sec
                 else:
-                    next_sync = time.monotonic() + min(retry, self.resync_sec)
-                    retry = min(retry * 2, self.resync_sec)
+                    next_sync = time.monotonic() + min(retry, retry_max)
+                    retry = min(retry * 2, retry_max)
             if now >= next_stall_check:
                 try:
                     self.check_stalls()

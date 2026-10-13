@@ -34,6 +34,7 @@ class FakeYOLO:
     `load_started` (constructions begun, counted before `load_gate`), `loads` (constructions finished),
     `batches` (frames per call), `kwargs` (keyword arguments per call).
     `gate` blocks __call__ and `load_gate` blocks construction until set (both set by default).
+    A model whose path holds "missing", or is in `unavailable`, fails to load (FileNotFoundError).
     Two overlapping calls fail the test (see `overlaps`, checked by the fake_yolo fixture).
     """
 
@@ -43,6 +44,7 @@ class FakeYOLO:
     batches: list = []
     kwargs: list = []
     exports: list = []
+    unavailable: set = set()
     overlaps = 0
     gate = threading.Event()
     load_gate = threading.Event()
@@ -55,6 +57,7 @@ class FakeYOLO:
         cls.boxes = torch.zeros((0, 6))
         cls.load_started, cls.loads, cls.overlaps = 0, 0, 0
         cls.batches, cls.kwargs, cls.exports = [], [], []
+        cls.unavailable = set()
         cls.gate, cls.load_gate = threading.Event(), threading.Event()
         cls.gate.set()
         cls.load_gate.set()
@@ -63,7 +66,7 @@ class FakeYOLO:
         with type(self)._record:
             type(self).load_started += 1
         type(self).load_gate.wait(10)
-        if model is not None and "missing" in str(model):
+        if model is not None and ("missing" in str(model) or str(model) in type(self).unavailable):
             raise FileNotFoundError(model)
         with type(self)._record:
             type(self).loads += 1
@@ -244,12 +247,12 @@ def cfg(**over):
 
 class FakeStream:
     """Stands in for StreamManager. While started, get_frame() serves LIVE_FRAME with a new timestamp at most every
-    10 ms (epoch ms from `clock`, strictly increasing); with deliver=False it never has a frame. Counts its starts,
-    stops and get_frame() calls (`reads`)."""
+    `period` s of real time (epoch ms from `clock`, strictly increasing); with deliver=False it never has a frame.
+    Counts its starts, stops and get_frame() calls (`reads`)."""
 
-    def __init__(self, source, camera_id, target_fps, *, clock=time.time, deliver=True):
+    def __init__(self, source, camera_id, target_fps, *, clock=time.time, deliver=True, period=0.01):
         self.source, self.camera_id, self.target_fps = source, camera_id, target_fps
-        self.clock, self.deliver = clock, deliver
+        self.clock, self.deliver, self.period = clock, deliver, period
         self.starts = self.stops = self.reads = 0
         self._lock = threading.Lock()
         self._ts = 0
@@ -267,22 +270,30 @@ class FakeStream:
             if not self.deliver or not self.starts or self.stops:
                 return None, 0
             now = time.monotonic()
-            if not self._ts or now - self._minted >= 0.01:
+            if not self._ts or now - self._minted >= self.period:
                 self._ts = max(self._ts + 1, int(self.clock() * 1000))
                 self._minted = now
             return LIVE_FRAME, self._ts
 
 
 class Streams:
-    """A stream_factory that makes FakeStreams and keeps them. Streams of the cameras in `silent` never deliver."""
+    """A stream_factory that makes FakeStreams and keeps them. Streams of the cameras in `silent`, and of the sources
+    in `silent_sources`, never deliver."""
 
     def __init__(self):
         self.made: list[FakeStream] = []
         self.clock = time.time
         self.silent: set[str] = set()
+        self.silent_sources: set[str] = set()
+        self.period = 0.01  # real seconds between two new frames
+        self.fail_starts = 0  # the next this many calls raise, like a stream that cannot be created
 
     def __call__(self, source, camera_id, target_fps):
-        s = FakeStream(source, camera_id, target_fps, clock=self.clock, deliver=camera_id not in self.silent)
+        if self.fail_starts > 0:
+            self.fail_starts -= 1
+            raise OSError("cannot create the stream")
+        deliver = camera_id not in self.silent and source not in self.silent_sources
+        s = FakeStream(source, camera_id, target_fps, clock=self.clock, deliver=deliver, period=self.period)
         self.made.append(s)
         return s
 

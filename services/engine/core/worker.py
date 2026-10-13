@@ -9,7 +9,12 @@ Threads, and what each one owns:
     waits for a model load or a stream connect: those run in helper threads.
   * Loaders (`cam-<id>-load`) acquire a detector from the pool; stream starters (`cam-<id>-stream`) start a new stream.
     Each hands its result to the worker thread through the queue. stop() doesn't wait for them: one that finishes
-    after the worker stopped releases its detector or stops its stream itself.
+    after the worker stopped releases its detector or stops its stream itself. A stream starter whose stream cannot
+    be started tries again (2 s, doubling to 30 s) until it starts, a newer stream change supersedes it or stop().
+
+Retries: a version rejected because its model did not load is tried again when update() gets the same config again
+(the supervisor's resync, every 60 s), as the file may be there now; its config_rejected event is sent once. A version
+rejected for its settings is not: only a new version can fix it.
 
 Generations: every settings change (version, use case, model) takes the next settings generation, every stream change
 the next stream generation. A helper queues its result only while its generation is still the newest, and the worker
@@ -46,6 +51,7 @@ REASON_MAX = 500  # characters, for config_error and the config_rejected reason
 SAME_FRAME_WAIT_S = 0.01  # the stream has no new frame yet
 ERROR_WAIT_S = 1.0  # after a pipeline exception
 IDLE_WAIT_S = 0.5  # no pipeline or no stream yet; a queued change or stop() wakes the thread at once
+STREAM_RETRY_MIN_S, STREAM_RETRY_MAX_S = 2.0, 30.0  # a stream that cannot be started is tried again
 
 
 @dataclass
@@ -107,10 +113,15 @@ class CameraWorker:
         self.applied_config: CameraConfig | None = None  # the config whose settings the pipeline runs
         self.config_error: str | None = None
         self.rejected_versions: set[int] = set()  # versions already reported with a config_rejected event
+        self._load_failed: set[int] = set()  # rejected versions whose model did not load: update() retries them
         self.restarts = 0  # set by the supervisor's watchdog
         self.started_at = clock()  # set again by start(): the worker's start (the status expiry anchor)
         self.stream_started_at: float | None = None  # when the stream of the first pipeline was requested
         self.last_frame_at: float | None = None  # when the last frame was processed
+        # worker thread: the last time it was not behind its stream (a stream swapped in, or no new frame to take
+        # while the last one was processed), and whether its last pipeline call raised. For stalled().
+        self._idle_at: float | None = None
+        self._failing = False
         self.fps = 0.0
         self.latest_raw: np.ndarray | None = None  # the last frame taken from the stream, before the pipeline
 
@@ -129,6 +140,8 @@ class CameraWorker:
         self._detector = None  # worker thread: the handle the pipeline holds
         self._stopping = False
         self._stop_requested = False
+        self._stop_event = threading.Event()  # set by stop() and at cleanup: ends the helpers' retry waits
+        self._died_at: float | None = None  # when the worker thread ended without a stop() (see died())
         self._end_reason = "config_change"
         self._thread: threading.Thread | None = None
         self._cleaned_up = False
@@ -154,6 +167,10 @@ class CameraWorker:
         if config.id != self.id:
             raise ValueError(f"camera {config.id} given to the worker of camera {self.id}")
         with self._update_lock:
+            if self._retry_load(config):
+                logger.info("[%s] Loading the model of v%d again", self.id, config.version)
+                self._request_settings(config)
+                return
             stream_gen = None
             with self._lock:
                 if self._stopping or config == self.config:
@@ -182,6 +199,7 @@ class CameraWorker:
                 self._stopping = self._stop_requested = True
                 self._end_reason = end_reason
             thread = self._thread
+        self._stop_event.set()
         self._wake.set()
         if thread is None:
             self._cleanup()  # never started
@@ -192,20 +210,29 @@ class CameraWorker:
                                self.id, timeout)
 
     def stalled(self, now: float, after: float = 30.0) -> bool:
-        """True when the stream delivered a frame within `after` s, the worker's stream started more than `after` s ago
-        (so after its first model load), and no frame was processed in the last `after` s. `now` is on the clock of
-        the stream's timestamps (epoch)."""
+        """True when the stream delivered a frame within `after` s and the worker has been behind its stream for more
+        than `after` s: no frame processed, no wait for a new frame with the last one processed (so a pipeline call
+        that hangs, or one that raises on every frame), and the stream in use is older than that (the first one is
+        requested after the first model load; a swapped-in one gets a full `after` s). A stream that delivers again
+        after an outage is no stall: the worker was waiting for it. `now` is on the clock of the stream's timestamps
+        (epoch)."""
         stream, stream_started_at = self._stream, self.stream_started_at
-        if stream is None or self._stopping or stream_started_at is None or now - stream_started_at <= after:
+        if stream is None or self._stopping or stream_started_at is None:
             return False
-        last = self.last_frame_at
-        if last is not None and now - last <= after:
+        marks = (stream_started_at, self._idle_at, self.last_frame_at)
+        if now - max(m for m in marks if m is not None) <= after:
             return False
         try:
             frame, timestamp_ms = stream.get_frame()
         except Exception:
             return False
         return frame is not None and now - timestamp_ms / 1000.0 <= after
+
+    def died(self, now: float, after: float = 30.0) -> bool:
+        """True when the worker thread ended more than `after` s ago without a stop() (an unexpected error). The
+        supervisor's watchdog then starts a new worker for the camera."""
+        died_at = self._died_at
+        return died_at is not None and now - died_at > after
 
     def restart_config(self) -> CameraConfig:
         """The config a watchdog restart starts from: the newest one or, when the newest version was rejected, the
@@ -218,6 +245,16 @@ class CameraWorker:
             return latest
         return replace(latest, use_case=applied.use_case, version=applied.version, settings=applied.settings,
                        model_path=applied.model_path, imgsz=applied.imgsz)
+
+    def _retry_load(self, config: CameraConfig) -> bool:
+        """Under _update_lock. True when `config` is the newest config again, its version was rejected because its
+        model did not load, and nothing is in flight: the caller requests it again."""
+        with self._lock:
+            retry = (not self._stopping and config == self.config and config.version in self._load_failed
+                     and self._settled_gen == self._settings_gen)
+            if retry:
+                self._load_failed.discard(config.version)
+        return retry
 
     def _request_settings(self, config: CameraConfig) -> None:
         """Caller's thread, under _update_lock. An invalid version is rejected at once and supersedes nothing."""
@@ -254,7 +291,7 @@ class CameraWorker:
         except Exception as e:
             pointer = "/model_id" if "model_id" in config.settings else "/model_name"
             self._reject(config, f"{pointer}: could not load model {config.model_path}: {type(e).__name__}: {e}",
-                         gen=change.gen)
+                         gen=change.gen, load_error=True)
             return
         with self._lock:
             queued = self._is_current_locked(change)
@@ -266,12 +303,21 @@ class CameraWorker:
             self._release(change.detector)  # a newer change was requested meanwhile, or the worker stopped
 
     def _start_stream(self, gen: int, source: str, target_fps: int) -> None:
-        try:
-            stream = self._deps.stream_factory(source=source, camera_id=self.id, target_fps=target_fps)
-            stream.start()
-        except Exception as e:  # the message may hold the URL: log its type only
-            logger.error("[%s] Could not start the stream %s: %s", self.id, mask_url(source), type(e).__name__)
-            return
+        delay = STREAM_RETRY_MIN_S
+        while True:
+            stream = None
+            try:
+                stream = self._deps.stream_factory(source=source, camera_id=self.id, target_fps=target_fps)
+                stream.start()
+                break
+            except Exception as e:  # the message may hold the URL: log its type only
+                logger.error("[%s] Could not start the stream %s: %s; trying again in %.0f s", self.id,
+                             mask_url(source), type(e).__name__, delay)
+                if stream is not None:
+                    self._stop_stream(stream)
+            if self._stop_event.wait(delay) or not self._stream_is_current(gen):
+                return
+            delay = min(delay * 2, STREAM_RETRY_MAX_S)
         with self._lock:
             queued = not self._stopping and gen == self._stream_gen
             if queued:
@@ -280,6 +326,10 @@ class CameraWorker:
             self._wake.set()
         else:
             self._stop_stream(stream)
+
+    def _stream_is_current(self, gen: int) -> bool:
+        with self._lock:
+            return not self._stopping and gen == self._stream_gen
 
     def _spawn(self, kind: str, target: Callable, *args) -> None:
         """Runs target(*args) in a helper thread, unless the worker is stopping (then nothing was acquired yet)."""
@@ -294,10 +344,11 @@ class CameraWorker:
         except Exception:
             logger.exception("[%s] Camera worker helper failed", self.id)
 
-    def _reject(self, config: CameraConfig, reason: str, gen: int | None = None) -> None:
+    def _reject(self, config: CameraConfig, reason: str, gen: int | None = None, *, load_error: bool = False) -> None:
         """Records a rejected version (config_error, one config_rejected event per version). A change superseded
         meanwhile (`gen` no longer the newest) is not reported: it would not have run anyway. `gen` is None for
-        settings update() could not parse: they took no generation, so a valid change in flight still lands."""
+        settings update() could not parse: they took no generation, so a valid change in flight still lands.
+        `load_error`: the model did not load, so update() tries the version again (see _retry_load)."""
         reason = _clip(reason)
         with self._lock:
             superseded = self._stopping or (gen is not None and gen != self._settings_gen)
@@ -306,6 +357,8 @@ class CameraWorker:
                 self._error_version = config.version
                 first = config.version not in self.rejected_versions
                 self.rejected_versions.add(config.version)
+                if load_error:
+                    self._load_failed.add(config.version)
                 if gen is not None:
                     self._settled_gen = gen
                 if self.pipeline is None and self._settled_gen == self._settings_gen:  # nothing valid in flight
@@ -361,6 +414,8 @@ class CameraWorker:
             # A dead stream keeps returning its last frame: skip it, so YOLO doesn't rerun on it and the camera
             # doesn't look alive
             if frame is None or (stream is last_stream and timestamp_ms == last_ts):
+                if not self._failing:
+                    self._idle_at = self._clock()  # waiting for the stream, not behind it
                 self._wake.wait(SAME_FRAME_WAIT_S)
                 continue
             last_stream, last_ts = stream, timestamp_ms
@@ -369,9 +424,11 @@ class CameraWorker:
                 pipeline.run(frame, timestamp_ms)
             except Exception:
                 # One camera's failure must not stop the others
+                self._failing = True
                 logger.exception("[%s] Pipeline error, skipping frame", self.id)
                 self._wake.wait(ERROR_WAIT_S)
                 continue
+            self._failing = False
             self._frame_done()
 
     def _frame_done(self) -> None:
@@ -414,6 +471,8 @@ class CameraWorker:
             self._stop_stream(change.stream)
             return
         old, self._stream = self._stream, change.stream
+        # the stall check starts over with this stream: an outage of the old one is not this one's stall
+        self._idle_at, self._failing = self._clock(), False
         if old is not None:
             self._stop_stream(old)
 
@@ -508,8 +567,10 @@ class CameraWorker:
                 return
             self._cleaned_up = self._stopping = True
             queued, self._queue = self._queue, []
-            # without a stop() request the thread died: its intervals close as at an engine stop
+            # without a stop() request the thread died: its intervals close as at an engine stop, and the
+            # supervisor's watchdog starts a new worker (died())
             reason = self._end_reason if self._stop_requested else "engine_stop"
+        self._stop_event.set()
         if self.pipeline is not None:
             self._shutdown_pipeline(self.pipeline, reason)
         if self._stream is not None:
@@ -522,6 +583,8 @@ class CameraWorker:
                 self._stop_stream(change.stream)
         with self._lock:
             self.state = "stopped"
+            if not self._stop_requested:
+                self._died_at = self._clock()
         logger.info("[%s] Camera worker stopped (%s)", self.id, reason)
 
     # --- any thread ----------------------------------------------------------------------------------------------

@@ -78,6 +78,7 @@ def test_a_malformed_entry_is_skipped(api_server, caplog):
     with caplog.at_level(logging.WARNING):
         cameras = EngineApi(api_server.url, TOKEN, "g").cameras()
     assert [c.id for c in cameras] == ["cam1", "cam3"]
+    assert cameras.skipped_ids == {"bad"}  # the supervisor leaves that camera's worker as it is
     assert "bad" in caplog.text
     assert "s3cret" not in caplog.text and "10.0.0.5" not in caplog.text
 

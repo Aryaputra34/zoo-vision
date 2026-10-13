@@ -318,3 +318,117 @@ def test_the_stall_check_counts_from_the_stream_start_and_started_at_stays_the_w
     assert not w.stalled(t0 + 120)  # the worker started 120 s ago, its stream only 20 s ago
     clock.t = t0 + 131
     assert wait_until(lambda: w.stalled(t0 + 131))
+
+
+def test_a_stream_back_after_a_long_outage_is_not_a_stall(make_worker, fake_yolo, streams):
+    clock = FakeClock()
+    t0 = clock.t
+    streams.clock = clock
+    streams.silent_sources = {"missing.mp4"}
+    w = make_worker(clock=clock)
+    w.start()
+    assert wait_until(lambda: w.last_frame_at == t0)
+    w.update(cfg(source_url="missing.mp4"))  # a source that never delivers: nothing is processed meanwhile
+    assert wait_until(lambda: len(streams.made) == 2 and streams.made[1].reads > 0)
+    clock.t = t0 + 100
+    calls = len(fake_yolo.batches)
+    fake_yolo.gate.clear()  # the first frame of the next stream stays in the model
+    w.update(cfg(source_url="rtsp://10.0.0.6/back"))
+    assert wait_until(lambda: len(fake_yolo.batches) > calls)  # the new stream delivers; its frame is in the model
+    clock.t = t0 + 101
+    assert not w.stalled(t0 + 101)  # the last processed frame is 101 s old, but this stream delivers since t0 + 100
+    clock.t = t0 + 130
+    assert not w.stalled(t0 + 130)
+    clock.t = t0 + 131
+    assert wait_until(lambda: w.stalled(t0 + 131))  # the new stream delivers and nothing was processed for 31 s
+    fake_yolo.gate.set()
+    clock.t = t0 + 132
+    assert wait_until(lambda: w.last_frame_at == t0 + 132)
+    assert not w.stalled(t0 + 132)
+
+
+def test_a_pipeline_failing_on_every_frame_of_a_slow_stream_is_a_stall(make_worker, streams, monkeypatch):
+    clock = FakeClock()
+    t0 = clock.t
+    streams.clock = clock
+    streams.period = 1.5  # a new frame every 1.5 s: after each error the worker finds no new frame for a while
+    failures = []
+
+    def raising(self, frame, timestamp_ms):
+        failures.append(timestamp_ms)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(TableOccupancyPipeline, "process_frame", raising)
+    w = make_worker(clock=clock)
+    w.start()
+    assert wait_until(lambda: len(failures) == 1)
+    assert wait_until(lambda: streams.made[0].reads > 3)  # the worker polls the stream between two frames
+    clock.t = t0 + 31
+    assert wait_until(lambda: w.stalled(t0 + 31), timeout=5.0)  # waiting between failing frames is no rest
+
+
+def test_a_reconnect_within_the_same_stream_is_not_a_stall(make_worker, fake_yolo, streams):
+    clock = FakeClock()
+    t0 = clock.t
+    streams.clock = clock
+    w = make_worker(clock=clock)
+    w.start()
+    assert wait_until(lambda: w.last_frame_at == t0)
+    stream = streams.made[0]
+    stream.deliver = False  # the camera drops off; the stream reconnects by itself
+    reads = stream.reads
+    assert wait_until(lambda: stream.reads > reads + 3)
+    clock.t = t0 + 100
+    reads = stream.reads
+    assert wait_until(lambda: stream.reads > reads + 3)  # the worker kept polling the silent stream
+    calls = len(fake_yolo.batches)
+    fake_yolo.gate.clear()
+    stream.deliver = True
+    assert wait_until(lambda: len(fake_yolo.batches) > calls)
+    clock.t = t0 + 101
+    assert not w.stalled(t0 + 101)  # the worker waited for frames until t0 + 100: it is not behind
+    clock.t = t0 + 131
+    assert wait_until(lambda: w.stalled(t0 + 131))  # but its frames are processed no longer
+
+
+def test_a_model_that_failed_to_load_is_retried_when_its_config_comes_again(make_worker, fake_yolo, streams, stream):
+    fake_yolo.unavailable = {"late.onnx"}
+    w = make_worker(cfg(model_path="late.onnx"))
+    w.start()
+    assert wait_until(lambda: w.state == "error")
+    assert w.config_error.startswith("v1 rejected: /model_name: could not load model late.onnx")
+    w.update(cfg(model_path="late.onnx"))  # the periodic resync brings the same config: the file is still missing
+    assert wait_until(lambda: fake_yolo.load_started == 2 and camera_threads() == ["cam-cam1"])
+    assert w.state == "error" and w.config_error.startswith("v1 rejected: ")
+    fake_yolo.unavailable = set()  # the file is there now
+    w.update(cfg(model_path="late.onnx"))
+    assert wait_until(lambda: w.state == "running" and w.applied_version == 1)
+    assert w.config_error is None and streams.started() == 1
+    assert len(rejections(stream)) == 1  # one config_rejected event for the version, however often it is retried
+
+
+def test_a_running_camera_retries_a_new_model_that_failed_to_load(make_worker, fake_yolo, fake_pool, stream):
+    fake_yolo.unavailable = {"late.onnx"}
+    w = make_worker()
+    w.start()
+    assert wait_until(running(w))
+    w.update(cfg(version=2, model_path="late.onnx"))
+    assert wait_until(lambda: len(rejections(stream)) == 1)
+    assert w.applied_version == 1 and w.config_error.startswith("v2 rejected: /model_name: ")
+    fake_yolo.unavailable = set()
+    w.update(cfg(version=2, model_path="late.onnx"))  # the resync
+    assert wait_until(lambda: w.applied_version == 2)
+    assert w.config_error is None and len(rejections(stream)) == 1 and fake_pool.loaded() == [("late.onnx", 1920)]
+
+
+def test_a_stream_that_cannot_be_started_is_retried(make_worker, streams, monkeypatch):
+    monkeypatch.setattr("core.worker.STREAM_RETRY_MIN_S", 0.05, raising=False)
+    streams.fail_starts = 2
+    w = make_worker()
+    w.start()
+    assert wait_until(running(w))  # the third attempt worked
+    assert len(streams.made) == 1
+    streams.fail_starts = 1
+    w.update(cfg(source_url="rtsp://10.0.0.6/sub"))  # a swap whose first attempt fails
+    assert wait_until(lambda: len(streams.made) == 2 and streams.made[0].stops == 1)
+    assert streams.made[1].source == "rtsp://10.0.0.6/sub"

@@ -11,6 +11,15 @@ class ApiError(Exception):
     """The API could not give an answer (network, 4xx/5xx, bad body)."""
 
 
+class CameraList(list):
+    """The cameras of one snapshot that parsed. `skipped_ids`: the ids of entries that did not; the supervisor leaves
+    those cameras as they are (as an invalid version keeps the previous one)."""
+
+    def __init__(self, cameras=(), skipped_ids=()):
+        super().__init__(cameras)
+        self.skipped_ids = frozenset(skipped_ids)
+
+
 @dataclass(frozen=True)
 class CameraConfig:
     id: str

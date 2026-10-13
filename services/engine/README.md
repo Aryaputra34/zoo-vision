@@ -41,10 +41,12 @@ python ../../tools/fetch_models.py --from DIR # offline: copy from a folder
 
 A camera's `model_name` (or a rule file's, in `test_video.py`) is looked up as given first, then in the models
 folder (`ZOO_MODELS_DIR`, default `models/`). Under Docker and in production this is the same host folder the
-API manages (`$ZOO_DATA_DIR/models`); see [deploy/README.md](../../deploy/README.md). Ultralytics downloads its official `.pt` weights by name if they are missing. A missing
-`.onnx` or `.engine` file stops the whole engine at startup with an error naming the file and the fetch
-command (under Docker it then restarts until the weights are there); a missing plate detector only turns
-ANPR off.
+API manages (`$ZOO_DATA_DIR/models`); see [deploy/README.md](../../deploy/README.md). Ultralytics downloads its official `.pt` weights by name if they are missing. A camera
+whose `.onnx` or `.engine` file is missing does not stop the engine: that config version is rejected (the
+camera's `configError` names the file, and one `config_rejected` event is sent per version), the camera
+keeps running its previous version or, if it has none, waits in `error`, and the engine loads the file
+again at every resync (every 60 s, or on a config change), so the camera starts once the file is there. A
+missing plate detector only turns ANPR off.
 
 ## Run
 

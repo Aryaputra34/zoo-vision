@@ -1,7 +1,8 @@
 """The engine's client of the API's internal routes. Every request carries `Authorization: Bearer <token>`.
 
 Errors never carry the token or the base URL (it may hold credentials): ApiError names the status or the kind of
-failure only. A camera entry that does not parse is skipped and logged by id, never by URL.
+failure only. A camera entry that does not parse is skipped and logged by id, never by URL; its id is in the
+answer's `skipped_ids`, so the supervisor leaves that camera running what it runs.
 """
 
 import logging
@@ -9,7 +10,7 @@ from urllib.parse import quote
 
 import requests
 
-from core.camera_config import ApiError, CameraConfig
+from core.camera_config import ApiError, CameraConfig, CameraList
 
 logger = logging.getLogger("EngineApi")
 
@@ -21,20 +22,22 @@ class EngineApi:
         self._session = session or requests.Session()
         self._headers = {"Authorization": f"Bearer {token}"}
 
-    def cameras(self) -> list[CameraConfig]:
+    def cameras(self) -> CameraList:
         body = self._request("GET", "/internal/engine/cameras", params={"group": self._group})
         entries = body.get("cameras") if isinstance(body, dict) else None
         if not isinstance(entries, list):
             raise ApiError("the API answer has no 'cameras' list")
-        cameras = []
+        cameras, skipped = [], []
         for entry in entries:
             try:
                 cameras.append(CameraConfig.from_api(entry))
             except ValueError as e:
                 camera_id = entry.get("id") if isinstance(entry, dict) else None
+                if isinstance(camera_id, str) and camera_id:
+                    skipped.append(camera_id)
                 logger.warning("Skipping a malformed camera entry (id %s): %s", camera_id if isinstance(camera_id, str)
                                else "unknown", e)
-        return cameras
+        return CameraList(cameras, skipped)
 
     def report_validation(self, model_id: str, body: dict) -> None:
         self._request("POST", f"/internal/engine/models/{quote(model_id, safe='')}/validation", json=body)
