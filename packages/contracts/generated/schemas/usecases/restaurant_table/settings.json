@@ -41,8 +41,11 @@
       ]
     },
     "confidence_threshold": {
-      "$ref": "#/properties/tables/items/properties/confidence_threshold",
-      "default": 0.2
+      "default": 0.2,
+      "title": "ConfidenceThreshold",
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 1
     },
     "deduplication_enabled": {
       "type": "boolean",

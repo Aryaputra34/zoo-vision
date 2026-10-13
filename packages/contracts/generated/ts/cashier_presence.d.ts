@@ -15,13 +15,22 @@ export type Polygon = [Point, Point, Point, ...Point[]];
  * @maxItems 2
  */
 export type Point = [unknown, unknown];
+/**
+ * @minItems 3
+ */
+export type Polygon1 = [Point1, Point1, Point1, ...Point1[]];
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+export type Point1 = [unknown, unknown];
 
 export interface CashierPresenceSettings {
   model_name?: ModelName;
   imgsz?: ImageSize;
   confidence_threshold?: ConfidenceThreshold;
   clerk_zone: Polygon;
-  visitor_zone?: Polygon;
+  visitor_zone?: Polygon1;
   absence_alert_timeout_sec?: number;
   min_waiting_confirm_sec?: number;
   visitor_waiting_alert_timeout_sec?: number;

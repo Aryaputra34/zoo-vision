@@ -9,10 +9,10 @@ class DwellTime(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    enabled: bool | None = False
-    min_occupied_sec: confloat(ge=0.0) | None = 0
-    empty_debounce_sec: confloat(ge=0.0) | None = 15
-    alert_dwell_sec: confloat(ge=0.0) | None = 3600
+    enabled: bool = False
+    min_occupied_sec: confloat(ge=0.0) = 0
+    empty_debounce_sec: confloat(ge=0.0) = 15
+    alert_dwell_sec: confloat(ge=0.0) = 3600
 
 
 class Table(BaseModel):
@@ -20,8 +20,8 @@ class Table(BaseModel):
         extra='forbid',
     )
     id: constr(pattern=r'^[A-Za-z0-9_-]{1,32}$')
-    name: str | None = ''
-    capacity: conint(ge=1) | None = 4
+    name: str = ''
+    capacity: conint(ge=1) = 4
     polygon: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
         ..., min_length=3, title='Polygon'
     )
@@ -46,29 +46,27 @@ class RestaurantTableSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
         'yolo11s.onnx', title='ModelName'
     )
     imgsz: (
-        conint(ge=32, le=4096)
-        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
-        | None
+        conint(ge=32, le=4096) | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
     ) = Field(
         1920,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
     )
-    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+    confidence_threshold: confloat(ge=0.01, le=1.0) = Field(
         0.2, title='ConfidenceThreshold'
     )
-    deduplication_enabled: bool | None = True
-    iou_threshold: float | None = 0.45
-    containment_threshold: float | None = 0.65
-    show_person_boxes: bool | None = False
-    show_person_labels: bool | None = False
-    show_overlay: bool | None = True
-    show_labels: bool | None = True
-    show_summary_card: bool | None = True
-    dwell_time: DwellTime | None = Field({}, title='DwellTime', validate_default=True)
+    deduplication_enabled: bool = True
+    iou_threshold: float = 0.45
+    containment_threshold: float = 0.65
+    show_person_boxes: bool = False
+    show_person_labels: bool = False
+    show_overlay: bool = True
+    show_labels: bool = True
+    show_summary_card: bool = True
+    dwell_time: DwellTime = Field({}, title='DwellTime', validate_default=True)
     tables: list[Table] = Field(..., min_length=1, title='TableList')
     nx_bookmark: NxBookmark | None = Field(None, title='NxBookmark')

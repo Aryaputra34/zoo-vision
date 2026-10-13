@@ -4,39 +4,12 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
+from pydantic import BaseModel, ConfigDict, Field, confloat, conint, constr
 
 
 class Mode(Enum):
     area_occupancy = 'area_occupancy'
     tripwire = 'tripwire'
-
-
-class DwellTime(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    enabled: bool | None = False
-    min_occupied_sec: confloat(ge=0.0) | None = 0
-    empty_debounce_sec: confloat(ge=0.0) | None = 15
-    alert_dwell_sec: confloat(ge=0.0) | None = 3600
-
-
-class NxBookmark(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    tag: str | None = None
-    title: str | None = None
-    duration_ms: conint(ge=1000, le=600000) | None = None
-
-
-class Polygon1(
-    RootModel[list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]]]
-):
-    root: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
-        ..., min_length=3, title='Polygon'
-    )
 
 
 class Line(BaseModel):
@@ -55,16 +28,26 @@ class ShadowZone(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    enabled: bool | None = False
-    start: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] | None = Field(
+    enabled: bool = False
+    start: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
         [1, 0.48], title='Point'
     )
-    end: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] | None = Field(
+    end: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
         [0.82, 0.17], title='Point'
     )
-    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+    confidence_threshold: confloat(ge=0.01, le=1.0) = Field(
         0.11, title='ConfidenceThreshold'
     )
+
+
+class DwellTime(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    enabled: bool = False
+    min_occupied_sec: confloat(ge=0.0) = 0
+    empty_debounce_sec: confloat(ge=0.0) = 15
+    alert_dwell_sec: confloat(ge=0.0) = 3600
 
 
 class Table(BaseModel):
@@ -72,9 +55,11 @@ class Table(BaseModel):
         extra='forbid',
     )
     id: constr(pattern=r'^[A-Za-z0-9_-]{1,32}$')
-    name: str | None = ''
-    capacity: conint(ge=1) | None = 4
-    polygon: Polygon1
+    name: str = ''
+    capacity: conint(ge=1) = 4
+    polygon: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
+        ..., min_length=3, title='Polygon'
+    )
     confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
         None, title='ConfidenceThreshold'
     )
@@ -87,54 +72,59 @@ class TableMonitoring(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    enabled: bool | None = True
-    show_overlay: bool | None = True
-    show_labels: bool | None = True
-    show_summary_card: bool | None = False
-    dwell_time: DwellTime | None = Field({}, title='DwellTime', validate_default=True)
+    enabled: bool = True
+    show_overlay: bool = True
+    show_labels: bool = True
+    show_summary_card: bool = False
+    dwell_time: DwellTime = Field({}, title='DwellTime', validate_default=True)
     tables: list[Table] | None = Field(None, title='TableList')
+
+
+class NxBookmark(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    tag: str | None = None
+    title: str | None = None
+    duration_ms: conint(ge=1000, le=600000) | None = None
 
 
 class RestaurantCounterSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
         'yolo11s.onnx', title='ModelName'
     )
     imgsz: (
-        conint(ge=32, le=4096)
-        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
-        | None
+        conint(ge=32, le=4096) | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
     ) = Field(
         1920,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
     )
-    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+    confidence_threshold: confloat(ge=0.01, le=1.0) = Field(
         0.2, title='ConfidenceThreshold'
     )
-    mode: Mode | None = 'area_occupancy'
-    deduplication_enabled: bool | None = True
-    iou_threshold: float | None = 0.45
-    containment_threshold: float | None = 0.65
-    tracking_enabled: bool | None = True
-    lost_track_buffer: int | None = 30
-    smoothing_frames: int | None = 5
-    show_boxes: bool | None = True
-    show_labels: bool | None = True
+    mode: Mode = 'area_occupancy'
+    deduplication_enabled: bool = True
+    iou_threshold: float = 0.45
+    containment_threshold: float = 0.65
+    tracking_enabled: bool = True
+    lost_track_buffer: int = 30
+    smoothing_frames: int = 5
+    show_boxes: bool = True
+    show_labels: bool = True
     dining_zone: (
         list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] | None
     ) = Field(None, min_length=3, title='Polygon')
-    tripwire: Line | None = Field(
+    tripwire: Line = Field(
         {'start': [0.1, 0.5], 'end': [0.9, 0.5]}, title='Line', validate_default=True
     )
-    shadow_zone: ShadowZone | None = Field(
-        {}, title='ShadowZone', validate_default=True
-    )
-    max_capacity: int | None = 60
-    warning_capacity: int | None = 45
-    smoothing_window_sec: float | None = 4
-    debounce_alert_sec: int | None = 60
+    shadow_zone: ShadowZone = Field({}, title='ShadowZone', validate_default=True)
+    max_capacity: int = 60
+    warning_capacity: int = 45
+    smoothing_window_sec: float = 4
+    debounce_alert_sec: int = 60
     table_monitoring: TableMonitoring | None = Field(None, title='TableMonitoring')
     nx_bookmark: NxBookmark | None = Field(None, title='NxBookmark')

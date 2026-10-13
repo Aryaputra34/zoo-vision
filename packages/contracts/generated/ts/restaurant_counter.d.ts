@@ -25,7 +25,26 @@ export type Point1 = [unknown, unknown];
  * @maxItems 2
  */
 export type Point2 = [unknown, unknown];
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+export type Point3 = [unknown, unknown];
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+export type Point4 = [unknown, unknown];
 export type ConfidenceThreshold1 = number;
+/**
+ * @minItems 3
+ */
+export type Polygon1 = [Point5, Point5, Point5, ...Point5[]];
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+export type Point5 = [unknown, unknown];
 export type ConfidenceThreshold2 = number;
 export type TableList = Table[];
 
@@ -53,13 +72,13 @@ export interface RestaurantCounterSettings {
   nx_bookmark?: NxBookmark;
 }
 export interface Line {
-  start: Point;
-  end: Point;
+  start: Point1;
+  end: Point2;
 }
 export interface ShadowZone {
   enabled?: boolean;
-  start?: Point1;
-  end?: Point2;
+  start?: Point3;
+  end?: Point4;
   confidence_threshold?: ConfidenceThreshold1;
 }
 export interface TableMonitoring {
@@ -80,7 +99,7 @@ export interface Table {
   id: string;
   name?: string;
   capacity?: number;
-  polygon: Polygon;
+  polygon: Polygon1;
   confidence_threshold?: ConfidenceThreshold2;
   min_occupied_sec?: number;
   empty_debounce_sec?: number;

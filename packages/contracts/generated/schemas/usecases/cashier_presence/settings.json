@@ -72,7 +72,28 @@
       "x-geometry": "polygon"
     },
     "visitor_zone": {
-      "$ref": "#/properties/clerk_zone"
+      "title": "Polygon",
+      "type": "array",
+      "items": {
+        "title": "Point",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "minItems": 3,
+      "x-geometry": "polygon"
     },
     "absence_alert_timeout_sec": {
       "type": "integer",

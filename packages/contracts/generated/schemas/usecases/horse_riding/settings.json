@@ -88,18 +88,48 @@
           "default": false
         },
         "start": {
-          "$ref": "#/properties/roi_polygon/items",
           "default": [
             0.2,
             0.6
-          ]
+          ],
+          "title": "Point",
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
         },
         "end": {
-          "$ref": "#/properties/roi_polygon/items",
           "default": [
             0.8,
             0.6
-          ]
+          ],
+          "title": "Point",
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
         }
       },
       "additionalProperties": false,

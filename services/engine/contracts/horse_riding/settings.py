@@ -5,6 +5,19 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, confloat, conint, constr
 
 
+class Tripwire(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    enabled: bool = False
+    start: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
+        [0.2, 0.6], title='Point'
+    )
+    end: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] = Field(
+        [0.8, 0.6], title='Point'
+    )
+
+
 class NxBookmark(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -14,54 +27,39 @@ class NxBookmark(BaseModel):
     duration_ms: conint(ge=1000, le=600000) | None = None
 
 
-class Tripwire(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    enabled: bool | None = False
-    start: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] | None = Field(
-        [0.2, 0.6], title='Point'
-    )
-    end: tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)] | None = Field(
-        [0.8, 0.6], title='Point'
-    )
-
-
 class HorseRidingSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
         'yolo11m.pt', title='ModelName'
     )
     imgsz: (
-        conint(ge=32, le=4096)
-        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
-        | None
+        conint(ge=32, le=4096) | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
     ) = Field(
         640,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
     )
-    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+    confidence_threshold: confloat(ge=0.01, le=1.0) = Field(
         0.35, title='ConfidenceThreshold'
     )
-    track_horses_only: bool | None = True
-    track_activation_thresh: float | None = 0.25
-    lost_track_buffer: int | None = 60
-    matching_thresh: float | None = 0.7
-    frame_rate: conint(ge=1, le=60) | None = 15
-    smoothing_frames: int | None = 4
-    tripwire: Tripwire | None = Field({}, title='Tripwire', validate_default=True)
+    track_horses_only: bool = True
+    track_activation_thresh: float = 0.25
+    lost_track_buffer: int = 60
+    matching_thresh: float = 0.7
+    frame_rate: conint(ge=1, le=60) = 15
+    smoothing_frames: int = 4
+    tripwire: Tripwire = Field({}, title='Tripwire', validate_default=True)
     roi_polygon: (
         list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] | None
     ) = Field(None, min_length=3, title='Polygon')
-    display_label: str | None = 'Horse'
+    display_label: str = 'Horse'
     display_label_plural: str | None = None
     attraction_title: str | None = None
-    show_boxes: bool | None = True
-    show_labels: bool | None = True
-    show_traces: bool | None = True
-    trace_length: int | None = 45
-    debounce_alert_sec: int | None = 15
+    show_boxes: bool = True
+    show_labels: bool = True
+    show_traces: bool = True
+    trace_length: int = 45
+    debounce_alert_sec: int = 15
     nx_bookmark: NxBookmark | None = Field(None, title='NxBookmark')

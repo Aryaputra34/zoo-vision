@@ -12,9 +12,19 @@ export type ConfidenceThreshold = number;
  */
 export type Point = [unknown, unknown];
 /**
+ * @minItems 2
+ * @maxItems 2
+ */
+export type Point1 = [unknown, unknown];
+/**
  * @minItems 3
  */
-export type Polygon = [Point, Point, Point, ...Point[]];
+export type Polygon = [Point2, Point2, Point2, ...Point2[]];
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+export type Point2 = [unknown, unknown];
 
 export interface VehicleGateSettings {
   model_name?: ModelName;
@@ -31,7 +41,7 @@ export interface VehicleGateSettings {
 }
 export interface Line {
   start: Point;
-  end: Point;
+  end: Point1;
 }
 export interface Anpr {
   enabled?: boolean;

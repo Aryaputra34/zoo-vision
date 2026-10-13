@@ -5,24 +5,6 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, confloat, conint, constr
 
 
-class Anpr(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    enabled: bool | None = True
-    model_path: str | None = 'models/license_plate_detector.onnx'
-    min_plate_confidence: float | None = 0.25
-
-
-class NxBookmark(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    tag: str | None = None
-    title: str | None = None
-    duration_ms: conint(ge=1000, le=600000) | None = None
-
-
 class Line(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -35,26 +17,42 @@ class Line(BaseModel):
     )
 
 
+class Anpr(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    enabled: bool = True
+    model_path: str = 'models/license_plate_detector.onnx'
+    min_plate_confidence: float = 0.25
+
+
+class NxBookmark(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    tag: str | None = None
+    title: str | None = None
+    duration_ms: conint(ge=1000, le=600000) | None = None
+
+
 class VehicleGateSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
         'yolo26s.onnx', title='ModelName'
     )
     imgsz: (
-        conint(ge=32, le=4096)
-        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
-        | None
+        conint(ge=32, le=4096) | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
     ) = Field(
         640,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
     )
-    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+    confidence_threshold: confloat(ge=0.01, le=1.0) = Field(
         0.3, title='ConfidenceThreshold'
     )
-    tripwire: Line | None = Field(
+    tripwire: Line = Field(
         {'start': [0.76, 0.58], 'end': [0.05, 0.43]},
         title='Line',
         validate_default=True,
@@ -62,9 +60,9 @@ class VehicleGateSettings(BaseModel):
     roi_polygon: (
         list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] | None
     ) = Field(None, min_length=3, title='Polygon')
-    track_activation_thresh: float | None = 0.25
-    lost_track_buffer: int | None = 75
-    matching_thresh: float | None = 0.7
-    frame_rate: int | None = 15
-    anpr: Anpr | None = Field({}, title='Anpr', validate_default=True)
+    track_activation_thresh: float = 0.25
+    lost_track_buffer: int = 75
+    matching_thresh: float = 0.7
+    frame_rate: int = 15
+    anpr: Anpr = Field({}, title='Anpr', validate_default=True)
     nx_bookmark: NxBookmark | None = Field(None, title='NxBookmark')
