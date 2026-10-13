@@ -107,6 +107,15 @@ export class CameraFieldsDto {
   @IsBoolean()
   auditCamera?: boolean;
 
+  @ApiPropertyOptional({
+    enum: StreamChoice,
+    description:
+      'Stream the engine decodes. SUB falls back to the main URL without a sub URL. SUPERADMIN only.',
+  })
+  @Optional()
+  @IsEnum(StreamChoice)
+  inferenceStream?: StreamChoice;
+
   @ApiPropertyOptional({ type: RecordingDto })
   @Optional()
   @IsObject()

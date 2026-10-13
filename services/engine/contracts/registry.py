@@ -15,7 +15,8 @@ from contracts.restaurant_counter.events import CapacityAlert
 from contracts.restaurant_counter.intervals import RestaurantCounterTableSession
 from contracts.restaurant_table.settings import RestaurantTableSettings
 from contracts.restaurant_table.intervals import RestaurantTableSession
-from contracts.system.events import EngineStarted, EventsDropped
+from contracts.system.events import EngineStarted, EventsDropped, ConfigRejected
+from contracts.system.intervals import CameraOffline
 from contracts.vehicle_gate.settings import VehicleGateSettings
 from contracts.vehicle_gate.events import VehicleCrossing
 
@@ -25,6 +26,7 @@ class UseCaseContract:
     label: str
     schema_version: int
     settings: type[BaseModel] | None
+    unique_id_lists: tuple[str, ...]  # JSON pointers of settings lists whose items need unique ids
     events: dict[str, type[BaseModel]]
     intervals: dict[str, type[BaseModel]]
     metrics: dict[str, str]  # name -> unit
@@ -35,6 +37,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Cashier presence",
         schema_version=1,
         settings=CashierPresenceSettings,
+        unique_id_lists=(),
         events={"cashier_unattended": CashierUnattended, "customer_waiting": CustomerWaiting},
         intervals={"desk_unattended": DeskUnattended},
         metrics={"queue_length": "persons", "clerk_count": "persons"},
@@ -43,6 +46,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Pony riding",
         schema_version=1,
         settings=HorseRidingSettings,
+        unique_id_lists=(),
         events={"horse_crossing": HorseCrossing},
         intervals={},
         metrics={"active_horses": "horses"},
@@ -51,6 +55,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Restaurant occupancy",
         schema_version=1,
         settings=RestaurantCounterSettings,
+        unique_id_lists=("/table_monitoring/tables",),
         events={"capacity_alert": CapacityAlert},
         intervals={"table_session": RestaurantCounterTableSession},
         metrics={"occupancy": "persons", "occupied_tables": "tables"},
@@ -59,6 +64,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Restaurant tables",
         schema_version=1,
         settings=RestaurantTableSettings,
+        unique_id_lists=("/tables",),
         events={},
         intervals={"table_session": RestaurantTableSession},
         metrics={"occupied_tables": "tables", "table_occupancy_pct": "percent"},
@@ -67,14 +73,16 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="System",
         schema_version=1,
         settings=None,
-        events={"engine_started": EngineStarted, "events_dropped": EventsDropped},
-        intervals={},
+        unique_id_lists=(),
+        events={"engine_started": EngineStarted, "events_dropped": EventsDropped, "config_rejected": ConfigRejected},
+        intervals={"camera_offline": CameraOffline},
         metrics={},
     ),
     "vehicle_gate": UseCaseContract(
         label="Vehicle gate",
         schema_version=1,
         settings=VehicleGateSettings,
+        unique_id_lists=(),
         events={"vehicle_crossing": VehicleCrossing},
         intervals={},
         metrics={},

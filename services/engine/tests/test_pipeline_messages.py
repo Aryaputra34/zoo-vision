@@ -2,27 +2,15 @@ import numpy as np
 import pytest
 import torch
 from core.snapshot_store import SnapshotStore
-from main import create_pipeline
-from nx_integration.nx_client import NxClient
-from test_pipeline_wiring import camera
+from conftest import make_pipeline, table_change
 
 FRAME = np.zeros((720, 1280, 3), np.uint8)
 CLERK = torch.tensor([[600.0, 480.0, 680.0, 600.0, 0.9, 0.0]])  # inside clerk_zone on 1280x720
 
 
-def table_change(status):
-    return {"tableId": "T1", "tableName": "Table 1", "oldStatus": "", "status": status, "dwellSec": 0, "timestampMs": 1}
-
-
-def table_pipeline(rule_key, stream):
-    p = create_pipeline(camera(rule_key, rule_key), NxClient(mock_mode=True), "cpu")
-    p.events = stream
-    return p
-
-
 @pytest.mark.parametrize("rule_key", ["restaurant_table", "restaurant_counter"])
 def test_table_state_changes_become_one_session(fake_yolo, stream, rule_key):
-    p = table_pipeline(rule_key, stream)
+    p = make_pipeline(rule_key, stream=stream)
     p._handle_table_event("table_state_change", table_change("OCCUPIED"), "info")
     p._handle_table_event("table_state_change", table_change("EMPTY"), "info")
     opened, closed = stream.sent
@@ -34,8 +22,7 @@ def test_table_state_changes_become_one_session(fake_yolo, stream, rule_key):
 
 
 def test_cashier_desk_unattended_interval_and_alert_snapshot(fake_yolo, stream, tmp_path, monkeypatch):
-    p = create_pipeline(camera("cashier_presence", "cashier_presence"), NxClient(mock_mode=True), "cpu")
-    p.events = stream
+    p = make_pipeline("cashier_presence", stream=stream)
     p.snapshots = SnapshotStore(tmp_path, retention_days=0)
     # Start at 40 s: the alert's 30 s debounce counts from stream time 0, and ts 0 would fall back to the wall clock.
     for ts in range(40_000, 52_000, 1000):
@@ -50,7 +37,7 @@ def test_cashier_desk_unattended_interval_and_alert_snapshot(fake_yolo, stream, 
 
 
 def test_status_fields_become_minute_metrics(fake_yolo, stream):
-    p = table_pipeline("restaurant_table", stream)
+    p = make_pipeline("restaurant_table", stream=stream)
     for ts in (0, 200):
         p.run(FRAME.copy(), ts)
     p.shutdown()
@@ -58,7 +45,7 @@ def test_status_fields_become_minute_metrics(fake_yolo, stream):
 
 
 def test_shutdown_closes_open_intervals(fake_yolo, stream):
-    p = table_pipeline("restaurant_table", stream)
+    p = make_pipeline("restaurant_table", stream=stream)
     p._handle_table_event("table_state_change", table_change("OCCUPIED"), "info")
     p.shutdown()
     last = stream.sent[-1]
@@ -66,7 +53,7 @@ def test_shutdown_closes_open_intervals(fake_yolo, stream):
 
 
 def test_intervals_work_without_a_stream(fake_yolo):
-    p = create_pipeline(camera("restaurant_table", "restaurant_table"), NxClient(mock_mode=True), "cpu")
+    p = make_pipeline("restaurant_table")
     sid = p.open_interval("table_session", "T1", {"tableName": "Table 1"})
     assert sid
     p.close_interval(sid)

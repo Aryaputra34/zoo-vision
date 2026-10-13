@@ -76,7 +76,7 @@
         "time": { "$ref": "#/$defs/Time", "description": "interval end" },
         "sessionId": { "type": "string", "pattern": "^ses_[0-9a-f]{32}$" },
         "kind": { "type": "string" },
-        "endReason": { "enum": ["ended", "engine_stop"] },
+        "endReason": { "enum": ["ended", "engine_stop", "config_change"] },
         "data": { "type": "object", "description": "merged into the data of the open message" }
       },
       "required": [

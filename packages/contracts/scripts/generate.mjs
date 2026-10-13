@@ -6,9 +6,13 @@
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import $RefParser from '@apidevtools/json-schema-ref-parser';
 import { compile } from 'json-schema-to-typescript';
+import { derefSettings } from './deref.mjs';
+
+const { walkSchema } = createRequire(import.meta.url)('../src/index.js');
 
 // Pin the formatters too: their output is part of the generated files, so a release must not change it silently.
 const DATAMODEL_CODEGEN_VERSION = '0.83.0';
@@ -52,7 +56,8 @@ for (const top of ['common', 'envelope', 'usecases']) collect(top);
 
 const bundled = new Map(); // rel source path -> bundled schema
 for (const rel of sources.sort()) {
-  const schema = await $RefParser.bundle(join(pkgRoot, rel));
+  const isSettings = /^usecases\/[^/]+\/settings\.schema\.json$/.test(rel);
+  const schema = isSettings ? await derefSettings(join(pkgRoot, rel)) : await $RefParser.bundle(join(pkgRoot, rel));
   bundled.set(rel, schema);
   writeJson(join(schemasOut, rel.replace(/\.schema\.json$/, '.json')), schema);
 }
@@ -105,6 +110,7 @@ const codegen = (input, output) => {
       '--output-model-type', 'pydantic_v2.BaseModel',
       '--use-title-as-name',
       '--collapse-root-models',
+      '--strict-nullable',
       '--formatters', 'black', 'isort',
       '--disable-timestamp',
       '--target-python-version', '3.12',
@@ -118,6 +124,15 @@ const bundledPath = (rel) => join(schemasOut, rel.replace(/\.schema\.json$/, '.j
 
 codegen(bundledPath('envelope/message.schema.json'), join(pyOut, 'envelope.py'));
 writeText(join(pyOut, '__init__.py'), `${PY_HEADER}\n`);
+
+// JSON pointers of the lists whose items need unique ids (`x-geometry: polygon-list`): Pydantic cannot express
+// that, so the registry carries them and core/settings.py checks them like validateSettings does. `*` stands
+// for any array index. Same walk as the JS validator's.
+const listPointers = (schema) => {
+  const pointers = new Set();
+  if (schema) walkSchema(schema, (node, pointer) => node['x-geometry'] === 'polygon-list' && pointers.add(pointer));
+  return [...pointers];
+};
 
 const registryImports = [];
 const registryEntries = [];
@@ -151,6 +166,7 @@ for (const id of useCases) {
       `        label=${JSON.stringify(meta.label)},`,
       `        schema_version=${meta.schemaVersion},`,
       `        settings=${settingsSchema ? settingsSchema.title : 'None'},`,
+      `        unique_id_lists=(${listPointers(settingsSchema).map((p) => JSON.stringify(p) + ',').join(' ')}),`,
       `        events=${dict(events)},`,
       `        intervals=${dict(intervals)},`,
       `        metrics=${dict(Object.entries(metrics).map(([name, m]) => [name, JSON.stringify(m.unit)]))},`,
@@ -177,6 +193,7 @@ writeText(
     '    label: str',
     '    schema_version: int',
     '    settings: type[BaseModel] | None',
+    '    unique_id_lists: tuple[str, ...]  # JSON pointers of settings lists whose items need unique ids',
     '    events: dict[str, type[BaseModel]]',
     '    intervals: dict[str, type[BaseModel]]',
     '    metrics: dict[str, str]  # name -> unit',

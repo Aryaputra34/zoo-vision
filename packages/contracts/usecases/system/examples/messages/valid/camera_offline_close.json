@@ -1,0 +1,12 @@
+{
+  "message": "interval_close",
+  "cameraId": "cam_x",
+  "useCase": "system",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-13T10:05:00.000Z",
+  "sessionId": "ses_00000000000000000000000000000001",
+  "kind": "camera_offline",
+  "endReason": "ended",
+  "data": {}
+}

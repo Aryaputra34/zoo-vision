@@ -195,7 +195,8 @@
         "endReason": {
           "enum": [
             "ended",
-            "engine_stop"
+            "engine_stop",
+            "config_change"
           ]
         },
         "data": {

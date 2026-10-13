@@ -10,6 +10,13 @@
       "type": "string",
       "pattern": "^[\\w.-]+\\.(onnx|pt|engine)$"
     },
+    "model_id": {
+      "description": "AiModel id. When set, the camera runs this registry model instead of model_name.",
+      "x-minRole": "SUPERADMIN",
+      "title": "ModelId",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
     "imgsz": {
       "default": 640,
       "x-minRole": "SUPERADMIN",
@@ -72,7 +79,28 @@
       "x-geometry": "polygon"
     },
     "visitor_zone": {
-      "$ref": "#/properties/clerk_zone"
+      "title": "Polygon",
+      "type": "array",
+      "items": {
+        "title": "Point",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "minItems": 3,
+      "x-geometry": "polygon"
     },
     "absence_alert_timeout_sec": {
       "type": "integer",

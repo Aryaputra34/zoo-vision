@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, confloat, conint, constr
+from pydantic import BaseModel, ConfigDict, Field, confloat, conint, constr
 
 
 class NxBookmark(BaseModel):
@@ -14,39 +14,41 @@ class NxBookmark(BaseModel):
     duration_ms: conint(ge=1000, le=600000) | None = None
 
 
-class Polygon1(
-    RootModel[list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]]]
-):
-    root: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
-        ..., min_length=3, title='Polygon'
-    )
-
-
 class CashierPresenceSettings(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') | None = Field(
+    model_name: constr(pattern=r'^[\w.-]+\.(onnx|pt|engine)$') = Field(
         'yolo11s.onnx', title='ModelName'
     )
-    imgsz: (
-        conint(ge=32, le=4096)
-        | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
+    model_id: (
+        constr(
+            pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        )
         | None
+    ) = Field(
+        None,
+        description='AiModel id. When set, the camera runs this registry model instead of model_name.',
+        title='ModelId',
+    )
+    imgsz: (
+        conint(ge=32, le=4096) | tuple[conint(ge=32, le=4096), conint(ge=32, le=4096)]
     ) = Field(
         640,
         description='Inference size: one integer for a square, or [height, width].',
         title='ImageSize',
     )
-    confidence_threshold: confloat(ge=0.01, le=1.0) | None = Field(
+    confidence_threshold: confloat(ge=0.01, le=1.0) = Field(
         0.22, title='ConfidenceThreshold'
     )
     clerk_zone: list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = Field(
         ..., min_length=3, title='Polygon'
     )
-    visitor_zone: Polygon1 | None = None
-    absence_alert_timeout_sec: conint(ge=1) | None = 10
-    min_waiting_confirm_sec: conint(ge=0) | None = 3
-    visitor_waiting_alert_timeout_sec: conint(ge=1) | None = 5
-    debounce_alert_sec: conint(ge=0) | None = 30
+    visitor_zone: (
+        list[tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] | None
+    ) = Field(None, min_length=3, title='Polygon')
+    absence_alert_timeout_sec: conint(ge=1) = 10
+    min_waiting_confirm_sec: conint(ge=0) = 3
+    visitor_waiting_alert_timeout_sec: conint(ge=1) = 5
+    debounce_alert_sec: conint(ge=0) = 30
     nx_bookmark: NxBookmark | None = Field(None, title='NxBookmark')

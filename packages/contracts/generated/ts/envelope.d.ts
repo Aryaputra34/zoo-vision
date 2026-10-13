@@ -55,7 +55,7 @@ export interface IntervalCloseMessage {
   time: Time2;
   sessionId: string;
   kind: string;
-  endReason: "ended" | "engine_stop";
+  endReason: "ended" | "engine_stop" | "config_change";
   /**
    * merged into the data of the open message
    */

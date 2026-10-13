@@ -24,6 +24,8 @@ dependencies = [
     "onnxruntime>=1.18; sys_platform != 'linux'",
     "onnxruntime-gpu>=1.18; sys_platform == 'linux'",
     "redis>=5.0",
+    # declared so Ultralytics never pip-installs it at runtime (the ONNX export simplifies the graph with it)
+    "onnxslim>=0.1.98",
 ]
 
 [dependency-groups]

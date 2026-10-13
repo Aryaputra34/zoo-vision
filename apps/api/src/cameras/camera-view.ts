@@ -17,6 +17,7 @@ export type ManagerCameraView = UserCameraView & {
   targetFps: number;
   engineGroup: string;
   auditCamera: boolean;
+  inferenceStream: Camera['inferenceStream'];
   nxCameraId: string | null;
   recording: {
     enabled: boolean;
@@ -63,6 +64,7 @@ export function toCameraView(
     targetFps: camera.targetFps,
     engineGroup: camera.engineGroup,
     auditCamera: camera.auditCamera,
+    inferenceStream: camera.inferenceStream,
     nxCameraId: camera.nxCameraId,
     recording: {
       enabled: camera.recordingEnabled,

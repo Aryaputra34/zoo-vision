@@ -20,10 +20,14 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `DATABASE_URL` | Postgres as the `zoo_api` role (the running API) |
 | `REDIS_URL` | `redis://[:password@]host:port/db` |
 | `CAMERA_URL_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts stored camera stream URLs |
+| `ENGINE_TOKEN` | at least 32 characters (`openssl rand -hex 32`); the engine sends it as `Authorization: Bearer` to `/internal/engine/*` |
 | `COOKIE_SECURE` | `true` (default) or `false` (plain HTTP, before TLS) |
 | `SWAGGER` | `off` (default) or `public` |
 | `PORT` | default `3001` |
 | `INGEST` | `on` (default) or `off`: whether this process consumes the Redis stream |
+| `JOBS` | `on` (default) or `off`: whether this process runs background jobs (the camera offline check, every 5 s) |
+| `MODELS_DIR` | default `/data/models`: the AI models folder (`inbox/`, `registry/`, built-ins in the root), shared with the engine |
+| `MODEL_UPLOAD_MAX_BYTES` | default 1 GiB: the largest ONNX file the web upload accepts |
 
 The Prisma CLI reads only `DATABASE_MIGRATE_URL` (Postgres as the owner role `zoo_owner`), from
 `prisma.config.ts`. The running API never has the owner password.
@@ -90,6 +94,44 @@ Rules that keep migrations safe:
 Deployments run `npx prisma migrate deploy` in the API image with `DATABASE_MIGRATE_URL` set: the
 one-shot `api-migrate` service applies the pending migrations in order before the API starts
 (`docker compose up -d --build api-migrate api`).
+
+## Engine routes
+
+`/internal/engine/*` belongs to the Python engine. The routes sit outside the `api` prefix and outside
+URI versioning, are never routed by Caddy, and are left out of Swagger. Each needs
+`Authorization: Bearer <ENGINE_TOKEN>` (compared in constant time); a user session or API token is not
+accepted. Anything else is 401.
+
+| Route | Returns |
+|---|---|
+| `GET /internal/engine/cameras?group=<g>` | `{"cameras": EngineCamera[]}`: the enabled cameras of engine group `g` (`^[a-z0-9_-]{1,32}$`, else 400), sorted by id. Each has its active settings with schema defaults filled in, the decrypted `sourceUrl` (the sub stream when `inferenceStream` is `SUB` and a sub URL is set), `targetFps`, `nxCameraId` and `model` |
+
+The engine also reports the result of a model job: `POST /internal/engine/models/:id/validation` and
+`POST /internal/engine/models/:id/conversion` (both 204). The API queues the jobs on the Redis list
+`model:jobs`.
+
+## Cameras, live status and models
+
+User routes under `/api/v1`:
+
+| Route | Role | What it does |
+|---|---|---|
+| `GET /camera-status` | any | Per camera: `online` (the engine reported within 15 s) and its `status` (`state`, `appliedVersion`, ...), or null |
+| `GET /cameras/:id/status` | any | The same for one camera |
+| `GET /cameras/:id/frame` | any | The latest JPEG from the engine (404 until it sends one) |
+| `GET /models`, `GET /models/:id` | MANAGER | List and read AI models |
+| `POST /models` | SUPERADMIN | Upload an ONNX file (multipart). `.pt` and `.engine` files are refused: copy them into `inbox/` |
+| `POST /models/rescan` | SUPERADMIN | Register the files in `inbox/` and the built-ins in the models root |
+| `POST /models/:id/validate`, `POST /models/:id/convert` | SUPERADMIN | Queue a validation, or a conversion to ONNX, for the engine |
+| `DELETE /models/:id` | SUPERADMIN | Remove a model |
+
+A conversion whose report never reaches the API (the engine was stopped or could not reach the API) leaves the
+target row in `CONVERTING`. Validate cannot retry it: `POST /models/:id/validate` answers 409 ("The model is
+being converted"), and a converted row that ended `FAILED` has no file to validate. To try again, delete the
+target row (`DELETE /models/:id`) and start the conversion again from the source model.
+
+A camera has `inferenceStream` (`MAIN` or `SUB`): which stream URL the engine analyses. The engine applies camera
+changes live, so saving settings does not restart its stream.
 
 ## Docker
 

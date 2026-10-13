@@ -10,6 +10,13 @@
       "type": "string",
       "pattern": "^[\\w.-]+\\.(onnx|pt|engine)$"
     },
+    "model_id": {
+      "description": "AiModel id. When set, the camera runs this registry model instead of model_name.",
+      "x-minRole": "SUPERADMIN",
+      "title": "ModelId",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
     "imgsz": {
       "default": 1920,
       "x-minRole": "SUPERADMIN",
@@ -41,8 +48,11 @@
       ]
     },
     "confidence_threshold": {
-      "$ref": "#/properties/table_monitoring/properties/tables/items/properties/confidence_threshold",
-      "default": 0.2
+      "default": 0.2,
+      "title": "ConfidenceThreshold",
+      "type": "number",
+      "minimum": 0.01,
+      "maximum": 1
     },
     "mode": {
       "enum": [
@@ -128,10 +138,40 @@
       "type": "object",
       "properties": {
         "start": {
-          "$ref": "#/properties/dining_zone/items"
+          "title": "Point",
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
         },
         "end": {
-          "$ref": "#/properties/dining_zone/items"
+          "title": "Point",
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
         }
       },
       "required": [
@@ -150,22 +190,55 @@
           "default": false
         },
         "start": {
-          "$ref": "#/properties/dining_zone/items",
           "default": [
             1,
             0.48
-          ]
+          ],
+          "title": "Point",
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
         },
         "end": {
-          "$ref": "#/properties/dining_zone/items",
           "default": [
             0.82,
             0.17
-          ]
+          ],
+          "title": "Point",
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
         },
         "confidence_threshold": {
-          "$ref": "#/properties/table_monitoring/properties/tables/items/properties/confidence_threshold",
-          "default": 0.11
+          "default": 0.11,
+          "title": "ConfidenceThreshold",
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 1
         }
       },
       "additionalProperties": false,
@@ -256,7 +329,28 @@
                 "minimum": 1
               },
               "polygon": {
-                "$ref": "#/properties/dining_zone"
+                "title": "Polygon",
+                "type": "array",
+                "items": {
+                  "title": "Point",
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "minItems": 3,
+                "x-geometry": "polygon"
               },
               "confidence_threshold": {
                 "title": "ConfidenceThreshold",

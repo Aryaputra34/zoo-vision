@@ -10,14 +10,14 @@ Tracks operational states:
 
 import time
 import logging
-import yaml
 import cv2
 import numpy as np
 import supervision as sv
-from typing import Optional, Any, Dict, List
+from typing import Optional
 
-from core.base_pipeline import BasePipeline
-from nx_integration.nx_client import NxClient
+from contracts.cashier_presence.settings import CashierPresenceSettings
+from core.base_pipeline import BasePipeline, CameraInfo
+from core.model_pool import Detector
 
 logger = logging.getLogger("CashierPipeline")
 
@@ -26,46 +26,12 @@ class CashierPresencePipeline(BasePipeline):
     use_case = "cashier_presence"
     metric_fields = {"visitorCount": "queue_length", "clerkCount": "clerk_count"}
 
-    def __init__(
-        self,
-        camera_id: str,
-        camera_name: str,
-        nx_camera_id: str,
-        rule_config_path: Optional[str] = None,
-        nx_client: Optional[NxClient] = None,
-        device: str = "cpu",
-        roi: Optional[Any] = None,
-        rules: Optional[Dict[str, Any]] = None
-    ):
-        # Pre-read model_name from rules config if available
-        model_name = "yolo11s.onnx"
-        if rules and "model_name" in rules:
-            model_name = rules["model_name"]
-        elif rule_config_path:
-            try:
-                with open(rule_config_path, "r") as f:
-                    cfg = yaml.safe_load(f) or {}
-                    model_name = cfg.get("model_name", "yolo11s.onnx")
-            except Exception:
-                pass
+    settings: CashierPresenceSettings
 
-        super().__init__(
-            camera_id=camera_id,
-            camera_name=camera_name,
-            nx_camera_id=nx_camera_id,
-            rule_config_path=rule_config_path,
-            nx_client=nx_client,
-            model_name=model_name,
-            device=device,
-            roi=roi,
-            rules=rules
-        )
+    def __init__(self, camera: CameraInfo, settings: CashierPresenceSettings, model: Detector, **kwargs):
+        super().__init__(camera, settings, model, **kwargs)
 
-        self.conf_thresh = float(self.rules.get("confidence_threshold", 0.22))
-        self.absence_timeout_sec = int(self.rules.get("absence_alert_timeout_sec", 10))
-        self.visitor_waiting_timeout_sec = int(self.rules.get("visitor_waiting_alert_timeout_sec", 5))
-        self.min_waiting_confirm_sec = int(self.rules.get("min_waiting_confirm_sec", 3))
-        self.debounce_alert_sec = int(self.rules.get("debounce_alert_sec", 30))
+        self._read_scalars()
 
         # State tracking
         self.last_presence_time = 0.0
@@ -83,24 +49,39 @@ class CashierPresencePipeline(BasePipeline):
         self.visitor_annotator: Optional[sv.PolygonZoneAnnotator] = None
         self.box_annotator = sv.BoxAnnotator(thickness=2)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1)
+        self._zones_dirty = False  # set by a zone change; the zones are rebuilt at the next frame
 
         logger.info(
-            f"[{self.camera_name}] Initialized Cashier Pipeline with model '{model_name}' "
+            f"[{self.camera_name}] Initialized Cashier Pipeline with model '{settings.model_name}' "
             f"(conf={self.conf_thresh}, absence_timeout={self.absence_timeout_sec}s)."
         )
 
+    def _read_scalars(self):
+        s = self.settings
+        self.conf_thresh = float(s.confidence_threshold)
+        self.absence_timeout_sec = int(s.absence_alert_timeout_sec)
+        self.visitor_waiting_timeout_sec = int(s.visitor_waiting_alert_timeout_sec)
+        self.min_waiting_confirm_sec = int(s.min_waiting_confirm_sec)
+        self.debounce_alert_sec = int(s.debounce_alert_sec)
+
+    def _on_settings(self, old, new):
+        self._read_scalars()
+        if self.changed(old, new, "clerk_zone", "visitor_zone"):
+            # Presence timers and an open desk_unattended interval are kept
+            self._zones_dirty = True
+
     def _init_zones_if_needed(self, frame_shape):
         """Initializes supervision polygon zones for clerk desk and optional visitor window."""
-        if self.clerk_zone is not None:
+        dirty, self._zones_dirty = self._zones_dirty, False
+        if self.clerk_zone is not None and not dirty:
             return
 
         h, w = frame_shape[:2]
+        self.visitor_zone = None
+        self.visitor_annotator = None
 
-        # 1. Clerk Desk Zone (default or configured)
-        clerk_raw = self.rules.get(
-            "clerk_zone",
-            self.rules.get("zone_polygon", [[0.33, 0.46], [0.72, 0.46], [0.72, 1.00], [0.33, 1.00]])
-        )
+        # 1. Clerk Desk Zone
+        clerk_raw = self.settings.clerk_zone
         clerk_pixel = np.array([[int(p[0] * w), int(p[1] * h)] for p in clerk_raw], dtype=np.int32)
         self.clerk_poly_pts = clerk_pixel
         self.clerk_zone = sv.PolygonZone(
@@ -115,7 +96,7 @@ class CashierPresencePipeline(BasePipeline):
         )
 
         # 2. Visitor Queue Zone (optional)
-        visitor_raw = self.rules.get("visitor_zone")
+        visitor_raw = self.settings.visitor_zone
         if visitor_raw:
             visitor_pixel = np.array([[int(p[0] * w), int(p[1] * h)] for p in visitor_raw], dtype=np.int32)
             self.visitor_poly_pts = visitor_pixel
@@ -143,7 +124,7 @@ class CashierPresencePipeline(BasePipeline):
             frame,
             classes=[0],
             conf=self.conf_thresh,
-            imgsz=self.imgsz,
+            imgsz=self.settings.imgsz,
             verbose=False,
             device=self.device
         )[0]
@@ -268,20 +249,20 @@ class CashierPresencePipeline(BasePipeline):
         if not self.nx_client:
             return
 
-        bm_config = self.rules.get("nx_bookmark", {})
-        title = bm_config.get("title", "[STAFF ALERT] Cashier Desk Unattended")
-        tag = bm_config.get("tag", "#cashier_unattended")
+        bm_config = self.settings.nx_bookmark
+        title = (bm_config and bm_config.title) or "[STAFF ALERT] Cashier Desk Unattended"
+        tag = (bm_config and bm_config.tag) or "#cashier_unattended"
         description = f"Cashier desk unattended for {absent_duration} seconds at {self.camera_name}."
 
         logger.warning(f"[{self.camera_name}] DISPATCHING ABSENCE ALERT: {description}")
 
         self.nx_client.create_bookmark(
-            camera_id=self.nx_camera_id,
+            camera_id=self.nx_id,
             title=title,
             description=description,
             tags=[tag, "#staff_alert"],
             start_time_ms=timestamp_ms - (absent_duration * 1000),
-            duration_ms=bm_config.get("duration_ms", 10000)
+            duration_ms=(bm_config and bm_config.duration_ms) or 10000
         )
         self.nx_client.create_event(
             event_type="AnalyticsEvent",
@@ -303,7 +284,7 @@ class CashierPresencePipeline(BasePipeline):
         logger.warning(f"[{self.camera_name}] DISPATCHING CUSTOMER WAITING ALERT: {description}")
 
         self.nx_client.create_bookmark(
-            camera_id=self.nx_camera_id,
+            camera_id=self.nx_id,
             title=title,
             description=description,
             tags=[tag, "#staff_alert", "#urgent"],

@@ -102,3 +102,15 @@ def test_non_finite_numbers_are_rejected():
         validate(event_message("cam_x", "vehicle_gate", "vehicle_crossing", {
             "direction": "ENTRY", "vehicleType": "car", "plate": "B 1", "plateValid": True,
             "ocrConfidence": float("inf"), "trackerId": 1}))
+
+
+def test_builders_carry_the_config_version():
+    m = metric_message("cam_x", "horse_riding", "active_horses", 120_000, 1.0, config_version=7)
+    validate(m)
+    assert m["configVersion"] == 7
+
+
+def test_config_rejected_and_config_change_are_valid():
+    validate(event_message("cam_x", "system", "config_rejected", {"version": 3, "reason": "bad"}, "warning"))
+    validate(interval_close_message("cam_x", "restaurant_table", "table_session", "ses_" + "0" * 32,
+                                    end_reason="config_change"))

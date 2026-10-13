@@ -1,235 +1,161 @@
 """
-Zoo & Safari Computer Vision Orchestrator (Phase 1 Master Entrypoint).
-Loads camera definitions, runs one inference worker thread per camera, and serves the dashboard API
-(live preview + event snapshots). Nx Meta REST v3 bookmarks are optional (nx_server.mock_mode).
+Zoo & Safari Computer Vision engine entrypoint.
+
+The engine reads its settings from the environment (core/env.py) and its cameras from the API, and refetches them
+on every `cfg:changed` notice. It publishes each camera's status and latest frame to Redis for the API.
+
+    uv run python main.py [--preview]     # --preview shows an OpenCV window per camera
+
+Ctrl+C (or SIGTERM) stops it gracefully; on Windows Ctrl+Break does too.
 """
 
-import os
-import sys
 import argparse
 import logging
 import signal
+import sys
 import threading
-from typing import Optional
-from uuid import uuid4
-import yaml
-import cv2
+import uuid
 
-from nx_integration.nx_client import NxClient
-from core.base_pipeline import BasePipeline
+import redis
+
+from core.api_client import EngineApi
 from core.api_server import create_app, start_api_server
+from core.config_listener import ConfigListener
+from core.env import EngineEnv, EnvError, load_env
 from core.event_stream import EventStream
 from core.messages import event_message
+from core.model_jobs import ModelJobs
+from core.model_pool import ModelPool
 from core.snapshot_store import SnapshotStore
-from core.stream_manager import StreamManager
-from pipelines.cashier_presence_pipeline import CashierPresencePipeline
-from pipelines.restaurant_pipeline import RestaurantCounterPipeline
-from pipelines.table_occupancy_pipeline import TableOccupancyPipeline
-from pipelines.vehicle_gate_pipeline import VehicleGatePipeline
-from pipelines.horse_riding_pipeline import HorseRidingPipeline
+from core.status import StatusPublisher
+from core.supervisor import Supervisor
+from core.worker import WorkerDeps
+from nx_integration.nx_client import NxClient
 
-# Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] (%(name)s) %(message)s",
-    datefmt="%H:%M:%S"
-)
 logger = logging.getLogger("MainOrchestrator")
 
-
-def load_yaml(path: str) -> dict:
-    if not os.path.exists(path):
-        logger.error(f"Config file not found: {path}")
-        return {}
-    with open(path, "r") as f:
-        return yaml.safe_load(f) or {}
+THREAD_JOIN_S = 7.0  # above the 5 s BRPOP of the model jobs thread
 
 
-def camera_worker(name: str, stream: StreamManager, pipeline, stop: threading.Event):
-    """Inference loop for one camera. Cameras run in parallel; YOLO / ONNX release the GIL while inferring."""
-    last_ts = None
-    while not stop.is_set():
-        frame, timestamp_ms = stream.get_frame()
-        # A dead stream keeps returning its last frame: skip it so we don't re-run YOLO
-        # or keep sending dashboard heartbeats for a camera that is actually down.
-        if frame is None or timestamp_ms == last_ts:
-            stop.wait(0.01)
-            continue
-        last_ts = timestamp_ms
+def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = False) -> None:
+    """Runs the engine until `stop` is set. `loader` replaces ultralytics' YOLO in the model pool (tests)."""
+    boot_id = uuid.uuid4().hex
+    client = redis.Redis.from_url(env.redis_url, socket_timeout=5, socket_connect_timeout=5)
+    events = pool = snapshots = supervisor = listener = publisher = server = jobs = jobs_client = None
+    try:
+        events = EventStream(env.redis_url, engine_group=env.engine_group)
+        events.send(event_message(None, "system", "engine_started",
+                                  {"bootId": boot_id, "engineGroup": env.engine_group}))
+        snapshots = SnapshotStore(root=env.snapshot_dir, retention_days=env.snapshot_retention_days)
+        pool = ModelPool(env.device, env.models_dir, max_batch=env.max_batch, loader=loader)
+        nx_client = NxClient(mock_mode=True)  # bookmarks are only logged until the API's nx output module exists
+
+        api = EngineApi(env.api_url, env.engine_token, env.engine_group)
+        deps = WorkerDeps(pool=pool, events=events, snapshots=snapshots, nx_client=nx_client, device=env.device)
+        publisher = StatusPublisher(client, lambda: list(supervisor.workers.values()),
+                                    engine_group=env.engine_group, boot_id=boot_id)
+        supervisor = Supervisor(api, deps, on_stop=publisher.forget)
+        listener = ConfigListener(client, supervisor.request_sync)
+        publisher.start()
+        listener.start()
+        if env.model_jobs:
+            # BRPOP blocks for 5 s, so this connection's read timeout must be longer than the shared client's
+            jobs_client = redis.Redis.from_url(env.redis_url, socket_timeout=10, socket_connect_timeout=5)
+            jobs = ModelJobs(jobs_client, api, env.models_dir, env.device)
+            jobs.start()
+        if env.preview_port:
+            app = create_app(supervisor.pipelines, snapshots, env.preview_api_key or None)
+            server = start_api_server(app, host=env.preview_host, port=env.preview_port)
+        logger.info("Engine %s (group %s) is running", boot_id[:8], env.engine_group)
+
+        if preview:
+            _run_with_windows(supervisor, stop)
+        else:
+            supervisor.run(stop)
+    finally:
+        logger.info("Engine stopping")
+        if supervisor is not None:
+            supervisor.shutdown()  # supervisor.run has returned
+        threads = (listener, publisher, jobs)
+        for thread in threads:
+            if thread is not None:
+                thread.stop()
+        for thread in threads:
+            if thread is not None and thread.is_alive():
+                thread.join(THREAD_JOIN_S)
+        if server is not None:
+            server.should_exit = True
+        if pool is not None:
+            pool.close()
+        if snapshots is not None:
+            snapshots.stop()
+        if events is not None:
+            events.stop()
+        client.close()
+        if jobs_client is not None:
+            jobs_client.close()
+
+
+def _run_with_windows(supervisor: Supervisor, stop: threading.Event) -> None:
+    """The supervisor runs in a thread; this thread shows the annotated frames (cv2 windows) until 'q' or stop."""
+    import cv2
+
+    def supervise():
         try:
-            pipeline.run(frame, timestamp_ms)
-        except Exception:
-            # One camera's failure must not stop the others
-            logger.exception(f"[{name}] Pipeline error, skipping frame")
-            stop.wait(1.0)
+            supervisor.run(stop)
+        finally:
+            stop.set()  # also ends the window loop if the supervisor ever dies
 
-
-def create_pipeline(cam: dict, nx_client: NxClient, device: str) -> Optional[BasePipeline]:
-    """Builds the pipeline a camera entry from cameras.yaml asks for; None for an unknown type."""
-    cam_id = cam.get("id")
-    name = cam.get("name", cam_id)
-    pipeline_type = cam.get("pipeline")
-    rule_path = cam.get("rule_config", "")
-    nx_id = cam.get("nx_camera_id", "00000000-0000-0000-0000-000000000000")
-    roi = cam.get("roi")
-    inline_rules = cam.get("rules")
-
-    if pipeline_type == "cashier_presence":
-        return CashierPresencePipeline(
-            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-        )
-    elif pipeline_type in ["restaurant_counter", "restaurant"]:
-        return RestaurantCounterPipeline(
-            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-        )
-    elif pipeline_type in ["restaurant_table", "table_occupancy", "table_monitor"]:
-        return TableOccupancyPipeline(
-            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-        )
-    elif pipeline_type == "vehicle_gate":
-        return VehicleGatePipeline(
-            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-        )
-    elif pipeline_type in ["horse_riding", "horse_tracking", "horse"]:
-        return HorseRidingPipeline(
-            cam_id, name, nx_id, rule_path, nx_client, device=device, roi=roi, rules=inline_rules
-        )
-    logger.warning(f"Unknown pipeline type '{pipeline_type}' for camera '{name}'. Skipping.")
-    return None
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Zoo Vision Analytics Service")
-    parser.add_argument("--app-config", default="configs/app_config.yaml", help="Path to app config")
-    parser.add_argument("--cameras-config", default="configs/cameras.yaml", help="Path to cameras config")
-    parser.add_argument("--preview", action="store_true", help="Display live OpenCV window preview")
-    args = parser.parse_args()
-
-    logger.info("Starting Zoo & Safari Computer Vision Service (Phase 1)...")
-
-    app_cfg = load_yaml(args.app_config)
-    cam_cfg = load_yaml(args.cameras_config)
-
-    # 1. Initialize Nx Meta Client
-    nx_cfg = app_cfg.get("nx_server", {})
-    nx_client = NxClient(
-        host=nx_cfg.get("host", "127.0.0.1"),
-        port=nx_cfg.get("port", 7001),
-        username=nx_cfg.get("auth", {}).get("username", "admin"),
-        password=nx_cfg.get("auth", {}).get("password", "admin"),
-        token=nx_cfg.get("auth", {}).get("token", ""),
-        use_https=nx_cfg.get("use_https", True),
-        verify_ssl=nx_cfg.get("verify_ssl", False),
-        mock_mode=nx_cfg.get("mock_mode", True)
-    )
-
-    # Events, intervals and metrics go to the Redis stream; without REDIS_URL nothing is sent
-    redis_url = os.environ.get("REDIS_URL")
-    engine_group = os.environ.get("ENGINE_GROUP", "default")
-    events = EventStream(redis_url, engine_group=engine_group) if redis_url else None
-    if events is None:
-        logger.warning("REDIS_URL is not set: events, intervals and metrics are not sent.")
-    else:
-        events.send(event_message(None, "system", "engine_started", {"bootId": uuid4().hex, "engineGroup": engine_group}))
-
-    # One JPEG per event, served by the API server below
-    snap_cfg = app_cfg.get("snapshots", {})
-    snapshots = SnapshotStore(
-        root=snap_cfg.get("dir", "snapshots"),
-        retention_days=snap_cfg.get("retention_days", 30),
-    ) if events and snap_cfg.get("enabled", True) else None
-
-    device = app_cfg.get("ai_engine", {}).get("device", "cpu")
-
-    # 2. Build Pipeline Registry
-    active_pipelines = []
-    active_streams = []
-
-    for cam in cam_cfg.get("cameras", []):
-        if not cam.get("enabled", True):
-            continue
-
-        cam_id = cam.get("id")
-        name = cam.get("name", cam_id)
-        source = str(cam.get("source", "0"))
-        target_fps = cam.get("target_fps", 10)
-
-        # Instantiate specific pipeline
-        pipeline = create_pipeline(cam, nx_client, device)
-        if pipeline is None:
-            continue
-        pipeline.events = events
-        pipeline.snapshots = snapshots
-
-        # Ingest stream
-        stream = StreamManager(source=source, camera_id=cam_id, target_fps=target_fps)
-        stream.start()
-
-        active_pipelines.append((cam_id, name, stream, pipeline))
-        active_streams.append(stream)
-
-    if not active_pipelines:
-        logger.warning("No enabled cameras found in cameras.yaml. Exiting.")
-        return
-
-    # Dashboard API: annotated live preview, event snapshots, health
-    api_cfg = app_cfg.get("api_server", {})
-    api_server = start_api_server(
-        create_app({cam_id: p for cam_id, _, _, p in active_pipelines}, snapshots, api_cfg.get("api_key") or None),
-        host=api_cfg.get("host", "127.0.0.1"),
-        port=api_cfg.get("port", 8000),
-    ) if api_cfg.get("enabled", True) else None
-
-    stop = threading.Event()
-
-    def shutdown_handler(sig, frame):
-        logger.info("Shutdown signal received. Stopping streams...")
-        stop.set()
-
-    signal.signal(signal.SIGINT, shutdown_handler)
-    signal.signal(signal.SIGTERM, shutdown_handler)  # docker stop / systemctl stop
-
-    workers = [
-        threading.Thread(target=camera_worker, args=(name, stream, pipeline, stop), daemon=True, name=f"cam-{cam_id}")
-        for cam_id, name, stream, pipeline in active_pipelines
-    ]
-    for w in workers:
-        w.start()
-    logger.info(f"Started {len(workers)} camera worker(s).")
-
+    thread = threading.Thread(target=supervise, name="supervisor", daemon=True)
+    thread.start()
     try:
         while not stop.is_set():
-            if not args.preview:
-                stop.wait(0.5)
-                continue
-            # OpenCV windows must be driven from the main thread
-            for _, name, _, pipeline in active_pipelines:
-                annotated = pipeline.latest_frame()
-                if annotated is not None:
-                    cv2.imshow(f"Zoo Vision: {name}", annotated)
-            if cv2.waitKey(30) & 0xFF == ord('q'):
-                logger.info("Quit key pressed ('q'). Exiting...")
-                break
-
+            for camera_id, pipeline in supervisor.pipelines().items():
+                frame = pipeline.latest_frame()
+                if frame is not None:
+                    cv2.imshow(f"Zoo Vision - {pipeline.camera_name}", frame)
+            if cv2.waitKey(30) & 0xFF == ord("q"):
+                stop.set()
     finally:
-        logger.info("Cleaning up resources...")
         stop.set()
-        for w in workers:
-            w.join(timeout=10.0)  # let an in-flight inference finish before its stream is released
-        for _, _, _, pipeline in active_pipelines:
-            pipeline.shutdown()
-        for stream in active_streams:
-            stream.stop()
-        if api_server:
-            api_server.should_exit = True
-        if snapshots:
-            snapshots.stop()
-        if events:
-            events.stop()
-        if args.preview:
-            cv2.destroyAllWindows()
-        logger.info("Zoo Vision Service successfully stopped.")
+        thread.join()
+        cv2.destroyAllWindows()
+
+
+def _stop_on_signals(stop: threading.Event) -> None:
+    """Ctrl+C (SIGINT) and SIGTERM set `stop`; on Windows Ctrl+Break (SIGBREAK) does too.
+
+    On Windows a process can start with Ctrl+C ignored: a process created in a new process group ignores it, and
+    every child inherits that (seen with `Start-Process uv run python ...`: uv, the venv launcher and the engine all
+    ignored it, so Ctrl+C did nothing). SetConsoleCtrlHandler(NULL, FALSE) turns Ctrl+C handling back on.
+    """
+    signals = [signal.SIGINT, signal.SIGTERM]
+    if sys.platform == "win32":
+        signals.append(signal.SIGBREAK)
+        import ctypes
+
+        if not ctypes.windll.kernel32.SetConsoleCtrlHandler(None, False):
+            logger.warning("Could not turn Ctrl+C handling on; Ctrl+Break stops the engine")
+    for sig in signals:
+        signal.signal(sig, lambda *_: stop.set())
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Zoo Vision engine")
+    parser.add_argument("--preview", action="store_true", help="show an OpenCV window per camera")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] (%(name)s) %(message)s",
+                        datefmt="%H:%M:%S")
+    try:
+        env = load_env()
+    except EnvError as e:
+        print(e, file=sys.stderr)  # names the variables, never their values
+        return 2
+    stop = threading.Event()
+    _stop_on_signals(stop)
+    run(env, stop, preview=args.preview)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

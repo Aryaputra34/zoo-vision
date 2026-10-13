@@ -8,6 +8,11 @@
       "type": "string",
       "pattern": "^[\\w.-]+\\.(onnx|pt|engine)$"
     },
+    "ModelId": {
+      "title": "ModelId",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
     "ImageSize": {
       "title": "ImageSize",
       "description": "Inference size: one integer for a square, or [height, width].",

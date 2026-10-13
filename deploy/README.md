@@ -8,24 +8,45 @@ command from this folder.
 | `postgres` | Postgres 17. Creates the `zoo_api` role on first start (`postgres/init`). No host port |
 | `redis` | Redis 7.4 with a password and AOF persistence. Published on `127.0.0.1:${ZOO_REDIS_PORT:-6379}` for the host-networked engine |
 | `api-migrate` | One-shot: `prisma migrate deploy` as `zoo_owner`, then exits |
-| `api` | The NestJS API on `127.0.0.1:3001` (Swagger at `/api/docs`) |
+| `api` | The NestJS API on `127.0.0.1:3001` (Swagger at `/api/docs`). Serves the engine its cameras and runs the offline check |
 | `mediamtx` | Pulls each camera once, records it, re-serves RTSP to the engine, serves event clips on :9996 |
-| `zoo-ai-engine` | The Python engine (`services/engine`), image `zoo-vision-engine:${ZOO_VERSION}` |
+| `zoo-ai-engine` | The Python engine (`services/engine`), image `zoo-vision-engine:${ZOO_VERSION}`. Configured by environment only; gets its cameras from the API and reloads them live |
 
 ## First run
 
 ```bash
 cp .env.example .env                                     # then replace every change-me (see Secrets)
 python3 ../tools/fetch_models.py --dest ./data/models    # offline: add --from /media/usb/models
-cp ../services/engine/configs/cameras.yaml.example ../services/engine/configs/cameras.yaml
-cp ../services/engine/configs/app_config.yaml.example ../services/engine/configs/app_config.yaml
 docker compose up -d --build
 ```
 
 First create the superadmin: `docker compose exec -e ZOO_ADMIN_PASSWORD=<password> api node dist/cli.js create-superadmin --username admin --name "Admin"`.
+The engine starts with no cameras. Add them through the API (or load a YAML list once with
+`tools/import_yaml_config.py`, see [docs/10_LOCAL_QUICKSTART.md](../docs/10_LOCAL_QUICKSTART.md)); the running engine
+picks them up within a second.
 
 Use the same folder for `--dest` as `ZOO_DATA_DIR` in `.env`, plus `/models`. Host data lives under
 `ZOO_DATA_DIR` (default `./data`, git-ignored): `recordings/`, `snapshots/`, `models/`, `logs/`.
+
+## AI models folder
+
+`$ZOO_DATA_DIR/models` is mounted into the `api` container as `/data/models` (`MODELS_DIR`) and into the
+`zoo-ai-engine` container as `/app/models` (`ZOO_MODELS_DIR`). It is one host folder: the API registers and
+validates files there, and the engine loads them and writes ONNX conversions back into it, so the engine mount is
+read-write. Conversions work in a hidden `.convert-*` folder in the models root, so keep free disk space there.
+
+| Path | What it holds |
+|---|---|
+| `models/*.onnx`, `*.pt`, `*.engine` | The built-in models that `fetch_models.py` downloads. Registered in place on Rescan |
+| `models/inbox/` | Drop zone. Rescan moves each model file here into the registry |
+| `models/registry/` | Registered files, named `<model id>.<ext>`. Uploads land here. Do not edit by hand |
+
+The `api` container runs as uid 1000 (`node`), so give it the folder after `fetch_models.py`:
+`sudo chown -R 1000:1000 "$ZOO_DATA_DIR/models"`.
+
+The web upload accepts ONNX files only (up to `MODEL_UPLOAD_MAX_BYTES`, default 1 GiB). To add a `.pt` or
+`.engine` model, copy it into `models/inbox/` and press Rescan in the models page. Copy the file in completely
+first: a rescan moves a file that is still being copied. The API also rescans when it starts.
 
 ## Secrets
 
@@ -35,10 +56,20 @@ Use the same folder for `--dest` as `ZOO_DATA_DIR` in `.env`, plus `/models`. Ho
 |---|---|
 | `POSTGRES_PASSWORD`, `ZOO_API_DB_PASSWORD`, `REDIS_PASSWORD` | `openssl rand -hex 24` (they go into connection URLs, so keep them URL-safe) |
 | `CAMERA_URL_KEY` | `openssl rand -base64 32` |
+| `ENGINE_TOKEN` | `openssl rand -hex 32` (at least 32 characters). One value, shared by the API and the engine; the engine sends it as a Bearer token to `/internal/engine/*` |
 | `ZOO_REDIS_PORT` | optional: the host port for Redis when 6379 is taken |
 
 > **Back up `CAMERA_URL_KEY` together with the database.** It encrypts every stored camera stream URL. If it is
 > lost, all stored stream URLs become unreadable and every camera's URL must be entered again.
+
+## Background jobs and a second engine
+
+`JOBS` (`on` by default) switches the API's background jobs on or off; the only job is the camera offline check,
+every 5 s. Keep it `on` in exactly one API process.
+
+The engine runs one camera group, set by `ENGINE_GROUP` (default `default`). An engine service for a second
+group sets its own `ENGINE_GROUP` and `ENGINE_MODEL_JOBS=off`, so only one engine runs model validation and
+conversion jobs. It can share the models folder and `ENGINE_TOKEN`.
 
 ## Without a GPU (laptop)
 

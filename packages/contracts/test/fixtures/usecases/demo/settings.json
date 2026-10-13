@@ -18,6 +18,51 @@
         "additionalProperties": false
       }
     },
+    "zones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "polygon": { "$ref": "#/$defs/Polygon" },
+          "sensitivity": { "type": "number", "default": 0.5, "x-minRole": "SUPERADMIN" }
+        },
+        "required": ["id", "polygon"],
+        "additionalProperties": false
+      }
+    },
+    "layout": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "rooms" },
+            "rooms": {
+              "type": "array",
+              "x-geometry": "polygon-list",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "polygon": { "$ref": "#/$defs/Polygon" }
+                },
+                "required": ["id", "name", "polygon"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["kind", "rooms"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "none" } },
+          "required": ["kind"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "model_name": { "type": "string", "default": "a.onnx", "x-minRole": "SUPERADMIN" },
     "tracker": {
       "type": "object",

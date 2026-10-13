@@ -46,22 +46,24 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _envelope(kind: str, camera_id: str | None, use_case: str, time_ms: int | None) -> dict:
+def _envelope(kind: str, camera_id: str | None, use_case: str, time_ms: int | None,
+              config_version: int | None = None) -> dict:
     contract = REGISTRY.get(use_case)
     return {
         "message": kind,
         "cameraId": camera_id,
         "useCase": use_case,
         "schemaVersion": contract.schema_version if contract else 1,
-        "configVersion": None,
+        "configVersion": config_version,
         "time": iso_ms(_now_ms() if time_ms is None else time_ms),
     }
 
 
 def event_message(camera_id: str | None, use_case: str, type: str, data: dict, severity: str = "info",
-                  time_ms: int | None = None, snapshot_path: str | None = None, event_id: str | None = None) -> dict:
+                  time_ms: int | None = None, snapshot_path: str | None = None, event_id: str | None = None,
+                  *, config_version: int | None = None) -> dict:
     return {
-        **_envelope("event", camera_id, use_case, time_ms),
+        **_envelope("event", camera_id, use_case, time_ms, config_version),
         "id": event_id or new_id("evt"),
         "type": type,
         "severity": severity,
@@ -71,9 +73,10 @@ def event_message(camera_id: str | None, use_case: str, type: str, data: dict, s
 
 
 def interval_open_message(camera_id: str, use_case: str, kind: str, subject_id: str | None,
-                          data: dict | None = None, time_ms: int | None = None, session_id: str | None = None) -> dict:
+                          data: dict | None = None, time_ms: int | None = None, session_id: str | None = None,
+                          *, config_version: int | None = None) -> dict:
     return {
-        **_envelope("interval_open", camera_id, use_case, time_ms),
+        **_envelope("interval_open", camera_id, use_case, time_ms, config_version),
         "sessionId": session_id or new_id("ses"),
         "kind": kind,
         "subjectId": subject_id,
@@ -82,9 +85,10 @@ def interval_open_message(camera_id: str, use_case: str, kind: str, subject_id: 
 
 
 def interval_close_message(camera_id: str, use_case: str, kind: str, session_id: str, data: dict | None = None,
-                           time_ms: int | None = None, end_reason: str = "ended") -> dict:
+                           time_ms: int | None = None, end_reason: str = "ended",
+                           *, config_version: int | None = None) -> dict:
     return {
-        **_envelope("interval_close", camera_id, use_case, time_ms),
+        **_envelope("interval_close", camera_id, use_case, time_ms, config_version),
         "sessionId": session_id,
         "kind": kind,
         "endReason": end_reason,
@@ -92,9 +96,10 @@ def interval_close_message(camera_id: str, use_case: str, kind: str, session_id:
     }
 
 
-def metric_message(camera_id: str, use_case: str, name: str, minute_ms: int, value: float) -> dict:
+def metric_message(camera_id: str, use_case: str, name: str, minute_ms: int, value: float,
+                   *, config_version: int | None = None) -> dict:
     return {
-        **_envelope("metric", camera_id, use_case, minute_ms),
+        **_envelope("metric", camera_id, use_case, minute_ms, config_version),
         "name": name,
         "value": _plain(value),
     }

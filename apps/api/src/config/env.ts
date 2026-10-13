@@ -7,11 +7,19 @@ export type Env = Readonly<{
   REDIS_URL: string;
   /** AES-256 key for the stored camera stream URLs (decoded from base64). */
   CAMERA_URL_KEY: Buffer;
+  /** Shared secret of the Python engine for /internal/engine/* (Authorization: Bearer). */
+  ENGINE_TOKEN: string;
   COOKIE_SECURE: boolean;
   SWAGGER: 'public' | 'off';
   PORT: number;
   /** Whether the Redis stream consumer runs in this process. */
   INGEST: 'on' | 'off';
+  /** Whether background jobs (the offline check) run in this process. */
+  JOBS: 'on' | 'off';
+  /** The AI models folder: `inbox/`, `registry/` and the built-in files of tools/fetch_models.py. */
+  MODELS_DIR: string;
+  /** Largest accepted model upload, in bytes. */
+  MODEL_UPLOAD_MAX_BYTES: number;
 }>;
 
 export class EnvError extends Error {
@@ -44,10 +52,22 @@ const key32: Check<Buffer> = (value) => {
     : undefined;
 };
 
+const token32: Check<string> = (value) =>
+  value.length >= 32 ? value : undefined;
+
 const port: Check<number> = (value) => {
   const n = Number(value);
   return /^\d+$/.test(value) && n >= 1 && n <= 65535 ? n : undefined;
 };
+
+const positiveInt: Check<number> = (value) => {
+  const n = Number(value);
+  return /^\d+$/.test(value) && Number.isSafeInteger(n) && n > 0
+    ? n
+    : undefined;
+};
+
+const text: Check<string> = (value) => value;
 
 /**
  * Validates the environment. Throws one {@link EnvError} naming every bad variable (never its
@@ -85,12 +105,25 @@ export function loadEnv(source: Source = process.env): Env {
       key32,
       'base64 that decodes to 32 bytes (openssl rand -base64 32)',
     ),
+    ENGINE_TOKEN: read(
+      'ENGINE_TOKEN',
+      token32,
+      'at least 32 characters (openssl rand -hex 32)',
+    ),
     COOKIE_SECURE:
       read('COOKIE_SECURE', oneOf('true', 'false'), 'true or false', 'true') ===
       'true',
     SWAGGER: read('SWAGGER', oneOf('public', 'off'), 'public or off', 'off'),
     PORT: read('PORT', port, 'a port number (1-65535)', 3001),
     INGEST: read('INGEST', oneOf('on', 'off'), 'on or off', 'on'),
+    JOBS: read('JOBS', oneOf('on', 'off'), 'on or off', 'on'),
+    MODELS_DIR: read('MODELS_DIR', text, 'a folder path', '/data/models'),
+    MODEL_UPLOAD_MAX_BYTES: read(
+      'MODEL_UPLOAD_MAX_BYTES',
+      positiveInt,
+      'a positive number of bytes',
+      1073741824,
+    ),
   };
 
   if (problems.length > 0) {

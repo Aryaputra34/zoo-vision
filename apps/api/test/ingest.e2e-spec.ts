@@ -13,6 +13,13 @@ import {
   openMsg,
   xadd,
 } from './helpers/messages';
+import {
+  count,
+  drained as drainedOf,
+  pendingCount as pendingOf,
+  seedCamera,
+  waitFor,
+} from './helpers/ingest';
 import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
 type IntervalRow = {
@@ -52,57 +59,8 @@ describe('ingest: the events stream into Postgres', () => {
     warn.mockRestore();
   });
 
-  async function seedCamera(id: string, engineGroup: string): Promise<void> {
-    await ownerQuery(
-      `INSERT INTO "Camera" ("id", "name", "useCase", "sourceType", "mainStreamUrlEnc", "engineGroup", "activeVersion", "updatedAt")
-       VALUES ($1, $1, 'cashier_presence', 'FILE', 'enc', $2, 1, now())`,
-      id,
-      engineGroup,
-    );
-  }
-
-  async function waitFor<T>(
-    probe: () => Promise<T | false | undefined>,
-    what: string,
-  ): Promise<T> {
-    const deadline = Date.now() + 10_000;
-    for (;;) {
-      const value = await probe();
-      if (value) return value;
-      if (Date.now() > deadline) throw new Error(`timed out: ${what}`);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
-
-  /** Waits until group `api` has read and acked every entry of `events`. */
-  const drained = () =>
-    waitFor(async () => {
-      const groups = (await redis
-        .xinfo('GROUPS', 'events')
-        .catch(() => [])) as unknown[][];
-      const api = groups
-        .map((flat) => {
-          const info: Record<string, unknown> = {};
-          for (let i = 0; i < flat.length; i += 2) {
-            info[flat[i] as string] = flat[i + 1];
-          }
-          return info;
-        })
-        .find((g) => g.name === 'api');
-      return api?.lag === 0 && api.pending === 0;
-    }, 'the api group to drain the stream');
-
-  const pendingCount = async () =>
-    ((await redis.xpending('events', 'api')) as [number])[0];
-
-  const count = async (table: string) =>
-    Number(
-      (
-        (await ownerQuery(`SELECT count(*) AS n FROM "${table}"`)) as {
-          n: string;
-        }[]
-      )[0].n,
-    );
+  const drained = () => drainedOf(redis);
+  const pendingCount = () => pendingOf(redis);
 
   const intervals = async (...ids: string[]) =>
     (await ownerQuery(

@@ -61,14 +61,13 @@ graph LR
 
 ## 2. Quick Sanity Checks (Smoke Tests)
 
-### Test Synthetic Detections (No Camera / No MP4 Needed)
-Verifies that PyTorch, ByteTrack, and the rules engine run without errors:
+### Run the Automated Tests (No Camera / No MP4 Needed)
+Verifies that the pipelines, tracker, and rules engine pass their tests:
 ```powershell
 # From services/engine/:
 uv run pytest                        # automated tests (no models or GPU needed)
-uv run python test_synthetic_demo.py  # synthetic-frame smoke test with real models
 ```
-* **Expected Output**: A simulated cashier test running 30 synthetic frames, detecting presence, state changes, and completing with `[PASS]`.
+* **Expected Output**: a pass count and no failures (about a minute).
 
 ---
 

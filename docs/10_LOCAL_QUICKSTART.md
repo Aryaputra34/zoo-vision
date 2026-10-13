@@ -11,7 +11,7 @@ every phase; the full operator manual comes in Phase 5.
 | Part | Repo / folder | Port | Talks to |
 | :--- | :--- | :--- | :--- |
 | MediaMTX | `zoo-vision` root, config `deploy/mediamtx.yml` | 8554 RTSP, 9996 clips | FFmpeg loops in, engine and dashboard out |
-| Engine | `zoo-vision/services/engine` | 8000 (preview, snapshots) | reads RTSP from MediaMTX; sends events to the API's Redis stream (the dashboard gets none until Phase 3) |
+| Engine | `zoo-vision/services/engine` | 8000 (preview, snapshots) | fetches its cameras from the API and applies changes live; reads RTSP from MediaMTX; sends events to the API's Redis stream (the dashboard gets none until Phase 3) |
 | Dashboard | `zoo-vision-fe` | 3000 | shows the engine's live preview; receives no events until Phase 3; proxies the engine API and MediaMTX clips |
 
 ## One-time setup
@@ -25,11 +25,10 @@ saved into the `zoo-vision` repo root (it is git-ignored).
 git clone https://github.com/Aryaputra34/zoo-vision.git
 cd zoo-vision
 git lfs pull                                  # sample_data/cars.mp4
-python tools\fetch_models.py                  # model weights → services\engine\models\ (checksummed)
+python tools\fetch_models.py --dest deploy\data\models   # model weights (checksummed); the API and the engine share this folder
 cd services\engine
 uv sync                                       # Python 3.12 + locked dependencies in .venv
 copy configs\cameras.yaml.example configs\cameras.yaml
-copy configs\app_config.yaml.example configs\app_config.yaml
 
 # Dashboard (next to zoo-vision)
 cd ..\..\..
@@ -40,13 +39,14 @@ copy .env.example .env.local                  # defaults already point at 127.0.
 ```
 
 **Point the configs at each other.**
-* `services\engine\configs\cameras.yaml`: per camera, `source: rtsp://127.0.0.1:8554/<path>` and
+* `services\engine\configs\cameras.yaml` (read only by the import below): per camera, `source: rtsp://127.0.0.1:8554/<path>` and
   `recording_path: <path>`. Use the same path names as `deploy\mediamtx.yml` (`cam_cashier_01`,
   `cam_restaurant_01`, `cam_gate_entry_01`, `cam_horse_01`).
 * `deploy\mediamtx.yml`: each camera path has a `runOnInit: ffmpeg ... -i "<video>"` loop. Change the four
   video paths to recordings on your machine.
-* `services\engine\configs\app_config.yaml`: if you set `AI_ENGINE_API_KEY` in `.env.local`, put the same
-  value in `api_server.api_key`.
+* The engine reads no YAML. It gets its cameras from the API (next sections) and its static settings from
+  environment variables. If you set `AI_ENGINE_API_KEY` in `.env.local`, set `PREVIEW_API_KEY` to the same
+  value for the engine.
 
 **Redis.** The Backend section below runs Redis in Compose. For a stand-alone one, start it like this. The engine sends its events, intervals and minute metrics to a Redis stream:
 
@@ -70,8 +70,9 @@ cd deploy
 copy .env.example .env
 ```
 
-Edit `deploy\.env` and replace the four `change-me` values. Generate each one (`openssl rand -hex 24` for the three
-passwords, `openssl rand -base64 32` for `CAMERA_URL_KEY`). If port 6379 is already used by another Redis, also set
+Edit `deploy\.env` and replace the five `change-me` values. Generate each one (`openssl rand -hex 24` for the three
+passwords, `openssl rand -base64 32` for `CAMERA_URL_KEY`, `openssl rand -hex 32` for `ENGINE_TOKEN`; the engine
+needs the same `ENGINE_TOKEN`). If port 6379 is already used by another Redis, also set
 `ZOO_REDIS_PORT` (for example `6380`); the engine below must use the same port.
 
 ```powershell
@@ -97,25 +98,77 @@ $env:ZOO_API_TOKEN = "<token>"
 uv run tools/import_yaml_config.py --cameras services/engine/configs/cameras.yaml
 ```
 
-**Run the engine against the stack.** `<redis-password>` and `<port>` come from `deploy\.env`:
+**Models.** The API and the engine share one models folder: `deploy\data\models`, which the `api` container mounts
+as `/data/models`. The one-time setup already fetched the weights there. The API registers the files in that
+folder only when it starts and when you call rescan, so if you fetched them after `docker compose up` (or add more
+later), register them with the token from the step above:
+
+```powershell
+python tools\fetch_models.py --dest deploy\data\models      # only if the folder is empty
+curl.exe -s -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:3001/api/v1/models/rescan
+```
+
+Each newly registered file gets a validation. A `.pt` or `.engine` file from elsewhere goes into
+`deploy\data\models\inbox\` (copy it in completely first: a rescan moves a file that is still being copied), then
+rescan. The engine below reads the same folder through `ZOO_MODELS_DIR`. `test_video.py` reads
+`services\engine\models` unless you set `ZOO_MODELS_DIR` in that terminal too.
+
+**Run the engine against the stack.** `<redis-password>` and `<port>` come from `deploy\.env`, and
+`<engine-token>` is `ENGINE_TOKEN` from the same file:
 
 ```powershell
 cd services\engine
 $env:REDIS_URL = "redis://:<redis-password>@127.0.0.1:<port>/0"
-$env:ENGINE_GROUP = "default"
+$env:ENGINE_TOKEN = "<engine-token>"
+$env:API_URL = "http://127.0.0.1:3001"
+$env:ZOO_MODELS_DIR = "..\..\deploy\data\models"
 uv run python main.py
 ```
+
+`ENGINE_GROUP` defaults to `default`. The engine fetches the enabled cameras of its group from the API and
+refetches whenever a camera changes, so edit cameras in the API (Swagger at `/api/docs`, or the web UI later)
+and the running engine follows within about a second, without reconnecting the stream. All variables are in
+[`services/engine/README.md`](../services/engine/README.md).
 
 Stop it with Ctrl+C so open intervals are closed with `engine_stop`. After a crash the next start closes them with
 `engine_restart`.
 
-**A light, single-camera run** for a weak laptop: copy `cameras.yaml` to a scratch file, set `enabled: false` on every
-camera but one, give that one `target_fps: 1` and a smaller model input with an inline `rules: {imgsz: 640}`, and use
-`source:` paths relative to `services/engine` (for example `../../demo_restaurant.mp4`). Then:
+**A light, single-camera run** for a weak laptop: keep one camera (here the gate camera) enabled, play a video
+file through it at 1 fps, and run a small model at imgsz 640. A `FILE` source is relative to `services/engine`, and
+the engine plays it in real time at the file's own frame rate, like a camera. `<token>` is the API token from the
+step above; the camera ids come from `GET /api/v1/cameras`.
 
 ```powershell
-uv run python main.py --cameras-config <scratch-file> --app-config configs/app_config.yaml
+$h = @{ Authorization = "Bearer <token>" }
+$api = "http://127.0.0.1:3001/api/v1/cameras"
+# 1. Disable every other camera (repeat for each id).
+Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"enabled":false}' "$api/<other id>"
+# 2. Point the gate camera at the file, at 1 fps. sourceType FILE is required: the import made it MEDIAMTX, and the API refuses a non-RTSP URL for that type.
+Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"sourceType":"FILE","mainStreamUrl":"sample_data/cars.mp4","targetFps":1}' "$api/<gate id>"
+# 3. Read its config. Note "version" and the settings.
+Invoke-RestMethod -Headers $h "$api/<gate id>/config" | ConvertTo-Json -Depth 20
 ```
+
+Edit the settings from step 3: `model_name` `"yolo26s.onnx"`, `imgsz` `640`, `anpr.enabled` `false`. Then save them
+as a new version, with `baseVersion` set to the `version` you read (a stale one is refused with 409):
+
+```powershell
+$body = '{"baseVersion": <version>, "settings": { ...the edited settings... }, "note": "laptop run"}'
+Invoke-RestMethod -Method Post -Headers $h -ContentType "application/json" -Body $body "$api/<gate id>/config"
+```
+
+On a laptop keep `ENGINE_MODEL_JOBS=off` in the engine's terminal until you need validation or conversion jobs
+(they load models and use CPU). Then start the engine as above with `uv run python main.py`.
+
+**Status.** Per camera: `online` (false when the engine has reported nothing for 15 s) and the engine's `status`
+(its state, such as reconnecting, and `appliedVersion`, the config version it runs; null when offline). A frame
+is at `GET /api/v1/cameras/<id>/frame`:
+
+```powershell
+curl.exe -s -H "Authorization: Bearer <token>" http://127.0.0.1:3001/api/v1/camera-status
+```
+
+The dashboard's live preview still comes from the engine on :8000, not from the API.
 
 **Look at the data**
 
@@ -134,6 +187,7 @@ Data stays in the `pgdata` and `redisdata` volumes; `docker compose down -v` del
 
 ```powershell
 cd zoo-vision\services\engine
+$env:ZOO_MODELS_DIR = "..\..\deploy\data\models"                           # test_video.py needs yolo26l.onnx from here
 uv run pytest                                                              # about a minute, no GPU or models needed
 uv run python test_video.py --video sample_data\cars.mp4 --pipeline gate   # one pipeline in a window; q quits
 ```
@@ -146,7 +200,7 @@ See [08_TESTING_GUIDE.md](08_TESTING_GUIDE.md) for every option and a command pe
 | # | Folder | Command |
 | :--- | :--- | :--- |
 | 1 | `zoo-vision` | `.\mediamtx.exe deploy\mediamtx.yml` |
-| 2 | `zoo-vision\services\engine` | `uv run python main.py` (add `--preview` for OpenCV windows) |
+| 2 | `zoo-vision\services\engine` | `uv run python main.py` (add `--preview` for OpenCV windows), with the environment from the Backend section |
 | 3 | `zoo-vision-fe` | `npm run dev`, then open http://localhost:3000 |
 
 Start them in this order. The MediaMTX terminal shows each camera path coming online; the engine logs
@@ -169,12 +223,12 @@ Stop everything with Ctrl+C in each terminal. Recordings collect in `zoo-vision\
 | Symptom | Cause and fix |
 | :--- | :--- |
 | `warning: VIRTUAL_ENV=... does not match the project environment` | An old venv is still active in this terminal. Run `deactivate`; `uv` uses `services\engine\.venv`. |
-| `Model 'x.onnx' not found ... Run: python tools/fetch_models.py` | Weights are missing. Run `python tools\fetch_models.py` from the repo root. A missing `.onnx` stops the whole engine at startup. |
+| `Model 'x.onnx' not found ... Run: python tools/fetch_models.py` | Weights are missing, or `ZOO_MODELS_DIR` points at another folder. For `test_video.py`, set `$env:ZOO_MODELS_DIR = "..\..\deploy\data\models"` in that terminal (from `services\engine`). To fetch the weights, run `python tools\fetch_models.py --dest deploy\data\models` from the repo root. |
+| `invalid engine environment: ...` | `REDIS_URL` or `ENGINE_TOKEN` is unset or bad; the message names each bad variable. `ENGINE_TOKEN` must equal the API's and be at least 32 characters. |
 | `cars.mp4` won't open | git-lfs isn't installed, so the file is a small pointer. Install git-lfs, then `git lfs pull`. |
-| A camera never connects | Its MediaMTX path name differs from the one in `cameras.yaml`, or FFmpeg can't find the video in `deploy\mediamtx.yml`. Check the MediaMTX terminal. |
-| `/live` says the AI engine isn't connected | The engine isn't running, or `AI_ENGINE_URL` / `AI_ENGINE_API_KEY` in `.env.local` don't match `api_server` in `app_config.yaml`. |
-| `test_synthetic_demo.py` fails with a CUDA error | It is hard-coded to `cuda:0`. On a laptop without an NVIDIA GPU, use `uv run pytest` instead. |
-| "reader is too slow, discarding frames" in MediaMTX | The CPU can't keep up. Lower `target_fps` per camera in `cameras.yaml`, or enable fewer cameras. |
+| A camera never connects | Its stream URL in the API differs from the MediaMTX path name, or FFmpeg can't find the video in `deploy\mediamtx.yml`. Check the MediaMTX terminal. |
+| `/live` says the AI engine isn't connected | The engine isn't running, or `AI_ENGINE_API_KEY` in `.env.local` doesn't match the engine's `PREVIEW_API_KEY`. |
+| "reader is too slow, discarding frames" in MediaMTX | The CPU can't keep up. Lower `targetFps` per camera in the API, or enable fewer cameras. |
 
 More detail: [09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md) (MediaMTX and clips),
 [07_INSTALLATION_GUIDE.md](07_INSTALLATION_GUIDE.md) (Linux setup, GPU, troubleshooting).

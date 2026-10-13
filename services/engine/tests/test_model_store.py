@@ -44,6 +44,12 @@ def test_missing_pt_passes_through(in_tmp):
     assert resolve_model_path("yolo11s.pt") == "yolo11s.pt"
 
 
+def test_registry_paths_keep_their_folder(tmp_path):
+    (tmp_path / "registry").mkdir()
+    (tmp_path / "registry" / "a.onnx").write_bytes(b"\x08")
+    assert resolve_model_path("registry/a.onnx", str(tmp_path)) == str(tmp_path / "registry" / "a.onnx")
+
+
 def test_missing_onnx_raises_with_fetch_hint(in_tmp):
     with pytest.raises(FileNotFoundError, match="tools/fetch_models.py"):
         resolve_model_path("yolo26s.onnx")

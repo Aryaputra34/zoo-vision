@@ -113,11 +113,13 @@ model Camera {
   auditCamera      Boolean               @default(false)
   recordingEnabled Boolean               @default(true)
   recordingStream  StreamChoice          @default(MAIN)
+  inferenceStream  StreamChoice          @default(MAIN)
   retentionDays    Int? // null = site default
   clipBeforeSec    Int                   @default(15)
   clipAfterSec     Int                   @default(15)
   nxCameraId       String?
   activeVersion    Int
+  firstSeenAt      DateTime?             @db.Timestamptz(3) // first time the engine's status key was seen
   createdAt        DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime              @updatedAt @db.Timestamptz(3)
   versions         CameraConfigVersion[]
@@ -194,4 +196,45 @@ model DeadEvent {
   payload   String // raw msg
   reason    String
   createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+enum ModelFormat {
+  ONNX
+  PT
+  ENGINE
+}
+
+enum ModelSource {
+  BUILTIN
+  FILESYSTEM
+  UPLOAD
+  CONVERTED
+}
+
+enum ModelStatus {
+  UPLOADED
+  VALIDATING
+  READY
+  FAILED
+  CONVERTING
+}
+
+model AiModel {
+  id              String      @id @default(uuid()) @db.Uuid
+  name            String
+  version         String?
+  format          ModelFormat
+  source          ModelSource
+  status          ModelStatus
+  filePath        String      @unique // relative to MODELS_DIR, "/" separators
+  originalName    String
+  sha256          String?     @unique // null only while CONVERTING
+  sizeBytes       BigInt?
+  classNames      Json? // string[] after validation
+  validation      Json? // { ok, latencyMs?, device?, error?, at }
+  convertedFromId String?     @db.Uuid
+  createdById     String?     @db.Uuid
+  notes           String?
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
 }

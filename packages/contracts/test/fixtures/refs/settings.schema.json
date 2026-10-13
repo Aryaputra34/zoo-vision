@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefsSettings",
+  "type": "object",
+  "properties": {
+    "a": { "$ref": "common.schema.json#/$defs/Point", "default": [0.1, 0.2], "x-minRole": "SUPERADMIN" },
+    "b": { "$ref": "common.schema.json#/$defs/Point" }
+  },
+  "additionalProperties": false
+}

@@ -8,6 +8,7 @@ import {
 import { type Actor, roleAtLeast } from '../auth/actor';
 import { ContractsService } from '../contracts/contracts.service';
 import type { CameraConfigVersion, Prisma } from '../generated/prisma/client';
+import { ModelsService } from '../models/models.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigNotifier } from './config-notifier';
 import { diffJson, type JsonChange } from './json-diff';
@@ -56,6 +57,7 @@ export class ConfigVersionsService {
     private readonly prisma: PrismaService,
     private readonly contracts: ContractsService,
     private readonly notifier: ConfigNotifier,
+    private readonly models: ModelsService,
   ) {}
 
   async active(cameraId: string) {
@@ -160,6 +162,10 @@ export class ConfigVersionsService {
             });
           }
         }
+        await this.models.assertSelectable(
+          (input.settings as { model_id?: string }).model_id,
+          (current?.settings as { model_id?: string } | null)?.model_id,
+        );
         const version = camera.activeVersion + 1;
         await tx.cameraConfigVersion.create({
           data: {

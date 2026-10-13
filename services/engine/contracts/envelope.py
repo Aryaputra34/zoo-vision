@@ -54,6 +54,7 @@ class IntervalOpenMessage(BaseModel):
 class EndReason(Enum):
     ended = 'ended'
     engine_stop = 'engine_stop'
+    config_change = 'config_change'
 
 
 class IntervalCloseMessage(BaseModel):

@@ -11,11 +11,11 @@ import collections
 import cv2
 import numpy as np
 import supervision as sv
-from typing import Optional, List, Tuple, Any, Dict
-import yaml
+from typing import Optional, Tuple, Any, Dict
 
-from core.base_pipeline import BasePipeline
-from nx_integration.nx_client import NxClient
+from contracts.restaurant_counter.settings import Mode, RestaurantCounterSettings
+from core.base_pipeline import BasePipeline, CameraInfo
+from core.model_pool import Detector
 from core.table_manager import TableOccupancyEngine, TableSessions
 
 logger = logging.getLogger("RestaurantPipeline")
@@ -25,71 +25,82 @@ class RestaurantCounterPipeline(BasePipeline):
     use_case = "restaurant_counter"
     metric_fields = {"occupancy": "occupancy", "occupiedTables": "occupied_tables"}
 
-    def __init__(
-        self,
-        camera_id: str,
-        camera_name: str,
-        nx_camera_id: str,
-        rule_config_path: Optional[str] = None,
-        nx_client: Optional[NxClient] = None,
-        device: str = "cpu",
-        roi: Optional[Any] = None,
-        rules: Optional[dict] = None
-    ):
-        # Pre-read model_name from rules config if available
-        model_name = "yolo11s.onnx"
-        if rules and "model_name" in rules:
-            model_name = rules["model_name"]
-        elif rule_config_path:
-            try:
-                with open(rule_config_path, "r") as f:
-                    cfg = yaml.safe_load(f) or {}
-                    model_name = cfg.get("model_name", "yolo11s.onnx")
-            except Exception:
-                pass
+    settings: RestaurantCounterSettings
 
-        super().__init__(
-            camera_id=camera_id,
-            camera_name=camera_name,
-            nx_camera_id=nx_camera_id,
-            rule_config_path=rule_config_path,
-            nx_client=nx_client,
-            model_name=model_name,
-            device=device,
-            roi=roi,
-            rules=rules
-        )
+    def __init__(self, camera: CameraInfo, settings: RestaurantCounterSettings, model: Detector, **kwargs):
+        super().__init__(camera, settings, model, **kwargs)
 
-        self.mode = self.rules.get("mode", "area_occupancy")
-        self.imgsz = self.rules.get("imgsz", 1920)
-        self.conf_thresh = self.rules.get("confidence_threshold", 0.20)
-        self.max_capacity = self.rules.get("max_capacity", 60)
-        self.warning_capacity = self.rules.get("warning_capacity", 45)
-        self.debounce_alert_sec = self.rules.get("debounce_alert_sec", 60)
-
-        # Shadow Boost Zone configuration for difficult bamboo wall tables
-        self.shadow_cfg = self.rules.get("shadow_zone", {})
-        self.shadow_enabled = self.shadow_cfg.get("enabled", False)
-        self.shadow_conf = float(self.shadow_cfg.get("confidence_threshold", 0.11))
         self.shadow_box: Optional[Tuple[int, int, int, int]] = None
-
-        # Anti-Duplicate & Anti-Flicker Settings
-        self.deduplication_enabled = bool(self.rules.get("deduplication_enabled", True))
-        self.iou_threshold = float(self.rules.get("iou_threshold", 0.45))
-        self.containment_threshold = float(self.rules.get("containment_threshold", 0.65))
-        self.tracking_enabled = bool(self.rules.get("tracking_enabled", True))
-        self.lost_track_buffer = int(self.rules.get("lost_track_buffer", 30))
-        self.smoothing_frames = int(self.rules.get("smoothing_frames", 5))
-
-        # Visual Display & Presentation Settings
-        self.show_boxes = bool(self.rules.get("show_boxes", True))
-        self.show_labels = bool(self.rules.get("show_labels", True))
+        self._read_scalars()
 
         # Annotators
         self.box_annotator = sv.BoxAnnotator(thickness=2)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.45, text_thickness=1)
 
         # Multi-Object Tracker & Temporal Smoother
+        self._make_tracking()
+
+        # Area Occupancy Mode State
+        self.polygon_zone: Optional[sv.PolygonZone] = None
+        self.zone_annotator: Optional[sv.PolygonZoneAnnotator] = None
+        self.count_history = collections.deque() # (timestamp, raw_count)
+        self.current_occupancy = 0
+        self.raw_occupancy = 0
+        self.last_alert_time = 0.0
+
+        # Tripwire Mode State
+        self.line_zone: Optional[sv.LineZone] = None
+        self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
+        self._line_dirty = False  # set by a tripwire change; the line is rebuilt at the next frame, counts kept
+
+        # Optional Table Monitoring Engine (Modular Multi-Table Occupancy)
+        self.table_engine: Optional[TableOccupancyEngine] = None
+        self.table_summary: Dict[str, Any] = {}
+        self.table_sessions = TableSessions(self)
+        table_cfg = settings.table_monitoring
+        if table_cfg and table_cfg.enabled:
+            self.table_engine = TableOccupancyEngine(
+                config=table_cfg.model_dump(exclude_none=True),  # a plain dict; unset options use its defaults
+                on_event_callback=self._handle_table_event
+            )
+
+        self.last_periodic_log = time.time()
+        tbl_info = f", tables={len(self.table_engine.tables)}" if self.table_engine else ""
+        logger.info(
+            f"[{self.camera_name}] Initialized Restaurant Pipeline in '{self.mode}' mode "
+            f"using model '{settings.model_name}' (imgsz={settings.imgsz}, conf={self.conf_thresh}, "
+            f"tracking={self.tracking_enabled}, deduplication={self.deduplication_enabled}{tbl_info})."
+        )
+
+    def _read_scalars(self):
+        """Caches the settings that need a conversion. Run again after every live change."""
+        s = self.settings
+        self.mode = Mode(s.mode).value  # the generated default is the plain string, a given value the enum
+        self.conf_thresh = s.confidence_threshold
+        self.max_capacity = s.max_capacity
+        self.warning_capacity = s.warning_capacity
+        self.debounce_alert_sec = s.debounce_alert_sec
+
+        # Shadow Boost Zone configuration for difficult bamboo wall tables
+        self.shadow_cfg = s.shadow_zone
+        self.shadow_enabled = self.shadow_cfg.enabled
+        self.shadow_conf = float(self.shadow_cfg.confidence_threshold)
+
+        # Anti-Duplicate & Anti-Flicker Settings
+        self.deduplication_enabled = bool(s.deduplication_enabled)
+        self.iou_threshold = float(s.iou_threshold)
+        self.containment_threshold = float(s.containment_threshold)
+        self.tracking_enabled = bool(s.tracking_enabled)
+        self.lost_track_buffer = int(s.lost_track_buffer)
+        self.smoothing_frames = int(s.smoothing_frames)
+        self.smoothing_window_sec = float(s.smoothing_window_sec)
+
+        # Visual Display & Presentation Settings
+        self.show_boxes = bool(s.show_boxes)
+        self.show_labels = bool(s.show_labels)
+
+    def _make_tracking(self):
+        """A new tracker (track ids restart) and smoother from the current settings."""
         self.tracker = sv.ByteTrack(
             track_activation_threshold=self.conf_thresh,
             lost_track_buffer=self.lost_track_buffer,
@@ -99,37 +110,41 @@ class RestaurantCounterPipeline(BasePipeline):
         ) if (self.tracking_enabled or self.mode == "tripwire") else None
         self.smoother = sv.DetectionsSmoother(length=self.smoothing_frames) if self.tracking_enabled else None
 
-        # Area Occupancy Mode State
-        self.polygon_zone: Optional[sv.PolygonZone] = None
-        self.zone_annotator: Optional[sv.PolygonZoneAnnotator] = None
-        self.smoothing_window_sec = float(self.rules.get("smoothing_window_sec", 4.0))
-        self.count_history = collections.deque() # (timestamp, raw_count)
-        self.current_occupancy = 0
-        self.raw_occupancy = 0
-        self.last_alert_time = 0.0
+    def _on_settings(self, old, new):
+        self._read_scalars()
+        if self.changed(old, new, "mode"):
+            # The new mode starts clean: zones, line, count history, occupancy and tracker
+            self.polygon_zone = None
+            self.zone_annotator = None
+            self.shadow_box = None
+            self.line_zone = None
+            self.line_zone_annotator = None
+            self.count_history.clear()
+            self.current_occupancy = 0
+            self.raw_occupancy = 0
+            self._make_tracking()
+        elif self.changed(old, new, "tracking_enabled", "lost_track_buffer", "smoothing_frames"):
+            self._make_tracking()
+        if self.changed(old, new, "dining_zone", "shadow_zone"):
+            self.polygon_zone = None  # rebuilt with the shadow box from the frame shape at the next frame
+        if self.changed(old, new, "tripwire"):
+            self._line_dirty = True
+        if self.changed(old, new, "table_monitoring"):
+            self._on_table_monitoring()
 
-        # Tripwire Mode State
-        self.line_zone: Optional[sv.LineZone] = None
-        self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
-
-        # Optional Table Monitoring Engine (Modular Multi-Table Occupancy)
-        self.table_engine: Optional[TableOccupancyEngine] = None
-        self.table_summary: Dict[str, Any] = {}
-        self.table_sessions = TableSessions(self)
-        table_cfg = self.rules.get("table_monitoring")
-        if table_cfg and table_cfg.get("enabled", True):
-            self.table_engine = TableOccupancyEngine(
-                config=table_cfg,
-                on_event_callback=self._handle_table_event
-            )
-
-        self.last_periodic_log = time.time()
-        tbl_info = f", tables={len(self.table_engine.tables)}" if self.table_engine else ""
-        logger.info(
-            f"[{self.camera_name}] Initialized Restaurant Pipeline in '{self.mode}' mode "
-            f"using model '{model_name}' (imgsz={self.imgsz}, conf={self.conf_thresh}, "
-            f"tracking={self.tracking_enabled}, deduplication={self.deduplication_enabled}{tbl_info})."
-        )
+    def _on_table_monitoring(self):
+        cfg = self.settings.table_monitoring
+        if not (cfg and cfg.enabled):
+            if self.table_engine is not None:
+                self.table_sessions.close_all("config_change")
+                self.table_engine = None
+                self.table_summary = {}
+            return
+        if self.table_engine is None:
+            # Created by a live change: it starts empty and takes the config as a change, so every table warms up
+            self.table_engine = TableOccupancyEngine(config={}, on_event_callback=self._handle_table_event)
+        for table_id in self.table_engine.reconfigure(cfg.model_dump(exclude_none=True)):
+            self.table_sessions.close(table_id, "config_change")
 
     def _suppress_duplicates(self, detections: sv.Detections) -> sv.Detections:
         """
@@ -184,8 +199,9 @@ class RestaurantCounterPipeline(BasePipeline):
         if self.polygon_zone is not None:
             return
 
+        self.shadow_box = None
         h, w = frame_shape[:2]
-        raw_poly = self.rules.get("dining_zone")
+        raw_poly = self.settings.dining_zone
         if raw_poly:
             pixel_poly = np.array([[int(p[0] * w), int(p[1] * h)] for p in raw_poly], dtype=np.int32)
         else:
@@ -205,8 +221,8 @@ class RestaurantCounterPipeline(BasePipeline):
 
         # Initialize shadow boost zone if configured
         if self.shadow_enabled:
-            s = self.shadow_cfg.get("start", [1.00, 0.48])
-            e = self.shadow_cfg.get("end", [0.82, 0.17])
+            s = self.shadow_cfg.start
+            e = self.shadow_cfg.end
             x1 = int(min(s[0], e[0]) * w)
             x2 = int(max(s[0], e[0]) * w)
             y1 = int(min(s[1], e[1]) * h)
@@ -218,12 +234,14 @@ class RestaurantCounterPipeline(BasePipeline):
             )
 
     def _init_tripwire_if_needed(self, frame_shape: Tuple[int, int]):
-        if self.line_zone is not None:
+        if self.line_zone is not None and not self._line_dirty:
             return
 
+        self._line_dirty = False
+        previous = self.line_zone
         h, w = frame_shape[:2]
-        raw_start = self.rules.get("tripwire", {}).get("start", [0.1, 0.5])
-        raw_end = self.rules.get("tripwire", {}).get("end", [0.9, 0.5])
+        raw_start = self.settings.tripwire.start
+        raw_end = self.settings.tripwire.end
 
         start_pt = sv.Point(x=int(raw_start[0] * w), y=int(raw_start[1] * h))
         end_pt = sv.Point(x=int(raw_end[0] * w), y=int(raw_end[1] * h))
@@ -233,6 +251,9 @@ class RestaurantCounterPipeline(BasePipeline):
             end=end_pt,
             triggering_anchors=[sv.Position.BOTTOM_CENTER]
         )
+        if previous is not None:  # a moved line keeps its counts
+            self.line_zone._in_count_per_class = previous._in_count_per_class.copy()
+            self.line_zone._out_count_per_class = previous._out_count_per_class.copy()
         self.line_zone_annotator = sv.LineZoneAnnotator(
             thickness=2,
             text_thickness=1,
@@ -285,7 +306,7 @@ class RestaurantCounterPipeline(BasePipeline):
             frame,
             classes=[0],
             conf=inference_conf,
-            imgsz=self.imgsz,
+            imgsz=self.settings.imgsz,
             verbose=False,
             device=self.device
         )[0]
@@ -365,7 +386,7 @@ class RestaurantCounterPipeline(BasePipeline):
             zone_color = sv.Color.GREEN
 
         # Draw zone boundary
-        if self.zone_annotator and self.rules.get("dining_zone"):
+        if self.zone_annotator and self.settings.dining_zone:
             self.zone_annotator.color = zone_color
             annotated_frame = self.zone_annotator.annotate(scene=annotated_frame)
 
@@ -412,7 +433,7 @@ class RestaurantCounterPipeline(BasePipeline):
         self._init_tripwire_if_needed(frame.shape)
 
         # Detection + ByteTrack
-        results = self.model(frame, classes=[0], conf=self.conf_thresh, imgsz=self.imgsz, verbose=False, device=self.device)[0]
+        results = self.model(frame, classes=[0], conf=self.conf_thresh, imgsz=self.settings.imgsz, verbose=False, device=self.device)[0]
         detections = sv.Detections.from_ultralytics(results)
         detections = self._suppress_duplicates(detections)
         if self.tracker is None:
@@ -469,14 +490,15 @@ class RestaurantCounterPipeline(BasePipeline):
         )
 
         logger.warning(f"[{self.camera_name}] DISPATCHING CAPACITY ALERT: {desc}")
-        self.nx_client.create_bookmark(
-            camera_id=self.nx_camera_id,
-            title=title,
-            description=desc,
-            tags=["#restaurant_capacity", "#capacity_alert"],
-            start_time_ms=timestamp_ms,
-            duration_ms=10000
-        )
+        if self.nx_client:
+            self.nx_client.create_bookmark(
+                camera_id=self.nx_id,
+                title=title,
+                description=desc,
+                tags=["#restaurant_capacity", "#capacity_alert"],
+                start_time_ms=timestamp_ms,
+                duration_ms=10000
+            )
 
     def _handle_table_event(self, event_type: str, data: Dict[str, Any], severity: str):
         """Turns table state changes into table_session intervals and Nx Meta Bookmarks."""
@@ -500,7 +522,7 @@ class RestaurantCounterPipeline(BasePipeline):
 
             ts_ms = data.get("timestampMs") or int(time.time() * 1000)
             self.nx_client.create_bookmark(
-                camera_id=self.nx_camera_id,
+                camera_id=self.nx_id,
                 title=title,
                 description=desc,
                 tags=tags,
