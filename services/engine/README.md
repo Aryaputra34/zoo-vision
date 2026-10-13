@@ -81,6 +81,11 @@ uv run python main.py                                              # all enabled
 uv run python test_video.py --video <file.mp4> --pipeline <name>   # one pipeline on a video file
 ```
 
+> **Windows with an NVIDIA GPU:** `pyproject.toml` defaults Windows to CPU wheels. To use your GPU, run
+> `uv pip install --reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu124` and
+> `uv pip install onnxruntime-gpu`, set `$env:UV_NO_SYNC = "1"` in PowerShell, and set `DEVICE=cuda:0` in `.env`.
+> See [10_LOCAL_QUICKSTART.md](../../docs/10_LOCAL_QUICKSTART.md).
+
 Stop the engine with Ctrl+C (also Ctrl+Break on Windows, SIGTERM under Docker); it stops every camera and closes their open intervals first.
 
 `test_video.py` does not use the API: it still takes a rule YAML from `configs/rules/`.

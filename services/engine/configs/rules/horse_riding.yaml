@@ -1,9 +1,8 @@
 # Horse Riding Attraction Tracking & Ride Audit Configuration
 rule_name: "horse_riding_tracking"
 
-# Model Selection (yolo11m.pt, yolo11s.pt, yolo26m.pt, yolo11n.pt)
-# yolo11m provides superior precision for distinguishing horses at CCTV distances
-model_name: "yolo26s.onnx"
+# Model Selection (yolo11m.pt, yolo11s.pt, yolo26s.pt)
+model_name: "yolo26s.pt"
 imgsz: 640
 confidence_threshold: 0.25
 

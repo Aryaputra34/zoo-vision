@@ -133,6 +133,30 @@ and the running engine follows within about a second, without reconnecting the s
 Stop it with Ctrl+C so open intervals are closed with `engine_stop`. After a crash the next start closes them with
 `engine_restart`.
 
+**Running with an NVIDIA GPU on Windows.** By default, `pyproject.toml` pins CPU PyTorch on Windows to keep installs small (~150 MB). If your Windows machine has an NVIDIA GPU (GeForce RTX/GTX), you can enable GPU inference (40–80+ FPS):
+
+```powershell
+cd services\engine
+# 1. Install CUDA PyTorch and ONNX Runtime GPU into .venv
+uv pip install --reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu124
+uv pip install onnxruntime-gpu
+
+# 2. Tell uv not to auto-revert to the CPU lockfile on run
+$env:UV_NO_SYNC = "1"
+
+# 3. Clean the ~2.5 GB downloaded installer cache
+uv cache clean
+```
+
+In `services/engine/.env`, set:
+```dotenv
+DEVICE=cuda:0
+ENGINE_MAX_BATCH=4
+ENGINE_MODEL_JOBS=on
+```
+
+Then run `uv run python main.py` (or `uv run --no-sync python main.py`).
+
 **A light, single-camera run** for a weak laptop: keep one camera (here the gate camera) enabled, play a video
 file through it at 1 fps, and run a small model at imgsz 640. A `FILE` source is relative to `services/engine`, and
 the engine plays it in real time at the file's own frame rate, like a camera. `<token>` is the API token from the

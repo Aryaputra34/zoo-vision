@@ -2,7 +2,7 @@
 rule_name: "restaurant_table_monitor"
 
 # Model Architecture
-model_name: "yolo11s.onnx"
+model_name: "yolo11s.pt"
 imgsz: 1920
 confidence_threshold: 0.20
 target_class: "person"

@@ -1,8 +1,8 @@
 # Vehicle Gate Counter & Indonesian LPR Rule Configuration
 rule_name: "vehicle_gate_audit"
 
-# Model Architecture (yolo11s.onnx, yolo26s.onnx, yolo26m.onnx)
-model_name: "yolo26l.onnx"
+# Model Architecture (yolo11s.pt, yolo26s.pt, yolo26l.onnx)
+model_name: "yolo26s.pt"
 imgsz: 640          # 16:9 Widescreen CCTV (Height 736, Width 1280 - zero letterbox padding)
 
 # BEST IS yolo26l.pt/onnx imgz=640
