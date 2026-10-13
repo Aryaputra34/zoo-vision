@@ -379,7 +379,10 @@ live.
 
 ### 6.1 Engine Configuration (environment variables)
 
-Set the variables in the shell that starts the engine, or in the service unit (section 8). The required ones are
+Running from source, copy `services/engine/.env.example` to `services/engine/.env` and fill it in; the engine
+loads it at start. The file is git-ignored and kept out of the Docker image, and a variable already set in the real
+environment wins over it. Under Docker or a service unit (section 8), set the variables there instead and leave
+out the file. The required ones are
 `REDIS_URL` and `ENGINE_TOKEN`; an invalid environment stops the engine at start and names each bad variable.
 `DEVICE` is `cpu` by default; set `cuda:0` on an NVIDIA GPU. Nx Witness is optional and is not configured here.
 

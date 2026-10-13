@@ -15,8 +15,10 @@ import signal
 import sys
 import threading
 import uuid
+from pathlib import Path
 
 import redis
+from dotenv import load_dotenv
 
 from core.api_client import EngineApi
 from core.api_server import create_app, start_api_server
@@ -146,6 +148,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] (%(name)s) %(message)s",
                         datefmt="%H:%M:%S")
+    # A local-dev convenience: services/engine/.env fills variables that are not already set. The real
+    # environment always wins (override=False), so Docker and production behave as before.
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
     try:
         env = load_env()
     except EnvError as e:

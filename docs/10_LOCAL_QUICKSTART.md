@@ -113,17 +113,17 @@ Each newly registered file gets a validation. A `.pt` or `.engine` file from els
 rescan. The engine below reads the same folder through `ZOO_MODELS_DIR`. `test_video.py` reads
 `services\engine\models` unless you set `ZOO_MODELS_DIR` in that terminal too.
 
-**Run the engine against the stack.** `<redis-password>` and `<port>` come from `deploy\.env`, and
-`<engine-token>` is `ENGINE_TOKEN` from the same file:
+**Run the engine against the stack.** Copy the engine's env template and fill it in. `<redis-password>` and
+the port come from `deploy\.env`, and `<engine-token>` is `ENGINE_TOKEN` from the same file:
 
 ```powershell
 cd services\engine
-$env:REDIS_URL = "redis://:<redis-password>@127.0.0.1:<port>/0"
-$env:ENGINE_TOKEN = "<engine-token>"
-$env:API_URL = "http://127.0.0.1:3001"
-$env:ZOO_MODELS_DIR = "..\..\deploy\data\models"
+copy .env.example .env          # git-ignored; edit REDIS_URL and ENGINE_TOKEN
 uv run python main.py
 ```
+
+The engine loads `services\engine\.env` at start. A variable already set in the terminal wins over the file,
+so `$env:API_URL = "..."` still overrides it.
 
 `ENGINE_GROUP` defaults to `default`. The engine fetches the enabled cameras of its group from the API and
 refetches whenever a camera changes, so edit cameras in the API (Swagger at `/api/docs`, or the web UI later)

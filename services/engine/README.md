@@ -71,7 +71,12 @@ environment stops it at start and names every bad variable (never the value). En
 | `ENGINE_MAX_BATCH` | `1` | Most frames batched into one model call, 1..16 |
 | `ENGINE_MODEL_JOBS` | `on` | `on` or `off`: whether this engine runs validation and conversion jobs. A second engine group sets `off` |
 
+Running from source, copy `.env.example` to `.env` (git-ignored and excluded from the Docker image) and fill
+it in; the engine loads `services/engine/.env` at start. A variable already set in the real environment wins
+over the file, so Docker and production are unaffected.
+
 ```bash
+cp .env.example .env                                               # once, then edit the values
 uv run python main.py                                              # all enabled cameras of the group
 uv run python test_video.py --video <file.mp4> --pipeline <name>   # one pipeline on a video file
 ```
