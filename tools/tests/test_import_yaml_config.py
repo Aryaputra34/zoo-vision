@@ -65,6 +65,11 @@ def test_aliases_and_source_types():
 def test_mask_url_hides_credentials():
     assert mask_url("rtsp://admin:secret@10.0.0.5:554/s1") == "rtsp://***@10.0.0.5:554/s1"
     assert mask_url("sample_data/cars.mp4") == "sample_data/cars.mp4"
+    assert mask_url("rtsp://u:p@ss@10.0.0.5:554/s1") == "rtsp://***@10.0.0.5:554/s1"
+    slash = mask_url("rtsp://u:a/b@h/x")
+    assert "a/b" not in slash and "u:a" not in slash and slash == "rtsp://***@h/x"
+    assert mask_url("rtsp://h/x?token=abc") == "rtsp://h/x?***"
+    assert mask_url("rtsp://10.0.0.5:554/s1") == "rtsp://10.0.0.5:554/s1"
 
 
 def test_import_exit_code(capsys):

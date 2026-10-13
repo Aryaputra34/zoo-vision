@@ -165,7 +165,10 @@ def source_type(source: str) -> str:
 
 
 def mask_url(url: str) -> str:
-    return re.sub(r"^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@]*@", r"\1***@", url)
+    """Hide credentials: everything up to the LAST '@' (a password may hold '@' or '/'), and the query
+    string (it can carry tokens). Over-masking is deliberate; this only feeds log output."""
+    url = re.sub(r"^([a-zA-Z][a-zA-Z0-9+.-]*://).*@", r"\1***@", url, flags=re.DOTALL)
+    return re.sub(r"\?.*$", "?***", url, flags=re.DOTALL)
 
 
 def camera_payload(cam: dict, use_case: str, settings: dict) -> dict:
