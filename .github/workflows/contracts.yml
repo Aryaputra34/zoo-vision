@@ -1,7 +1,7 @@
 name: contracts
 on:
   push:
-    paths: ["packages/contracts/**", "services/engine/contracts/**", "services/engine/core/settings.py", "services/engine/core/messages.py", ".github/workflows/contracts.yml"]
+    paths: ["packages/contracts/**", "services/engine/contracts/**", "services/engine/core/settings.py", "services/engine/core/messages.py", "services/engine/uv.lock", ".github/workflows/contracts.yml"]
 jobs:
   test:
     runs-on: ubuntu-24.04

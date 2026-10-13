@@ -180,7 +180,7 @@ function createValidator(registry = loadRegistry()) {
     if (!schema) return [];
     const fields = new Map();
     walkSchema(schema, (node, pointer) => {
-      if (node['x-minRole'] && pointer) fields.set(`${pointer} ${node['x-minRole']}`, { path: pointer, minRole: node['x-minRole'] });
+      if (node['x-minRole'] && pointer) fields.set(`${pointer}\u0000${node['x-minRole']}`, { path: pointer, minRole: node['x-minRole'] });
     });
     return [...fields.values()];
   }

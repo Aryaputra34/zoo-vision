@@ -58,7 +58,10 @@ class UploadGuard implements NestInterceptor {
         ),
       ),
       finalize(() => {
-        if (req.file?.path) void rm(req.file.path, { force: true });
+        if (req.file?.path) {
+          // a failed cleanup (EBUSY/EPERM on Windows) must not become an unhandled rejection
+          void rm(req.file.path, { force: true }).catch(() => undefined);
+        }
       }),
     );
   }
