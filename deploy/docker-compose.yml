@@ -1,6 +1,8 @@
 # Zoo Vision on one park server. Run from this folder: docker compose up -d
 # On a laptop without an NVIDIA GPU, name the services: docker compose up -d --build postgres redis api-migrate api
 # Host data lives in ${ZOO_DATA_DIR} (default ./data): recordings, snapshots, models, logs. See README.md.
+# The API and the engine share ${ZOO_DATA_DIR}/models. The engine has no config files: it reads its cameras
+# from the API (API_URL, ENGINE_TOKEN) and reloads them live. Secrets come from .env.
 services:
   postgres:
     image: postgres:17.11-alpine
@@ -65,6 +67,7 @@ services:
       COOKIE_SECURE: "false" # no TLS until Caddy in Phase 3
       SWAGGER: public
       MODELS_DIR: /data/models
+      JOBS: "on" # offline check every 5 s; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models
     ports:
@@ -111,14 +114,18 @@ services:
               count: all # Passes your RTX 3060 / 4070 GPU directly inside
               capabilities: [ gpu, video ] # Enables CUDA + NVDEC hardware video decoding
     volumes:
-      - ../services/engine/configs:/app/configs # Edit camera configs without rebuilding image
-      - ${ZOO_DATA_DIR:-./data}/models:/app/models # Fetched by tools/fetch_models.py
+      - ${ZOO_DATA_DIR:-./data}/models:/app/models # Same host folder as the API; read-write for ONNX conversions
       - ${ZOO_DATA_DIR:-./data}/logs:/app/logs
       - ${ZOO_DATA_DIR:-./data}/snapshots:/app/snapshots # Event JPEGs served to the dashboard
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:${ZOO_REDIS_PORT:-6379}/0
       - ENGINE_GROUP=default
+      - API_URL=http://127.0.0.1:3001 # host networking: the API is published on the loopback
+      - ENGINE_TOKEN=${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
+      - DEVICE=cuda:0
+      - ZOO_MODELS_DIR=/app/models
+      - SNAPSHOT_DIR=/app/snapshots
 
 volumes:
   pgdata:

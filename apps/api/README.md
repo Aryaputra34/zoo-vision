@@ -26,6 +26,8 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `PORT` | default `3001` |
 | `INGEST` | `on` (default) or `off`: whether this process consumes the Redis stream |
 | `JOBS` | `on` (default) or `off`: whether this process runs background jobs (the camera offline check, every 5 s) |
+| `MODELS_DIR` | default `/data/models`: the AI models folder (`inbox/`, `registry/`, built-ins in the root), shared with the engine |
+| `MODEL_UPLOAD_MAX_BYTES` | default 1 GiB: the largest ONNX file the web upload accepts |
 
 The Prisma CLI reads only `DATABASE_MIGRATE_URL` (Postgres as the owner role `zoo_owner`), from
 `prisma.config.ts`. The running API never has the owner password.
@@ -103,6 +105,28 @@ accepted. Anything else is 401.
 | Route | Returns |
 |---|---|
 | `GET /internal/engine/cameras?group=<g>` | `{"cameras": EngineCamera[]}`: the enabled cameras of engine group `g` (`^[a-z0-9_-]{1,32}$`, else 400), sorted by id. Each has its active settings with schema defaults filled in, the decrypted `sourceUrl` (the sub stream when `inferenceStream` is `SUB` and a sub URL is set), `targetFps`, `nxCameraId` and `model` |
+
+The engine also reports the result of a model job: `POST /internal/engine/models/:id/validation` and
+`POST /internal/engine/models/:id/conversion` (both 204). The API queues the jobs on the Redis list
+`model:jobs`.
+
+## Cameras, live status and models
+
+User routes under `/api/v1`:
+
+| Route | Role | What it does |
+|---|---|---|
+| `GET /camera-status` | any | Per camera: `online` (the engine reported within 15 s) and its `status` (`state`, `appliedVersion`, ...), or null |
+| `GET /cameras/:id/status` | any | The same for one camera |
+| `GET /cameras/:id/frame` | any | The latest JPEG from the engine (404 until it sends one) |
+| `GET /models`, `GET /models/:id` | MANAGER | List and read AI models |
+| `POST /models` | SUPERADMIN | Upload an ONNX file (multipart). `.pt` and `.engine` files are refused: copy them into `inbox/` |
+| `POST /models/rescan` | SUPERADMIN | Register the files in `inbox/` and the built-ins in the models root |
+| `POST /models/:id/validate`, `POST /models/:id/convert` | SUPERADMIN | Queue a validation, or a conversion to ONNX, for the engine |
+| `DELETE /models/:id` | SUPERADMIN | Remove a model |
+
+A camera has `inferenceStream` (`MAIN` or `SUB`): which stream URL the engine analyses. The engine applies camera
+changes live, so saving settings does not restart its stream.
 
 ## Docker
 
