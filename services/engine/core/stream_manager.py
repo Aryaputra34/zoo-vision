@@ -1,8 +1,10 @@
 """
 Threaded Stream Manager with FPS Throttling and Auto-Reconnect.
 Ingests video from RTSP (Nx Server), webcams, or local MP4 files without frame buffer lag.
+A file plays in real time at its own frame rate, like a camera, and loops at its end.
 """
 
+import math
 import os
 import re
 import time
@@ -21,6 +23,8 @@ logger = logging.getLogger("StreamManager")
 
 RECONNECT_MIN_S = 2.0
 RECONNECT_MAX_S = 30.0
+FILE_FPS_DEFAULT = 25.0  # a file whose frame rate is missing or unusable plays at this rate
+FILE_FPS_MAX = 1000.0
 
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 # a parameter whose name holds a secret word (access_token, api_key, apikey, X-Amz-Signature, jsessionid, ...)
@@ -77,6 +81,9 @@ class StreamManager:
         self.lock = threading.Lock()
         self.thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._clock = time.monotonic  # paces the reads and the hand-outs (tests put a virtual clock here)
+        self._file_period = 1.0 / FILE_FPS_DEFAULT  # a file: seconds between two of its frames
+        self._next_due: Optional[float] = None  # a file: when its next frame is due, on _clock
 
     def start(self):
         """Opens the source, then starts the background frame reader thread."""
@@ -94,6 +101,37 @@ class StreamManager:
         self.cap = cv2.VideoCapture(self.source)
         if not self.cap.isOpened():
             logger.warning(f"[{self.camera_id}] Failed to open stream source: {mask_url(self.source)}")
+        elif not self.live:
+            self._file_period = 1.0 / self._file_fps()
+            self._next_due = None
+
+    def _file_fps(self) -> float:
+        try:
+            fps = float(self.cap.get(cv2.CAP_PROP_FPS))
+        except Exception:
+            fps = 0.0
+        if not (math.isfinite(fps) and 0 < fps <= FILE_FPS_MAX):
+            logger.info(f"[{self.camera_id}] The file reports no usable frame rate: playing it at {FILE_FPS_DEFAULT:.0f} fps")
+            return FILE_FPS_DEFAULT
+        return fps
+
+    def _pace_file(self) -> bool:
+        """A file plays in real time: waits until its next frame is due. A reader that fell behind (a slow decode)
+        skips the frames it missed (grab, no decode) instead of drifting behind the clock. True once stopping."""
+        period, now = self._file_period, self._clock()
+        if self._next_due is None:
+            self._next_due = now
+        elif now < self._next_due:
+            if self._wait(self._next_due - now):
+                return True
+        else:
+            missed = int((now - self._next_due) / period)
+            for _ in range(missed):
+                if not self.cap.grab():
+                    break  # the end: the read below fails and the file loops back
+            self._next_due += missed * period
+        self._next_due += period
+        return False
 
     def _release(self):
         cap, self.cap = self.cap, None
@@ -113,7 +151,7 @@ class StreamManager:
 
     def _read_frames(self):
         reconnect_delay = RECONNECT_MIN_S
-        last_yield_time = 0.0
+        last_yield_time = -math.inf
 
         while not self._stop_event.is_set():
             if self.cap is None or not self.cap.isOpened():
@@ -123,6 +161,8 @@ class StreamManager:
                 self._connect()
                 continue
 
+            if not self.live and self._pace_file():
+                return
             ret, frame = self.cap.read()
             if not ret:
                 # If reading a file, loop back to the start
@@ -140,13 +180,13 @@ class StreamManager:
                 continue
 
             reconnect_delay = RECONNECT_MIN_S
-            current_time = time.time()
+            now = self._clock()
             # Throttle to target FPS
-            if current_time - last_yield_time >= self.frame_interval:
+            if now - last_yield_time >= self.frame_interval:
                 with self.lock:
                     self.latest_frame = frame
-                    self.latest_timestamp_ms = int(current_time * 1000)
-                last_yield_time = current_time
+                    self.latest_timestamp_ms = int(time.time() * 1000)
+                last_yield_time = now
 
             # Small sleep to yield CPU
             if self._wait(0.005):

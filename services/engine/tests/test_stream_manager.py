@@ -192,3 +192,97 @@ def test_a_file_loops_back_to_its_start(flaky_capture, sleeps, source):
     mgr = StreamManager(source, "cam_x", 5)
     _run_loop(mgr, sleeps, limit=2)
     assert flaky_capture.seeks == [0] and flaky_capture.opens == 1
+
+
+class _NumberedCapture:
+    """An endless video whose frames are their own numbers. Reports `fps` as CAP_PROP_FPS; a read takes
+    `read_cost` s of virtual time (a slow decoder). Counts grabs (frames skipped without decoding)."""
+
+    fps = 10.0
+    read_cost = 0.0
+    clock = None
+    grabs = 0
+
+    def __init__(self, *_args, **_kwargs):
+        self.pos = 0
+
+    def isOpened(self):
+        return True
+
+    def get(self, prop):
+        return _NumberedCapture.fps if prop == sm.cv2.CAP_PROP_FPS else 0.0
+
+    def read(self):
+        if _NumberedCapture.clock is not None:
+            _NumberedCapture.clock.t += _NumberedCapture.read_cost
+        self.pos += 1
+        return True, self.pos - 1
+
+    def grab(self):
+        _NumberedCapture.grabs += 1
+        self.pos += 1
+        return True
+
+    def set(self, prop, value):
+        self.pos = int(value)
+        return True
+
+    def release(self):
+        pass
+
+
+class _VirtualTime:
+    def __init__(self):
+        self.t = 0.0
+        self.until = 2.0
+
+    def __call__(self):
+        return self.t
+
+
+@pytest.fixture
+def virtual_time(monkeypatch):
+    """The reader's waits advance a virtual clock instead of sleeping; the manager stops at `until`."""
+    vt = _VirtualTime()
+    _NumberedCapture.fps, _NumberedCapture.read_cost, _NumberedCapture.clock, _NumberedCapture.grabs = 10.0, 0, vt, 0
+    monkeypatch.setattr(sm.cv2, "VideoCapture", _NumberedCapture)
+
+    def fake_wait(mgr, seconds):
+        vt.t += seconds
+        if vt.t >= vt.until:
+            mgr._stop_event.set()
+        return mgr._stop_event.is_set()
+
+    monkeypatch.setattr(StreamManager, "_wait", fake_wait)
+    return vt
+
+
+def _play(source, vt, target_fps=30):
+    mgr = StreamManager(source, "cam_x", target_fps)
+    mgr._clock = vt
+    mgr._connect()
+    mgr._capture_loop()
+    frame, _ = mgr.get_frame()
+    return frame  # the number of the last frame handed out, at virtual time `until`
+
+
+def test_a_file_plays_at_its_own_frame_rate(virtual_time):
+    assert 18 <= _play("sample_data/cars.mp4", virtual_time) <= 21  # 2 s of a 10 fps file: about frame 20
+    assert _NumberedCapture.grabs == 0
+
+
+def test_a_file_read_too_slowly_skips_frames_instead_of_drifting(virtual_time):
+    _NumberedCapture.read_cost = 0.25  # each decode takes 2.5 frames of a 10 fps file
+    assert 15 <= _play("sample_data/cars.mp4", virtual_time) <= 22  # still about frame 20 after 2 s
+    assert _NumberedCapture.grabs > 0
+
+
+@pytest.mark.parametrize("reported", [0.0, float("nan"), float("inf")])
+def test_a_file_without_a_usable_frame_rate_plays_at_25_fps(virtual_time, reported):
+    _NumberedCapture.fps = reported
+    virtual_time.until = 1.0
+    assert 23 <= _play("sample_data/cars.mp4", virtual_time) <= 26
+
+
+def test_a_network_stream_is_not_paced(virtual_time):
+    assert _play("rtsp://10.0.0.5/main", virtual_time) > 100  # read as fast as it comes (here: every 5 ms yield)
