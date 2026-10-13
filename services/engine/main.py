@@ -22,6 +22,7 @@ from core.config_listener import ConfigListener
 from core.env import EngineEnv, EnvError, load_env
 from core.event_stream import EventStream
 from core.messages import event_message
+from core.model_jobs import ModelJobs
 from core.model_pool import ModelPool
 from core.snapshot_store import SnapshotStore
 from core.status import StatusPublisher
@@ -31,14 +32,14 @@ from nx_integration.nx_client import NxClient
 
 logger = logging.getLogger("MainOrchestrator")
 
-THREAD_JOIN_S = 5.0
+THREAD_JOIN_S = 7.0  # above the 5 s BRPOP of the model jobs thread
 
 
 def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = False) -> None:
     """Runs the engine until `stop` is set. `loader` replaces ultralytics' YOLO in the model pool (tests)."""
     boot_id = uuid.uuid4().hex
     client = redis.Redis.from_url(env.redis_url, socket_timeout=5, socket_connect_timeout=5)
-    events = pool = snapshots = supervisor = listener = publisher = server = None
+    events = pool = snapshots = supervisor = listener = publisher = server = jobs = jobs_client = None
     try:
         events = EventStream(env.redis_url, engine_group=env.engine_group)
         events.send(event_message(None, "system", "engine_started",
@@ -55,6 +56,11 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         listener = ConfigListener(client, supervisor.request_sync)
         publisher.start()
         listener.start()
+        if env.model_jobs:
+            # BRPOP blocks for 5 s, so this connection's read timeout must be longer than the shared client's
+            jobs_client = redis.Redis.from_url(env.redis_url, socket_timeout=10, socket_connect_timeout=5)
+            jobs = ModelJobs(jobs_client, api, env.models_dir, env.device)
+            jobs.start()
         if env.preview_port:
             app = create_app(supervisor.pipelines, snapshots, env.preview_api_key or None)
             server = start_api_server(app, host=env.preview_host, port=env.preview_port)
@@ -68,10 +74,11 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         logger.info("Engine stopping")
         if supervisor is not None:
             supervisor.shutdown()  # supervisor.run has returned
-        for thread in (listener, publisher):
+        threads = (listener, publisher, jobs)
+        for thread in threads:
             if thread is not None:
                 thread.stop()
-        for thread in (listener, publisher):
+        for thread in threads:
             if thread is not None and thread.is_alive():
                 thread.join(THREAD_JOIN_S)
         if server is not None:
@@ -83,6 +90,8 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         if events is not None:
             events.stop()
         client.close()
+        if jobs_client is not None:
+            jobs_client.close()
 
 
 def _run_with_windows(supervisor: Supervisor, stop: threading.Event) -> None:

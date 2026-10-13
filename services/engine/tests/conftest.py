@@ -42,6 +42,7 @@ class FakeYOLO:
     loads = 0
     batches: list = []
     kwargs: list = []
+    exports: list = []
     overlaps = 0
     gate = threading.Event()
     load_gate = threading.Event()
@@ -53,7 +54,7 @@ class FakeYOLO:
     def reset(cls):
         cls.boxes = torch.zeros((0, 6))
         cls.load_started, cls.loads, cls.overlaps = 0, 0, 0
-        cls.batches, cls.kwargs = [], []
+        cls.batches, cls.kwargs, cls.exports = [], [], []
         cls.gate, cls.load_gate = threading.Event(), threading.Event()
         cls.gate.set()
         cls.load_gate.set()
@@ -68,6 +69,13 @@ class FakeYOLO:
             type(self).loads += 1
         self._busy = threading.Lock()  # overlap is per model object: separate models may run at once
         self.model_name, self.names = model, dict(COCO_NAMES)
+
+    def export(self, **kwargs):
+        """Writes "<stem>.onnx" next to the source model and returns its path (records the arguments)."""
+        type(self).exports.append(kwargs)
+        out = Path(str(self.model_name)).with_suffix(".onnx")
+        out.write_bytes(b"fake onnx")
+        return str(out)
 
     def __call__(self, source, **kwargs):
         cls = type(self)
