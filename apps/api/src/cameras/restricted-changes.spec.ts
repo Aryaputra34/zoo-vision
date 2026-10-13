@@ -73,7 +73,9 @@ describe('restrictedChanges', () => {
 
   describe('paths with a * segment', () => {
     const stub = {
-      restrictedFields: () => [{ path: '/zones/*/sensitivity', minRole: 'SUPERADMIN' }],
+      restrictedFields: () => [
+        { path: '/zones/*/sensitivity', minRole: 'SUPERADMIN' },
+      ],
       withDefaults: (_useCase: string, doc: object) => structuredClone(doc),
     } as unknown as Validator;
     const zone = (id: string, sensitivity?: number) => ({
@@ -111,7 +113,10 @@ describe('restrictedChanges', () => {
 
     it('a manager may remove a zone', () => {
       expect(
-        run({ zones: [zone('a', 0.5), zone('b', 0.9)] }, { zones: [zone('a', 0.5)] }),
+        run(
+          { zones: [zone('a', 0.5), zone('b', 0.9)] },
+          { zones: [zone('a', 0.5)] },
+        ),
       ).toEqual([]);
     });
   });

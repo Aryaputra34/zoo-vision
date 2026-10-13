@@ -3,11 +3,13 @@ import type { Validator } from '@zoo-vision/contracts';
 import { roleAtLeast } from '../auth/actor';
 import type { Role } from '../generated/prisma/enums';
 
-const unescape = (segment: string) => segment.replace(/~1/g, '/').replace(/~0/g, '~');
+const unescape = (segment: string) =>
+  segment.replace(/~1/g, '/').replace(/~0/g, '~');
 
 /** One step down an object by pointer segment; anything else yields undefined. */
 function child(doc: unknown, segment: string): unknown {
-  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return undefined;
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc))
+    return undefined;
   return (doc as Record<string, unknown>)[unescape(segment)];
 }
 
@@ -16,7 +18,9 @@ function definedPaths(doc: unknown, segments: string[], at: string): string[] {
   if (segments.length === 0) return doc === undefined ? [] : [at];
   const [head, ...rest] = segments;
   if (head === '*') {
-    return Array.isArray(doc) ? doc.flatMap((item, i) => definedPaths(item, rest, `${at}/${i}`)) : [];
+    return Array.isArray(doc)
+      ? doc.flatMap((item, i) => definedPaths(item, rest, `${at}/${i}`))
+      : [];
   }
   return definedPaths(child(doc, head), rest, `${at}/${head}`);
 }
@@ -53,7 +57,14 @@ function collect(
   }
   const [head, ...rest] = segments;
   if (head !== '*') {
-    collect(child(before, head), child(after, head), child(raw, head), rest, `${at}/${head}`, out);
+    collect(
+      child(before, head),
+      child(after, head),
+      child(raw, head),
+      rest,
+      `${at}/${head}`,
+      out,
+    );
     return;
   }
   if (!Array.isArray(after)) return;
@@ -91,6 +102,7 @@ export function restrictedChanges(
   const b = validator.withDefaults(useCase, before ?? {});
   const a = validator.withDefaults(useCase, after);
   const out = new Set<string>();
-  for (const f of fields) collect(b, a, after, f.path.split('/').slice(1), '', out);
+  for (const f of fields)
+    collect(b, a, after, f.path.split('/').slice(1), '', out);
   return [...out];
 }
