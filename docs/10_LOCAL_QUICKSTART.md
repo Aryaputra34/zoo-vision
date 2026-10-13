@@ -11,8 +11,8 @@ every phase; the full operator manual comes in Phase 5.
 | Part | Repo / folder | Port | Talks to |
 | :--- | :--- | :--- | :--- |
 | MediaMTX | `zoo-vision` root, config `deploy/mediamtx.yml` | 8554 RTSP, 9996 clips | FFmpeg loops in, engine and dashboard out |
-| Engine | `zoo-vision/services/engine` | 8000 (preview, snapshots) | reads RTSP from MediaMTX, posts events to the dashboard |
-| Dashboard | `zoo-vision-fe` | 3000 | receives events, proxies the engine API and MediaMTX clips |
+| Engine | `zoo-vision/services/engine` | 8000 (preview, snapshots) | reads RTSP from MediaMTX; sends events to the API's Redis stream (the dashboard gets none until Phase 3) |
+| Dashboard | `zoo-vision-fe` | 3000 | shows the engine's live preview; receives no events until Phase 3; proxies the engine API and MediaMTX clips |
 
 ## One-time setup
 
@@ -154,8 +154,9 @@ Start them in this order. The MediaMTX terminal shows each camera path coming on
 
 **What to check in the dashboard:**
 * `/live`: an annotated preview per camera (served by the engine on :8000).
-* Use case pages and `/events`: new events arrive with a snapshot.
-* **Bukti** (evidence) on an event shows its snapshot and plays the MediaMTX clip from 15 s before to 15 s after
+* Use case pages and `/events`: no new events arrive in Phase 1 (the engine no longer posts to the dashboard; see
+  the Phase 1 note above). Seed fake events with `npm run seed` to see these pages.
+* **Bukti** (evidence) on a seeded event shows its snapshot and plays the MediaMTX clip from 15 s before to 15 s after
   (needs a minute or two of recording first).
 
 **Dashboard only, without the engine:** `npm run seed` in `zoo-vision-fe` fills it with realistic fake events.
