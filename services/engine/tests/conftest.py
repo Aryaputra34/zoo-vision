@@ -31,12 +31,14 @@ def engine_cwd(monkeypatch):
 class FakeYOLO:
     """
     Stands in for ultralytics.YOLO: loads no weights, detects nothing. Class-level records:
-    `loads` (constructions), `batches` (frames per call), `kwargs` (keyword arguments per call).
+    `load_started` (constructions begun, counted before `load_gate`), `loads` (constructions finished),
+    `batches` (frames per call), `kwargs` (keyword arguments per call).
     `gate` blocks __call__ and `load_gate` blocks construction until set (both set by default).
     Two overlapping calls fail the test (see `overlaps`, checked by the fake_yolo fixture).
     """
 
     boxes = torch.zeros((0, 6))  # N x 6 (x1, y1, x2, y2, conf, cls) returned for every frame
+    load_started = 0
     loads = 0
     batches: list = []
     kwargs: list = []
@@ -50,13 +52,15 @@ class FakeYOLO:
     @classmethod
     def reset(cls):
         cls.boxes = torch.zeros((0, 6))
-        cls.loads, cls.overlaps = 0, 0
+        cls.load_started, cls.loads, cls.overlaps = 0, 0, 0
         cls.batches, cls.kwargs = [], []
         cls.gate, cls.load_gate = threading.Event(), threading.Event()
         cls.gate.set()
         cls.load_gate.set()
 
     def __init__(self, model=None, task=None):
+        with type(self)._record:
+            type(self).load_started += 1
         type(self).load_gate.wait(10)
         if model is not None and "missing" in str(model):
             raise FileNotFoundError(model)
@@ -301,8 +305,8 @@ def camera_threads() -> list[str]:
 
 @pytest.fixture
 def make_worker(deps, fake_yolo):
-    """Builds CameraWorkers on `deps`; at teardown opens the FakeYOLO gates, stops them, and checks that none of
-    their threads is left."""
+    """Builds CameraWorkers on `deps`; at teardown opens the FakeYOLO gates, stops them, and checks that their
+    threads end (a helper still loading ends on its own once the gate is open)."""
     from core.worker import CameraWorker
 
     made = []
@@ -317,4 +321,4 @@ def make_worker(deps, fake_yolo):
     fake_yolo.load_gate.set()
     for w in made:
         w.stop("engine_stop", timeout=5.0)
-    assert camera_threads() == []
+    assert wait_until(lambda: camera_threads() == [])

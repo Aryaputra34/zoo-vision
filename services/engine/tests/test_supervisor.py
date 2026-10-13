@@ -43,7 +43,7 @@ def make_sup(deps, fake_yolo):
     fake_yolo.load_gate.set()
     for sup in made:
         sup.shutdown()
-    assert camera_threads() == []
+    assert wait_until(lambda: camera_threads() == [])
 
 
 @pytest.fixture
@@ -65,10 +65,20 @@ def run_sup(make_sup):
         assert not thread.is_alive()
 
 
+def recorder(sup_ref: list, stopped: list):
+    """An on_stop that records each camera id, and whether the camera was still in `workers` at that moment."""
+    def on_stop(camera_id):
+        stopped.append(camera_id)
+        if camera_id in sup_ref[0].workers:
+            stopped.append(f"{camera_id} still listed")
+    return on_stop
+
+
 def test_reconcile_starts_new_stops_removed_and_updates_the_rest(make_sup, fake_yolo, stream):
     fake_yolo.boxes = people_in("T1", "T2")
-    stopped = []
-    sup = make_sup(FakeApi(), on_stop=stopped.append)
+    stopped, ref = [], []
+    sup = make_sup(FakeApi(), on_stop=recorder(ref, stopped))
+    ref.append(sup)
     sup.reconcile([cfg(id="a"), cfg(id="b")])
     assert set(sup.workers) == {"a", "b"}
     a = sup.workers["a"]
@@ -139,6 +149,41 @@ def test_resync_runs_without_a_request(make_sup, run_sup):
     assert wait_until(lambda: api.calls >= 3)
 
 
+def test_a_slow_stop_does_not_hold_up_the_other_cameras(make_sup, fake_yolo):
+    stopped, ref = [], []
+    sup = make_sup(FakeApi(), on_stop=recorder(ref, stopped))
+    ref.append(sup)
+    b = cfg(id="b", model_path="b.onnx")
+    sup.reconcile([b])
+    assert wait_until(lambda: sup.workers["b"].state == "running")
+    fake_yolo.load_gate.clear()
+    sup.reconcile([b, cfg(id="a", model_path="a.onnx")])
+    a = sup.workers["a"]
+    assert wait_until(lambda: fake_yolo.load_started == 2)  # a's thread is in its first model load: its stop waits
+
+    reconciled = threading.Event()
+
+    def remove_a_update_b_add_c():  # c shares b's model, which is loaded: it needs no load
+        sup.reconcile([cfg(id="b", model_path="b.onnx", version=2, settings=table_dict("T1")),
+                       cfg(id="c", model_path="b.onnx")])
+        reconciled.set()
+
+    thread = threading.Thread(target=remove_a_update_b_add_c, daemon=True)
+    thread.start()
+    assert wait_until(lambda: sup.workers["b"].applied_version == 2 and "c" in sup.workers
+                      and sup.workers["c"].applied_version == 1)
+    assert "a" not in sup.workers and a.state != "stopped" and stopped == [] and not reconciled.is_set()
+    checker = threading.Thread(target=sup.check_stalls, daemon=True)  # the lock is free while a stops
+    checker.start()
+    checker.join(2)
+    assert not checker.is_alive()
+
+    fake_yolo.load_gate.set()
+    assert wait_until(reconciled.is_set)
+    thread.join(5)
+    assert stopped == ["a"] and a.state == "stopped"
+
+
 def test_stalled_worker_is_replaced(make_sup, fake_yolo, streams, stream, monkeypatch):
     fake_yolo.boxes = people_in("T1")
     streams.silent = {"dead"}  # a stream that never connects
@@ -151,8 +196,9 @@ def test_stalled_worker_is_replaced(make_sup, fake_yolo, streams, stream, monkey
         return process_frame(self, frame, timestamp_ms)
 
     monkeypatch.setattr(TableOccupancyPipeline, "process_frame", breakable)
-    stopped = []
-    sup = make_sup(FakeApi(), stall_sec=0.3, on_stop=stopped.append)
+    stopped, ref = [], []
+    sup = make_sup(FakeApi(), stall_sec=0.3, on_stop=recorder(ref, stopped))
+    ref.append(sup)
     sup.reconcile([cfg(id="a"), cfg(id="dead")])
     old, dead = sup.workers["a"], sup.workers["dead"]
     assert wait_until(lambda: opened_tables(stream, "a") == {"T1"})

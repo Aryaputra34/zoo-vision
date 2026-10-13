@@ -8,7 +8,8 @@ Threads, and what each one owns:
   * `update()` and `stop()` run in the caller's thread (the supervisor's). update() parses settings (cheap) and never
     waits for a model load or a stream connect: those run in helper threads.
   * Loaders (`cam-<id>-load`) acquire a detector from the pool; stream starters (`cam-<id>-stream`) start a new stream.
-    Each hands its result to the worker thread through the queue.
+    Each hands its result to the worker thread through the queue. stop() doesn't wait for them: one that finishes
+    after the worker stopped releases its detector or stops its stream itself.
 
 Generations: every settings change (version, use case, model) takes the next settings generation, every stream change
 the next stream generation. A helper queues its result only while its generation is still the newest, and the worker
@@ -107,7 +108,8 @@ class CameraWorker:
         self.config_error: str | None = None
         self.rejected_versions: set[int] = set()  # versions already reported with a config_rejected event
         self.restarts = 0  # set by the supervisor's watchdog
-        self.started_at = clock()  # start(), then again when the stream of a first pipeline starts
+        self.started_at = clock()  # set again by start(): the worker's start (the status expiry anchor)
+        self.stream_started_at: float | None = None  # when the stream of the first pipeline was requested
         self.last_frame_at: float | None = None  # when the last frame was processed
         self.fps = 0.0
         self.latest_raw: np.ndarray | None = None  # the last frame taken from the stream, before the pipeline
@@ -129,7 +131,6 @@ class CameraWorker:
         self._stop_requested = False
         self._end_reason = "config_change"
         self._thread: threading.Thread | None = None
-        self._helpers: set[threading.Thread] = set()
         self._cleaned_up = False
 
     # --- caller's thread -------------------------------------------------------------------------------------
@@ -173,30 +174,29 @@ class CameraWorker:
 
     def stop(self, end_reason: str = "config_change", timeout: float = 10.0) -> None:
         """Ends the worker thread, which then shuts the pipeline down with `end_reason`, stops the stream and releases
-        the detector. Waits up to `timeout` s in all for the worker thread and the helpers. A helper that finishes
-        later releases or stops what it brought."""
-        deadline = time.monotonic() + timeout
+        the detector. Waits up to `timeout` s for the worker thread; it is only slow while the thread is inside a
+        model load (the first one) or a pipeline call. Helpers are not waited for: one that finishes later releases
+        or stops what it brought."""
         with self._lock:
             if not self._stopping:
                 self._stopping = self._stop_requested = True
                 self._end_reason = end_reason
-            thread, helpers = self._thread, list(self._helpers)
+            thread = self._thread
         self._wake.set()
         if thread is None:
             self._cleanup()  # never started
         elif thread is not threading.current_thread():
-            thread.join(max(0.0, deadline - time.monotonic()))
+            thread.join(timeout)
             if thread.is_alive():
-                logger.warning("[%s] The worker did not stop within %.1f s; it cleans up when its frame ends",
+                logger.warning("[%s] The worker did not stop within %.1f s; it cleans up when its call returns",
                                self.id, timeout)
-        for helper in helpers:
-            helper.join(max(0.0, deadline - time.monotonic()))
 
     def stalled(self, now: float, after: float = 30.0) -> bool:
-        """True when the stream delivered a frame within `after` s, the worker started more than `after` s ago, and no
-        frame was processed in the last `after` s. `now` is on the clock of the stream's timestamps (epoch)."""
-        stream = self._stream
-        if stream is None or self._stopping or now - self.started_at <= after:
+        """True when the stream delivered a frame within `after` s, the worker's stream started more than `after` s ago
+        (so after its first model load), and no frame was processed in the last `after` s. `now` is on the clock of
+        the stream's timestamps (epoch)."""
+        stream, stream_started_at = self._stream, self.stream_started_at
+        if stream is None or self._stopping or stream_started_at is None or now - stream_started_at <= after:
             return False
         last = self.last_frame_at
         if last is not None and now - last <= after:
@@ -283,23 +283,16 @@ class CameraWorker:
 
     def _spawn(self, kind: str, target: Callable, *args) -> None:
         """Runs target(*args) in a helper thread, unless the worker is stopping (then nothing was acquired yet)."""
-        thread = threading.Thread(target=self._helper, args=(target, args), name=f"cam-{self.id}-{kind}", daemon=True)
         with self._lock:
             if self._stopping:
                 return
-            # recorded once started, under the lock: stop() only ever joins a started thread, and the helper's
-            # own discard (which needs the lock) always comes after the add
-            thread.start()
-            self._helpers.add(thread)
+        threading.Thread(target=self._helper, args=(target, args), name=f"cam-{self.id}-{kind}", daemon=True).start()
 
     def _helper(self, target: Callable, args: tuple) -> None:
         try:
             target(*args)
         except Exception:
             logger.exception("[%s] Camera worker helper failed", self.id)
-        finally:
-            with self._lock:
-                self._helpers.discard(threading.current_thread())
 
     def _reject(self, config: CameraConfig, reason: str, gen: int | None = None) -> None:
         """Records a rejected version (config_error, one config_rejected event per version). A change superseded
@@ -466,7 +459,7 @@ class CameraWorker:
             if not self._stream_wanted:
                 self._stream_wanted = True
                 self._stream_gen += 1
-                self.started_at = self._clock()  # the stall and status clocks run from the stream's start
+                self.stream_started_at = self._clock()  # the stall check counts from here, past the first model load
                 start = (self._stream_gen, self.config.source_url, self.config.target_fps)
         self._release(old_detector)
         if start is not None:

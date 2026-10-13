@@ -219,11 +219,13 @@ def test_superseded_model_load_is_discarded(make_worker, fake_yolo, fake_pool, m
     monkeypatch.setattr(fake_pool, "release", recording_release)
     fake_yolo.load_gate.clear()
     w.update(cfg(version=2, model_path="b.onnx"))
+    assert wait_until(lambda: fake_yolo.load_started == 2)  # B is loading (A was the first)
     w.update(cfg(version=3, model_path="c.onnx"))
+    assert wait_until(lambda: fake_yolo.load_started == 3)  # and so is C
     assert w.applied_version == 1
     fake_yolo.load_gate.set()
     assert wait_until(lambda: w.applied_version == 3 and len(released) == 2)  # A after the swap, and B unused
-    assert fake_pool.loaded() == [C] and applied == [3]
+    assert fake_yolo.loads == 3 and fake_pool.loaded() == [C] and applied == [3]  # B loaded, never ran, released
 
 
 def test_model_load_error_keeps_the_running_model(make_worker, fake_yolo, fake_pool, stream):
@@ -257,10 +259,13 @@ def test_stop_during_a_model_load_releases_the_late_detector(make_worker, fake_y
     assert wait_until(running(w))
     fake_yolo.load_gate.clear()
     w.update(cfg(version=2, model_path="b.onnx"))
-    w.stop("engine_stop", timeout=0.2)  # returns while the loader still waits for the load
-    assert w.state == "stopped" and w.applied_version == 1
+    assert wait_until(lambda: fake_yolo.load_started == 2)  # B is loading
+    w.stop("engine_stop")  # returns at once: it doesn't wait for the loader
+    assert camera_threads() == ["cam-cam1-load"]
+    assert w.state == "stopped" and w.applied_version == 1 and fake_pool.loaded() == []
     fake_yolo.load_gate.set()
-    assert wait_until(lambda: camera_threads() == [] and fake_pool.loaded() == [])
+    assert wait_until(lambda: camera_threads() == [])  # the loader got B, found the worker stopped, released B
+    assert fake_yolo.loads == 2 and fake_pool.loaded() == []
 
 
 def test_stalled_only_when_frames_arrive_but_none_is_processed(make_worker, streams, monkeypatch):
@@ -290,3 +295,26 @@ def test_stalled_only_when_frames_arrive_but_none_is_processed(make_worker, stre
     assert not ok.stalled(t0 + 31)  # frames are processed
     assert not dead.stalled(t0 + 31)  # no frame ever arrived
     assert (ok.state, bad.state, dead.state) == ("running", "starting", "starting")
+
+
+def test_the_stall_check_counts_from_the_stream_start_and_started_at_stays_the_worker_start(
+        make_worker, fake_yolo, streams, monkeypatch):
+    clock = FakeClock()
+    t0 = clock.t
+    streams.clock = clock
+
+    def raising(self, frame, timestamp_ms):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(TableOccupancyPipeline, "process_frame", raising)
+    fake_yolo.load_gate.clear()
+    w = make_worker(clock=clock)
+    w.start()
+    assert wait_until(lambda: fake_yolo.load_started == 1)
+    clock.t = t0 + 100  # a slow first model load
+    fake_yolo.load_gate.set()
+    assert wait_until(lambda: len(streams.made) == 1 and streams.made[0].reads > 0)
+    assert (w.started_at, w.stream_started_at) == (t0, t0 + 100)  # the status expiry anchor stays the worker start
+    assert not w.stalled(t0 + 120)  # the worker started 120 s ago, its stream only 20 s ago
+    clock.t = t0 + 131
+    assert wait_until(lambda: w.stalled(t0 + 131))
