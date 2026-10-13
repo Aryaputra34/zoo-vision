@@ -28,25 +28,14 @@ class TableOccupancyPipeline(BasePipeline):
     def __init__(self, camera: CameraInfo, settings: RestaurantTableSettings, model: Detector, **kwargs):
         super().__init__(camera, settings, model, **kwargs)
 
-        self.conf_thresh = float(settings.confidence_threshold)
-        self.deduplication_enabled = bool(settings.deduplication_enabled)
-        self.iou_threshold = float(settings.iou_threshold)
-        self.containment_threshold = float(settings.containment_threshold)
-
-        # Visual settings
-        self.show_boxes = bool(settings.show_person_boxes)
-        self.show_labels = bool(settings.show_person_labels)
+        self._read_scalars()
         self.box_annotator = sv.BoxAnnotator(thickness=1)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.4, text_thickness=1)
 
         # Initialize Table Occupancy Engine. It takes a plain dict; unset (None) options fall back to its defaults.
-        table_cfg = settings.model_dump(
-            include={"show_overlay", "show_labels", "show_summary_card", "dwell_time", "tables"}, exclude_none=True
-        )
-
         self.table_sessions = TableSessions(self)
         self.table_engine = TableOccupancyEngine(
-            config=table_cfg,
+            config=self._table_config(),
             on_event_callback=self._handle_table_event
         )
 
@@ -57,6 +46,29 @@ class TableOccupancyPipeline(BasePipeline):
             f"[{self.camera_name}] Initialized Standalone Table Occupancy Pipeline with model '{settings.model_name}' "
             f"({len(self.table_engine.tables)} tables active, dwell_tracking={self.table_engine.track_dwell_time})."
         )
+
+    def _read_scalars(self):
+        s = self.settings
+        self.conf_thresh = float(s.confidence_threshold)
+        self.deduplication_enabled = bool(s.deduplication_enabled)
+        self.iou_threshold = float(s.iou_threshold)
+        self.containment_threshold = float(s.containment_threshold)
+
+        # Visual settings
+        self.show_boxes = bool(s.show_person_boxes)
+        self.show_labels = bool(s.show_person_labels)
+
+    def _table_config(self) -> Dict[str, Any]:
+        """The engine takes a plain dict; unset (None) options fall back to its defaults."""
+        return self.settings.model_dump(
+            include={"show_overlay", "show_labels", "show_summary_card", "dwell_time", "tables"}, exclude_none=True
+        )
+
+    def _on_settings(self, old, new):
+        self._read_scalars()
+        if self.changed(old, new, "tables", "dwell_time", "show_overlay", "show_labels", "show_summary_card"):
+            for table_id in self.table_engine.reconfigure(self._table_config()):
+                self.table_sessions.close(table_id, "config_change")
 
     def _suppress_duplicates(self, detections: sv.Detections) -> sv.Detections:
         """Suppresses duplicate and nested person detections."""

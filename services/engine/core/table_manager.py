@@ -29,9 +29,17 @@ class TableSessions:
                     "table_session", table_id, {"tableName": data.get("tableName", table_id)}
                 )
         else:
-            session_id = self._open.pop(table_id, None)
-            if session_id:
-                self.pipeline.close_interval(session_id)
+            self.close(table_id)
+
+    def close(self, table_id: str, end_reason: str = "ended") -> None:
+        """Closes the table's open session, if any."""
+        session_id = self._open.pop(table_id, None)
+        if session_id:
+            self.pipeline.close_interval(session_id, end_reason=end_reason)
+
+    def close_all(self, end_reason: str) -> None:
+        for table_id in list(self._open):
+            self.close(table_id, end_reason)
 
 
 class TableZone:
@@ -74,6 +82,10 @@ class TableZone:
         self.occupied_start_time: Optional[float] = None
         self.current_dwell_sec: int = 0
         self.total_sessions_count: int = 0
+
+        # A table added by a live change warms up (reports no transition) for empty_debounce_sec from its first update
+        self.warmup_pending: bool = False
+        self.warmup_until: float = 0.0
 
     def init_pixel_polygon(self, frame_shape: Tuple[int, int]):
         """Scales normalized polygon to the current frame resolution."""
@@ -233,9 +245,20 @@ class TableOccupancyEngine:
         config: Dict[str, Any],
         on_event_callback: Optional[Callable[[str, Dict[str, Any], str], None]] = None
     ):
+        self.on_event = on_event_callback
+        self.tables: List[TableZone] = []
+        self._apply_globals(config)
+        self._build_tables(self.config, warmup=False)
+
+        logger.info(
+            f"Initialized TableOccupancyEngine: {len(self.tables)} tables configured. "
+            f"(track_dwell_time={self.track_dwell_time}, min_occupied={self.min_occupied_sec}s, "
+            f"empty_debounce={self.empty_debounce_sec}s)"
+        )
+
+    def _apply_globals(self, config: Dict[str, Any]) -> None:
         self.config = config or {}
         self.enabled = bool(self.config.get("enabled", True))
-        self.on_event = on_event_callback
 
         # Global Dwell Time & Hysteresis Defaults
         dwell_cfg = self.config.get("dwell_time", {})
@@ -249,31 +272,54 @@ class TableOccupancyEngine:
         self.show_labels = bool(self.config.get("show_labels", True))
         self.show_summary_card = bool(self.config.get("show_summary_card", False))
 
-        # Build Table Zones
-        self.tables: List[TableZone] = []
-        raw_tables = self.config.get("tables", [])
-        for t_cfg in raw_tables:
+    def _build_tables(self, config: Dict[str, Any], warmup: bool) -> List[str]:
+        """Makes the table list from `config`, keeping the TableZone of every id that stays.
+        Returns the ids of the tables that were dropped."""
+        previous = {t.table_id: t for t in self.tables}
+        tables: List[TableZone] = []
+        for t_cfg in config.get("tables", []):
             poly = t_cfg.get("polygon")
             if not poly or len(poly) < 3:
                 continue
 
-            t_zone = TableZone(
-                table_id=t_cfg.get("id", f"T{len(self.tables) + 1}"),
-                name=t_cfg.get("name", ""),
-                normalized_polygon=poly,
-                capacity=int(t_cfg.get("capacity", 4)),
-                confidence_threshold=t_cfg.get("confidence_threshold"),
-                min_occupied_sec=t_cfg.get("min_occupied_sec", self.min_occupied_sec),
-                empty_debounce_sec=t_cfg.get("empty_debounce_sec", self.empty_debounce_sec),
-                track_dwell_time=t_cfg.get("track_dwell_time", self.track_dwell_time),
-            )
-            self.tables.append(t_zone)
+            table_id = str(t_cfg.get("id", f"T{len(tables) + 1}"))
+            fields = {
+                "name": t_cfg.get("name", ""),
+                "normalized_polygon": poly,
+                "capacity": int(t_cfg.get("capacity", 4)),
+                "confidence_threshold": t_cfg.get("confidence_threshold"),
+                "min_occupied_sec": t_cfg.get("min_occupied_sec", self.min_occupied_sec),
+                "empty_debounce_sec": t_cfg.get("empty_debounce_sec", self.empty_debounce_sec),
+                "track_dwell_time": t_cfg.get("track_dwell_time", self.track_dwell_time),
+            }
+            zone = previous.get(table_id)
+            if zone is None:
+                zone = TableZone(table_id=table_id, **fields)
+                zone.warmup_pending = warmup
+            else:
+                # Status, dwell and the session count stay; the pixel polygon is scaled again at the next update
+                zone.name = fields["name"] or f"Table {table_id}"
+                zone.raw_polygon = poly
+                zone.pixel_polygon = None
+                zone.cached_frame_shape = None
+                zone.capacity = fields["capacity"]
+                zone.confidence_threshold = fields["confidence_threshold"]
+                zone.min_occupied_sec = float(fields["min_occupied_sec"])
+                zone.empty_debounce_sec = float(fields["empty_debounce_sec"])
+                zone.track_dwell_time = bool(fields["track_dwell_time"])
+            tables.append(zone)
 
-        logger.info(
-            f"Initialized TableOccupancyEngine: {len(self.tables)} tables configured. "
-            f"(track_dwell_time={self.track_dwell_time}, min_occupied={self.min_occupied_sec}s, "
-            f"empty_debounce={self.empty_debounce_sec}s)"
-        )
+        kept = {t.table_id for t in tables}
+        self.tables = tables
+        return [table_id for table_id in previous if table_id not in kept]
+
+    def reconfigure(self, config: Dict[str, Any]) -> List[str]:
+        """Applies a new config between two frames. Tables whose id stays keep their state (status, dwell,
+        session count); new ids warm up silently for their empty_debounce_sec. Returns the removed ids."""
+        self._apply_globals(config)
+        removed = self._build_tables(self.config, warmup=True)
+        logger.info(f"TableOccupancyEngine reconfigured: {len(self.tables)} tables, {len(removed)} removed.")
+        return removed
 
     def set_dwell_time_enabled(self, enabled: bool):
         """Dynamic runtime toggle for dwell time tracking."""
@@ -324,6 +370,11 @@ class TableOccupancyEngine:
         occupied_count = 0
         for t in self.tables:
             transition = t.update_state(table_counts[t.table_id], now_sec)
+            if t.warmup_pending:
+                t.warmup_pending = False
+                t.warmup_until = now_sec + t.empty_debounce_sec
+            if now_sec < t.warmup_until:
+                transition = None  # warming up: the state follows the detections, nothing is reported
             if t.status == "OCCUPIED":
                 occupied_count += 1
 

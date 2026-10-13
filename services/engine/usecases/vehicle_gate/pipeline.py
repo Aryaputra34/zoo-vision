@@ -33,12 +33,7 @@ class VehicleGatePipeline(BasePipeline):
         self.conf_thresh = settings.confidence_threshold
 
         # ByteTrack Tracker tuned for vehicle gate / barrier stop-and-go
-        self.tracker = sv.ByteTrack(
-            track_activation_threshold=settings.track_activation_thresh,
-            lost_track_buffer=settings.lost_track_buffer,
-            minimum_matching_threshold=settings.matching_thresh,
-            frame_rate=settings.frame_rate
-        )
+        self.tracker = self._make_tracker()
         self.smoother = sv.DetectionsSmoother(length=4)
 
         self.box_annotator = sv.BoxAnnotator(thickness=2)
@@ -54,11 +49,30 @@ class VehicleGatePipeline(BasePipeline):
         self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
         self.roi_zone: Optional[sv.PolygonZone] = None
         self.roi_pts: Optional[np.ndarray] = None
+        self._zones_dirty = False  # set by a geometry change; the zones are rebuilt at the next frame
 
         # Indonesian License Plate Recognition (ANPR / LPR) Engine
-        self.anpr_cfg = settings.anpr
-        self.anpr_enabled = bool(self.anpr_cfg.enabled)
         self.anpr_engine: Optional[AnprEngine] = None
+        self._build_anpr()
+
+        # Persistent plate tracking cache: {tracker_id: {"plate_text": ..., "confidence": ..., "is_valid": ...}}
+        self.vehicle_plates: Dict[int, Dict[str, Any]] = {}
+        self.recent_audits: list = []
+
+    def _make_tracker(self) -> sv.ByteTrack:
+        s = self.settings
+        return sv.ByteTrack(
+            track_activation_threshold=s.track_activation_thresh,
+            lost_track_buffer=s.lost_track_buffer,
+            minimum_matching_threshold=s.matching_thresh,
+            frame_rate=s.frame_rate
+        )
+
+    def _build_anpr(self):
+        """(Re)creates the ANPR engine from settings.anpr; the plate cache is not touched."""
+        self.anpr_cfg = self.settings.anpr
+        self.anpr_enabled = bool(self.anpr_cfg.enabled)
+        self.anpr_engine = None
         if self.anpr_enabled:
             plate_model_path = self.anpr_cfg.model_path
             min_plate_conf = float(self.anpr_cfg.min_plate_confidence)
@@ -73,19 +87,28 @@ class VehicleGatePipeline(BasePipeline):
                 logger.error(f"[{self.camera_name}] Failed to initialize ANPR Engine: {e}")
                 self.anpr_enabled = False
 
-        # Persistent plate tracking cache: {tracker_id: {"plate_text": ..., "confidence": ..., "is_valid": ...}}
-        self.vehicle_plates: Dict[int, Dict[str, Any]] = {}
-        self.recent_audits: list = []
+    def _on_settings(self, old, new):
+        self.conf_thresh = new.confidence_threshold
+        if self.changed(old, new, "track_activation_thresh", "lost_track_buffer", "matching_thresh", "frame_rate"):
+            # Track ids restart, so the smoother (keyed by track id) starts over too
+            self.tracker = self._make_tracker()
+            self.smoother = sv.DetectionsSmoother(length=4)
+            self.trace_annotator = sv.TraceAnnotator(thickness=2, trace_length=30, position=sv.Position.BOTTOM_CENTER)
+        if self.changed(old, new, "tripwire", "roi_polygon"):
+            self._zones_dirty = True
+        if self.changed(old, new, "anpr"):
+            self._build_anpr()
 
     def _init_zones_if_needed(self, frame_shape):
-        if self.line_zone is not None:
+        dirty, self._zones_dirty = self._zones_dirty, False
+        if self.line_zone is not None and not dirty:
             return
 
         h, w = frame_shape[:2]
         raw_start = self.settings.tripwire.start
         raw_end = self.settings.tripwire.end
 
-        self.set_tripwire(raw_start, raw_end, frame_shape)
+        self.set_tripwire(raw_start, raw_end, frame_shape)  # keeps the counts of an existing line
 
         self.line_zone_annotator = sv.LineZoneAnnotator(
             thickness=3,
@@ -96,6 +119,8 @@ class VehicleGatePipeline(BasePipeline):
         )
 
         # Initialize Roadway ROI Polygon (filters out building walls, sky, etc.)
+        self.roi_zone = None
+        self.roi_pts = None
         raw_roi = self.settings.roi_polygon
         if raw_roi:
             self.roi_pts = np.array([[int(p[0] * w), int(p[1] * h)] for p in raw_roi], dtype=np.int32)

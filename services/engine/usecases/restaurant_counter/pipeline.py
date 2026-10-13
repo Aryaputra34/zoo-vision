@@ -30,48 +30,19 @@ class RestaurantCounterPipeline(BasePipeline):
     def __init__(self, camera: CameraInfo, settings: RestaurantCounterSettings, model: Detector, **kwargs):
         super().__init__(camera, settings, model, **kwargs)
 
-        self.mode = Mode(settings.mode).value  # the generated default is the plain string, a given value the enum
-        self.conf_thresh = settings.confidence_threshold
-        self.max_capacity = settings.max_capacity
-        self.warning_capacity = settings.warning_capacity
-        self.debounce_alert_sec = settings.debounce_alert_sec
-
-        # Shadow Boost Zone configuration for difficult bamboo wall tables
-        self.shadow_cfg = settings.shadow_zone
-        self.shadow_enabled = self.shadow_cfg.enabled
-        self.shadow_conf = float(self.shadow_cfg.confidence_threshold)
         self.shadow_box: Optional[Tuple[int, int, int, int]] = None
-
-        # Anti-Duplicate & Anti-Flicker Settings
-        self.deduplication_enabled = bool(settings.deduplication_enabled)
-        self.iou_threshold = float(settings.iou_threshold)
-        self.containment_threshold = float(settings.containment_threshold)
-        self.tracking_enabled = bool(settings.tracking_enabled)
-        self.lost_track_buffer = int(settings.lost_track_buffer)
-        self.smoothing_frames = int(settings.smoothing_frames)
-
-        # Visual Display & Presentation Settings
-        self.show_boxes = bool(settings.show_boxes)
-        self.show_labels = bool(settings.show_labels)
+        self._read_scalars()
 
         # Annotators
         self.box_annotator = sv.BoxAnnotator(thickness=2)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.45, text_thickness=1)
 
         # Multi-Object Tracker & Temporal Smoother
-        self.tracker = sv.ByteTrack(
-            track_activation_threshold=self.conf_thresh,
-            lost_track_buffer=self.lost_track_buffer,
-            minimum_matching_threshold=0.8,
-            frame_rate=15,
-            minimum_consecutive_frames=1
-        ) if (self.tracking_enabled or self.mode == "tripwire") else None
-        self.smoother = sv.DetectionsSmoother(length=self.smoothing_frames) if self.tracking_enabled else None
+        self._make_tracking()
 
         # Area Occupancy Mode State
         self.polygon_zone: Optional[sv.PolygonZone] = None
         self.zone_annotator: Optional[sv.PolygonZoneAnnotator] = None
-        self.smoothing_window_sec = float(settings.smoothing_window_sec)
         self.count_history = collections.deque() # (timestamp, raw_count)
         self.current_occupancy = 0
         self.raw_occupancy = 0
@@ -80,6 +51,7 @@ class RestaurantCounterPipeline(BasePipeline):
         # Tripwire Mode State
         self.line_zone: Optional[sv.LineZone] = None
         self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
+        self._line_dirty = False  # set by a tripwire change; the line is rebuilt at the next frame, counts kept
 
         # Optional Table Monitoring Engine (Modular Multi-Table Occupancy)
         self.table_engine: Optional[TableOccupancyEngine] = None
@@ -99,6 +71,80 @@ class RestaurantCounterPipeline(BasePipeline):
             f"using model '{settings.model_name}' (imgsz={settings.imgsz}, conf={self.conf_thresh}, "
             f"tracking={self.tracking_enabled}, deduplication={self.deduplication_enabled}{tbl_info})."
         )
+
+    def _read_scalars(self):
+        """Caches the settings that need a conversion. Run again after every live change."""
+        s = self.settings
+        self.mode = Mode(s.mode).value  # the generated default is the plain string, a given value the enum
+        self.conf_thresh = s.confidence_threshold
+        self.max_capacity = s.max_capacity
+        self.warning_capacity = s.warning_capacity
+        self.debounce_alert_sec = s.debounce_alert_sec
+
+        # Shadow Boost Zone configuration for difficult bamboo wall tables
+        self.shadow_cfg = s.shadow_zone
+        self.shadow_enabled = self.shadow_cfg.enabled
+        self.shadow_conf = float(self.shadow_cfg.confidence_threshold)
+
+        # Anti-Duplicate & Anti-Flicker Settings
+        self.deduplication_enabled = bool(s.deduplication_enabled)
+        self.iou_threshold = float(s.iou_threshold)
+        self.containment_threshold = float(s.containment_threshold)
+        self.tracking_enabled = bool(s.tracking_enabled)
+        self.lost_track_buffer = int(s.lost_track_buffer)
+        self.smoothing_frames = int(s.smoothing_frames)
+        self.smoothing_window_sec = float(s.smoothing_window_sec)
+
+        # Visual Display & Presentation Settings
+        self.show_boxes = bool(s.show_boxes)
+        self.show_labels = bool(s.show_labels)
+
+    def _make_tracking(self):
+        """A new tracker (track ids restart) and smoother from the current settings."""
+        self.tracker = sv.ByteTrack(
+            track_activation_threshold=self.conf_thresh,
+            lost_track_buffer=self.lost_track_buffer,
+            minimum_matching_threshold=0.8,
+            frame_rate=15,
+            minimum_consecutive_frames=1
+        ) if (self.tracking_enabled or self.mode == "tripwire") else None
+        self.smoother = sv.DetectionsSmoother(length=self.smoothing_frames) if self.tracking_enabled else None
+
+    def _on_settings(self, old, new):
+        self._read_scalars()
+        if self.changed(old, new, "mode"):
+            # The new mode starts clean: zones, line, count history, occupancy and tracker
+            self.polygon_zone = None
+            self.zone_annotator = None
+            self.shadow_box = None
+            self.line_zone = None
+            self.line_zone_annotator = None
+            self.count_history.clear()
+            self.current_occupancy = 0
+            self.raw_occupancy = 0
+            self._make_tracking()
+        elif self.changed(old, new, "tracking_enabled", "lost_track_buffer", "smoothing_frames"):
+            self._make_tracking()
+        if self.changed(old, new, "dining_zone", "shadow_zone"):
+            self.polygon_zone = None  # rebuilt with the shadow box from the frame shape at the next frame
+        if self.changed(old, new, "tripwire"):
+            self._line_dirty = True
+        if self.changed(old, new, "table_monitoring"):
+            self._on_table_monitoring()
+
+    def _on_table_monitoring(self):
+        cfg = self.settings.table_monitoring
+        if not (cfg and cfg.enabled):
+            if self.table_engine is not None:
+                self.table_sessions.close_all("config_change")
+                self.table_engine = None
+                self.table_summary = {}
+            return
+        if self.table_engine is None:
+            # Created by a live change: it starts empty and takes the config as a change, so every table warms up
+            self.table_engine = TableOccupancyEngine(config={}, on_event_callback=self._handle_table_event)
+        for table_id in self.table_engine.reconfigure(cfg.model_dump(exclude_none=True)):
+            self.table_sessions.close(table_id, "config_change")
 
     def _suppress_duplicates(self, detections: sv.Detections) -> sv.Detections:
         """
@@ -153,6 +199,7 @@ class RestaurantCounterPipeline(BasePipeline):
         if self.polygon_zone is not None:
             return
 
+        self.shadow_box = None
         h, w = frame_shape[:2]
         raw_poly = self.settings.dining_zone
         if raw_poly:
@@ -187,9 +234,11 @@ class RestaurantCounterPipeline(BasePipeline):
             )
 
     def _init_tripwire_if_needed(self, frame_shape: Tuple[int, int]):
-        if self.line_zone is not None:
+        if self.line_zone is not None and not self._line_dirty:
             return
 
+        self._line_dirty = False
+        previous = self.line_zone
         h, w = frame_shape[:2]
         raw_start = self.settings.tripwire.start
         raw_end = self.settings.tripwire.end
@@ -202,6 +251,9 @@ class RestaurantCounterPipeline(BasePipeline):
             end=end_pt,
             triggering_anchors=[sv.Position.BOTTOM_CENTER]
         )
+        if previous is not None:  # a moved line keeps its counts
+            self.line_zone._in_count_per_class = previous._in_count_per_class.copy()
+            self.line_zone._out_count_per_class = previous._out_count_per_class.copy()
         self.line_zone_annotator = sv.LineZoneAnnotator(
             thickness=2,
             text_thickness=1,

@@ -27,42 +27,16 @@ class HorseRidingPipeline(BasePipeline):
     def __init__(self, camera: CameraInfo, settings: HorseRidingSettings, model: Detector, **kwargs):
         super().__init__(camera, settings, model, **kwargs)
 
-        self.conf_thresh = float(settings.confidence_threshold)
-        self.track_horses_only = bool(settings.track_horses_only)
-
-        # Display wording. The COCO class is "horse", but the attraction may be signed otherwise
-        # (e.g. "KUDA PONI TUNGGANG" = pony riding), and clients read the overlay, not the class id.
-        self.label_singular = str(settings.display_label)
-        self.label_plural = str(settings.display_label_plural or self.label_singular + "s")
-        self.attraction_title = str(settings.attraction_title or f"{self.label_singular} Riding Attraction")
+        self._read_scalars()
 
         # 2. Resolve class IDs from loaded YOLO model
-        # Target 'horse' dynamically to support both COCO and custom fine-tuned weights
-        self.horse_class_ids = [
-            cid for cid, cname in self.model.names.items()
-            if "horse" in cname.lower()
-        ]
-        if not self.horse_class_ids:
-            # Fallback to COCO class 17 (horse) if names dictionary lacks it
-            self.horse_class_ids = [17]
-        logger.info(f"[{self.camera_name}] Target horse class ID(s): {self.horse_class_ids}")
+        self._resolve_class_ids()
 
         # 3. ByteTrack Tracker tuned for horses (large quadrupeds with deliberate motion)
-        activation_thresh = float(settings.track_activation_thresh)
-        lost_buffer = int(settings.lost_track_buffer)
-        matching_thresh = float(settings.matching_thresh)
-        frame_rate = int(settings.frame_rate)
-
-        self.tracker = sv.ByteTrack(
-            track_activation_threshold=activation_thresh,
-            lost_track_buffer=lost_buffer,
-            minimum_matching_threshold=matching_thresh,
-            frame_rate=frame_rate
-        )
+        self.tracker = self._make_tracker()
 
         # Trajectory smoother to eliminate bounding box jitter
-        smoothing_frames = int(settings.smoothing_frames)
-        self.smoother = sv.DetectionsSmoother(length=smoothing_frames)
+        self.smoother = self._make_smoother()
 
         # 4. Supervision Annotators
         # Horse tracking theme: Emerald green / Teal palette
@@ -79,21 +53,11 @@ class HorseRidingPipeline(BasePipeline):
             text_position=sv.Position.TOP_LEFT
         )
         
-        trace_length = int(settings.trace_length)
-        self.trace_annotator = sv.TraceAnnotator(
-            color=self.box_color,
-            thickness=3,
-            trace_length=trace_length,
-            position=sv.Position.BOTTOM_CENTER
-        )
-
-        # Display flags (can be toggled for clean client demos)
-        self.show_boxes = bool(settings.show_boxes)
-        self.show_labels = bool(settings.show_labels)
-        self.show_traces = bool(settings.show_traces)
+        self.trace_annotator = self._make_trace_annotator()
 
         # 5. Virtual Tripwire & ROI zones
         self.tripwire_enabled = bool(settings.tripwire.enabled)
+        self._zones_dirty = False  # set by a geometry change; the zones are rebuilt at the next frame
 
         self.line_zone: Optional[sv.LineZone] = None
         self.line_zone_annotator: Optional[sv.LineZoneAnnotator] = None
@@ -109,15 +73,92 @@ class HorseRidingPipeline(BasePipeline):
 
         # Nx Event debouncing
         self.last_alert_time: float = 0.0
+
+    def _read_scalars(self):
+        """Caches the settings that need a conversion. Run again after every live change."""
+        settings = self.settings
+        self.conf_thresh = float(settings.confidence_threshold)
+        self.track_horses_only = bool(settings.track_horses_only)
+
+        # Display wording. The COCO class is "horse", but the attraction may be signed otherwise
+        # (e.g. "KUDA PONI TUNGGANG" = pony riding), and clients read the overlay, not the class id.
+        self.label_singular = str(settings.display_label)
+        self.label_plural = str(settings.display_label_plural or self.label_singular + "s")
+        self.attraction_title = str(settings.attraction_title or f"{self.label_singular} Riding Attraction")
+
+        # Display flags (can be toggled for clean client demos)
+        self.show_boxes = bool(settings.show_boxes)
+        self.show_labels = bool(settings.show_labels)
+        self.show_traces = bool(settings.show_traces)
+
+        # Nx Event debouncing
         self.debounce_alert_sec = float(settings.debounce_alert_sec)
         self.nx_bookmark_cfg = settings.nx_bookmark
 
+    def _resolve_class_ids(self):
+        # Target 'horse' dynamically to support both COCO and custom fine-tuned weights
+        self.horse_class_ids = [
+            cid for cid, cname in self.model.names.items()
+            if "horse" in cname.lower()
+        ]
+        if not self.horse_class_ids:
+            # Fallback to COCO class 17 (horse) if names dictionary lacks it
+            self.horse_class_ids = [17]
+        logger.info(f"[{self.camera_name}] Target horse class ID(s): {self.horse_class_ids}")
+
+    def _make_tracker(self) -> sv.ByteTrack:
+        s = self.settings
+        return sv.ByteTrack(
+            track_activation_threshold=float(s.track_activation_thresh),
+            lost_track_buffer=int(s.lost_track_buffer),
+            minimum_matching_threshold=float(s.matching_thresh),
+            frame_rate=int(s.frame_rate)
+        )
+
+    def _make_smoother(self) -> sv.DetectionsSmoother:
+        return sv.DetectionsSmoother(length=int(self.settings.smoothing_frames))
+
+    def _make_trace_annotator(self) -> sv.TraceAnnotator:
+        return sv.TraceAnnotator(
+            color=self.box_color,
+            thickness=3,
+            trace_length=int(self.settings.trace_length),
+            position=sv.Position.BOTTOM_CENTER
+        )
+
+    def _on_model(self):
+        self._resolve_class_ids()
+
+    def _on_settings(self, old, new):
+        self._read_scalars()
+        if self.changed(old, new, "track_activation_thresh", "lost_track_buffer", "matching_thresh", "frame_rate"):
+            # Track ids restart, so the smoother and the traces (keyed by track id) start over too
+            self.tracker = self._make_tracker()
+            self.smoother = self._make_smoother()
+            self.trace_annotator = self._make_trace_annotator()
+        else:
+            if self.changed(old, new, "smoothing_frames"):
+                self.smoother = self._make_smoother()
+            if self.changed(old, new, "trace_length"):
+                self.trace_annotator = self._make_trace_annotator()
+        if self.changed(old, new, "tripwire", "roi_polygon"):
+            self._zones_dirty = True
+
     def _init_zones_if_needed(self, frame_shape: Tuple[int, int, int]):
-        """Initializes tripwire LineZone and ROI PolygonZone lazily on first frame."""
+        """Initializes tripwire LineZone and ROI PolygonZone lazily on first frame, and again after a
+        geometry change (the line counts are kept)."""
         h, w = frame_shape[:2]
 
+        dirty, self._zones_dirty = self._zones_dirty, False
+        if dirty:
+            self.roi_zone = None
+            self.roi_pts = None
+            self.tripwire_enabled = bool(self.settings.tripwire.enabled)
+            if not self.tripwire_enabled:
+                self.line_zone = None  # a disabled tripwire drops its line and counts
+
         # Initialize Tripwire if enabled
-        if self.tripwire_enabled and self.line_zone is None:
+        if self.tripwire_enabled and (self.line_zone is None or dirty):
             raw_start = self.settings.tripwire.start
             raw_end = self.settings.tripwire.end
             self.set_tripwire(raw_start, raw_end, frame_shape)

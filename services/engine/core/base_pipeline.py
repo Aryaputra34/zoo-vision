@@ -120,6 +120,30 @@ class BasePipeline(ABC):
             if value is not None:
                 self._metrics.sample(name, value, now)
 
+    def apply_config(self, settings: BaseModel, config_version: Optional[int]) -> None:
+        """Swaps in new settings between two frames; _on_settings rebuilds what the change needs.
+        Thresholds, display flags and the Nx bookmark are read from self.settings on every frame."""
+        old = self.settings
+        self.settings = settings
+        self.config_version = config_version
+        self._on_settings(old, settings)
+
+    def _on_settings(self, old: BaseModel, new: BaseModel) -> None:
+        """Subclass hook: rebuild only what the change from `old` to `new` needs, keeping counts and state."""
+
+    def set_model(self, model: Detector) -> Detector:
+        """Swaps the detector between two frames (trackers and counts stay); returns the previous one."""
+        previous, self.model = self.model, model
+        self._on_model()
+        return previous
+
+    def _on_model(self) -> None:
+        """Subclass hook: re-derive anything read from the detector (class ids)."""
+
+    @staticmethod
+    def changed(old: BaseModel, new: BaseModel, *fields: str) -> bool:
+        return any(getattr(old, f, None) != getattr(new, f, None) for f in fields)
+
     def shutdown(self, end_reason: str = "engine_stop") -> None:
         """Closes the open intervals and sends the metrics of the minute in progress."""
         for session_id in list(self._open_intervals):

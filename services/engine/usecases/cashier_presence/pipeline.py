@@ -31,11 +31,7 @@ class CashierPresencePipeline(BasePipeline):
     def __init__(self, camera: CameraInfo, settings: CashierPresenceSettings, model: Detector, **kwargs):
         super().__init__(camera, settings, model, **kwargs)
 
-        self.conf_thresh = float(settings.confidence_threshold)
-        self.absence_timeout_sec = int(settings.absence_alert_timeout_sec)
-        self.visitor_waiting_timeout_sec = int(settings.visitor_waiting_alert_timeout_sec)
-        self.min_waiting_confirm_sec = int(settings.min_waiting_confirm_sec)
-        self.debounce_alert_sec = int(settings.debounce_alert_sec)
+        self._read_scalars()
 
         # State tracking
         self.last_presence_time = 0.0
@@ -53,18 +49,36 @@ class CashierPresencePipeline(BasePipeline):
         self.visitor_annotator: Optional[sv.PolygonZoneAnnotator] = None
         self.box_annotator = sv.BoxAnnotator(thickness=2)
         self.label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1)
+        self._zones_dirty = False  # set by a zone change; the zones are rebuilt at the next frame
 
         logger.info(
             f"[{self.camera_name}] Initialized Cashier Pipeline with model '{settings.model_name}' "
             f"(conf={self.conf_thresh}, absence_timeout={self.absence_timeout_sec}s)."
         )
 
+    def _read_scalars(self):
+        s = self.settings
+        self.conf_thresh = float(s.confidence_threshold)
+        self.absence_timeout_sec = int(s.absence_alert_timeout_sec)
+        self.visitor_waiting_timeout_sec = int(s.visitor_waiting_alert_timeout_sec)
+        self.min_waiting_confirm_sec = int(s.min_waiting_confirm_sec)
+        self.debounce_alert_sec = int(s.debounce_alert_sec)
+
+    def _on_settings(self, old, new):
+        self._read_scalars()
+        if self.changed(old, new, "clerk_zone", "visitor_zone"):
+            # Presence timers and an open desk_unattended interval are kept
+            self._zones_dirty = True
+
     def _init_zones_if_needed(self, frame_shape):
         """Initializes supervision polygon zones for clerk desk and optional visitor window."""
-        if self.clerk_zone is not None:
+        dirty, self._zones_dirty = self._zones_dirty, False
+        if self.clerk_zone is not None and not dirty:
             return
 
         h, w = frame_shape[:2]
+        self.visitor_zone = None
+        self.visitor_annotator = None
 
         # 1. Clerk Desk Zone
         clerk_raw = self.settings.clerk_zone
