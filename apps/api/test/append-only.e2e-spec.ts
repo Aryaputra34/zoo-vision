@@ -63,6 +63,26 @@ describe('zoo_api database rights', () => {
     ).resolves.toBe(1);
   });
 
+  it('zoo_api cannot rewrite the cameraId of append-only rows by renaming a camera', async () => {
+    await ownerQuery(
+      `INSERT INTO "Camera" ("id", "name", "useCase", "sourceType", "mainStreamUrlEnc", "activeVersion", "updatedAt")
+       VALUES ('cam-1', 'Cam 1', 'cashier', 'FILE', 'enc', 1, now())`,
+    );
+    await ownerQuery(
+      `INSERT INTO "Event" ("id", "time", "cameraId", "useCase", "type", "severity", "schemaVersion", "data")
+       VALUES ('evt_1', now(), 'cam-1', 'cashier', 'x', 'info', 1, '{}')`,
+    );
+
+    await expect(
+      prisma.$executeRawUnsafe(`UPDATE "Camera" SET "id" = 'cam-2'`),
+    ).rejects.toThrow(/foreign key|violates/);
+
+    const rows = (await ownerQuery(
+      `SELECT "cameraId" FROM "Event" WHERE "id" = 'evt_1'`,
+    )) as { cameraId: string }[];
+    expect(rows).toEqual([{ cameraId: 'cam-1' }]);
+  });
+
   it('every application table grants SELECT to zoo_api', async () => {
     const rows = (await ownerQuery(
       `WITH app_tables AS MATERIALIZED (

@@ -10,6 +10,7 @@ import type Redis from 'ioredis';
 import { ContractsService } from '../contracts/contracts.service';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { isTransient } from '../prisma/transient';
 import { REDIS } from '../redis/redis.module';
 
 export const STREAM = 'events';
@@ -31,31 +32,6 @@ type Parsed =
 
 export const errorMessage = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
-
-const TRANSIENT_PRISMA = new Set(['P1001', 'P1017', 'P2024', 'P2028']);
-const TRANSIENT_SQLSTATE = /^(08...|40P01|40001|55P03|57014|57P0.)$/;
-
-/**
- * True for errors that say nothing about the entry: lost connections, pool and transaction
- * timeouts, deadlocks, serialization and lock failures, cancelled statements, shutdowns. Prisma
- * puts the SQLSTATE of a failed query in `meta.driverAdapterError.cause.originalCode`.
- */
-function isTransient(err: unknown): boolean {
-  const e = err as {
-    code?: unknown;
-    meta?: {
-      driverAdapterError?: {
-        cause?: { originalCode?: unknown; code?: unknown };
-      };
-    };
-  } | null;
-  const cause = e?.meta?.driverAdapterError?.cause;
-  return [e?.code, cause?.originalCode, cause?.code].some(
-    (code) =>
-      typeof code === 'string' &&
-      (TRANSIENT_PRISMA.has(code) || TRANSIENT_SQLSTATE.test(code)),
-  );
-}
 
 /** Postgres `text` cannot hold NUL; a raw one would make the dead letter itself fail forever. */
 const storable = (s: string) => s.replaceAll('\u0000', '\\u0000');
@@ -89,10 +65,11 @@ export class IngestService {
    * DeadEvents. If the transaction fails with an error that says nothing about the entries (a
    * transient one, or Postgres not answering `SELECT 1`), this rethrows with nothing acked,
    * counted or dead-lettered. Otherwise each entry gets its own transaction, and one that fails
-   * {@link MAX_ATTEMPTS} times (counted in {@link FAILURES}) is dead-lettered.
+   * {@link MAX_ATTEMPTS} times (counted in {@link FAILURES}) is dead-lettered. Returns true when
+   * an entry was counted and left pending, so the caller should pause before re-reading it.
    */
-  async processBatch(entries: StreamEntry[]): Promise<void> {
-    if (entries.length === 0) return;
+  async processBatch(entries: StreamEntry[]): Promise<boolean> {
+    if (entries.length === 0) return false;
     const parsed = entries.map((entry) => this.parse(entry));
     let dead: DeadLetter[];
     try {
@@ -103,6 +80,7 @@ export class IngestService {
     }
     await this.ack(entries.map((e) => e.id));
     this.warnDead(dead);
+    return false;
   }
 
   /**
@@ -110,7 +88,8 @@ export class IngestService {
    * for the next pass, unapplied, unacked and uncounted. A failed system entry (camera null) holds
    * back everything after it, and a system entry waits behind any held-back camera.
    */
-  private async oneByOne(parsed: Parsed[]): Promise<void> {
+  private async oneByOne(parsed: Parsed[]): Promise<boolean> {
+    let pending = false;
     const held = new Set<string | null>();
     for (const item of parsed) {
       const camera = cameraOf(item);
@@ -123,12 +102,16 @@ export class IngestService {
       } catch (err) {
         // a transient error, or the database gone since the probe, is never the entry's fault
         await this.rethrowUnlessEntryFault(err);
-        if (!(await this.countFailure(item.entry, err))) held.add(camera);
+        if (!(await this.countFailure(item.entry, err))) {
+          held.add(camera);
+          pending = true;
+        }
         continue;
       }
       await this.ack([item.entry.id]);
       this.warnDead(dead);
     }
+    return pending;
   }
 
   /** Counts a failed attempt. Returns true when it was the last one and the entry is dead. */

@@ -330,6 +330,21 @@ describe('IngestService.processBatch', () => {
         { code: 'P2024', clientVersion: '7' },
       ),
     ],
+    [
+      'a missing grant (42501)',
+      rawQueryFailed('42501', 'permission denied for table Event'),
+    ],
+    [
+      'an undefined column (42703)',
+      rawQueryFailed('42703', 'column "x" does not exist'),
+    ],
+    [
+      'a Prisma transaction conflict (P2034)',
+      new Prisma.PrismaClientKnownRequestError(
+        'Transaction failed due to a write conflict or a deadlock.',
+        { code: 'P2034', clientVersion: '7' },
+      ),
+    ],
   ])('%s with the database up', (_name, transient) => {
     const entries: StreamEntry[] = [
       { id: '5-1', msg: event(1, 'cam_a') },
@@ -368,6 +383,25 @@ describe('IngestService.processBatch', () => {
       expect(execute).toHaveBeenCalledTimes(2); // the batch, then the first entry alone
       expectNothingDone(prisma, redis);
     });
+  });
+
+  it('returns true when an entry was counted and left pending, false when all were settled', async () => {
+    const badId = `evt_${hex(1)}`;
+    const prisma = mockPrisma({
+      execute: (_sql, values) =>
+        values.includes(badId)
+          ? Promise.reject(new Error('boom'))
+          : Promise.resolve(1),
+    });
+    const redis = mockRedis();
+    const ingest = service(prisma, redis);
+
+    await expect(
+      ingest.processBatch([{ id: '7-1', msg: event(1) }]),
+    ).resolves.toBe(true);
+    await expect(
+      ingest.processBatch([{ id: '7-2', msg: event(2) }]),
+    ).resolves.toBe(false);
   });
 
   it('an unsupported message kind is dead-lettered, not acked silently', async () => {

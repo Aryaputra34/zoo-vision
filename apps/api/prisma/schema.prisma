@@ -128,7 +128,7 @@ model Camera {
 
 model CameraConfigVersion {
   cameraId      String
-  camera        Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  camera        Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade, onUpdate: Restrict)
   version       Int
   useCase       String
   settings      Json
@@ -146,7 +146,7 @@ model Event {
   id            String   @id // evt_…
   time          DateTime @db.Timestamptz(3)
   cameraId      String?
-  camera        Camera?  @relation(fields: [cameraId], references: [id], onDelete: Restrict)
+  camera        Camera?  @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   useCase       String
   type          String
   severity      Severity
@@ -163,7 +163,7 @@ model Event {
 model Interval {
   id            String    @id // ses_…
   cameraId      String
-  camera        Camera    @relation(fields: [cameraId], references: [id], onDelete: Restrict)
+  camera        Camera    @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   useCase       String
   kind          String
   subjectId     String?
@@ -179,7 +179,7 @@ model Interval {
 
 model Metric {
   cameraId String
-  camera   Camera   @relation(fields: [cameraId], references: [id], onDelete: Restrict)
+  camera   Camera   @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   useCase  String
   name     String
   minute   DateTime @db.Timestamptz(3)

@@ -13,3 +13,5 @@ apps/api/coverage
 apps/api/.env
 apps/api/Dockerfile
 apps/api/Dockerfile.dockerignore
+
+**/.env*

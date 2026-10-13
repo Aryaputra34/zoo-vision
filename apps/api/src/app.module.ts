@@ -1,4 +1,5 @@
 import { DynamicModule, Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { TerminusModule } from '@nestjs/terminus';
 import { ApiTokensModule } from './api-tokens/api-tokens.module';
 import { AuditModule } from './audit/audit.module';
@@ -9,6 +10,7 @@ import { ContractsModule } from './contracts/contracts.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { TransientDbFilter } from './prisma/transient.filter';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
 
@@ -32,7 +34,10 @@ export class AppModule {
         IngestModule,
       ],
       controllers: [HealthController],
-      providers: [{ provide: ENV, useValue: env }],
+      providers: [
+        { provide: ENV, useValue: env },
+        { provide: APP_FILTER, useClass: TransientDbFilter },
+      ],
       exports: [ENV],
     };
   }

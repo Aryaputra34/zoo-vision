@@ -20,6 +20,8 @@ import {
 const CONSUMER = 'api-1';
 const COUNT = 100;
 const BLOCK_MS = 5_000;
+/** Pause before re-reading entries that just failed, so their 5 attempts span seconds. */
+const RETRY_DELAY_MS = 1_000;
 const FIRST_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 
@@ -82,8 +84,10 @@ export class EventsConsumer implements OnApplicationBootstrap, OnModuleDestroy {
           groupReady = true;
         }
         const entries = await this.read(reader);
-        if (entries.length > 0) await this.ingest.processBatch(entries);
+        const retry =
+          entries.length > 0 && (await this.ingest.processBatch(entries));
         backoff = 0;
+        if (retry) await this.pause(RETRY_DELAY_MS);
       } catch (err) {
         if (this.stopping.signal.aborted) break;
         // Redis restarted without its data: create the group again on the next round
@@ -92,11 +96,16 @@ export class EventsConsumer implements OnApplicationBootstrap, OnModuleDestroy {
         this.logger.error(
           `ingest failed, retrying in ${backoff / 1000} s: ${errorMessage(err)}`,
         );
-        await sleep(backoff, undefined, {
-          signal: this.stopping.signal,
-        }).catch(() => undefined);
+        await this.pause(backoff);
       }
     }
+  }
+
+  /** Sleeps `ms`, or less when the module is shutting down. */
+  private async pause(ms: number): Promise<void> {
+    await sleep(ms, undefined, { signal: this.stopping.signal }).catch(
+      () => undefined,
+    );
   }
 
   private async createGroup(reader: Redis): Promise<void> {
