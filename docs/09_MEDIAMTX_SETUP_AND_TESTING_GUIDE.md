@@ -323,6 +323,6 @@ uv run python main.py
 ### 5. "reader is too slow, discarding frames" in MediaMTX / "Could not find ref with POC" in Python
 * **Cause**: MediaMTX is streaming at native camera speed (~15–25 FPS per camera = ~80 FPS total across 4 cameras), but the Python AI engine is running on **CPU**. A desktop CPU can process ~5 to 8 YOLO detections per second total. When Python falls behind, MediaMTX drops buffered frames to prevent latency lag.
 * **Fix**:
-  * **For CPU testing**: Lower camera `target_fps` in [`services/engine/configs/cameras.yaml`](../services/engine/configs/cameras.yaml.example) (e.g. 2–5 FPS), or test cameras individually using [`test_video.py`](../services/engine/test_video.py).
-  * **For Production**: Set `device: "cuda:0"` in [`services/engine/configs/app_config.yaml`](../services/engine/configs/app_config.yaml.example) on an NVIDIA GPU (RTX 3060/4060 or TensorRT) to process 120+ FPS in real time with zero dropped frames.
+  * **For CPU testing**: Lower the camera's `targetFps` through the API (`PATCH /api/v1/cameras/<id>`, e.g. 2–5 FPS), or test cameras individually using [`test_video.py`](../services/engine/test_video.py).
+  * **For Production**: Set the engine's `DEVICE` environment variable to `cuda:0` (see [`services/engine/README.md`](../services/engine/README.md)) on an NVIDIA GPU (RTX 3060/4060 or TensorRT) to process 120+ FPS in real time with zero dropped frames.
 

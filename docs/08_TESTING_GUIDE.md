@@ -66,9 +66,8 @@ Verifies that PyTorch, ByteTrack, and the rules engine run without errors:
 ```powershell
 # From services/engine/:
 uv run pytest                        # automated tests (no models or GPU needed)
-uv run python test_synthetic_demo.py  # synthetic-frame smoke test with real models
 ```
-* **Expected Output**: A simulated cashier test running 30 synthetic frames, detecting presence, state changes, and completing with `[PASS]`.
+* **Expected Output**: a pass count and no failures (about a minute).
 
 ---
 

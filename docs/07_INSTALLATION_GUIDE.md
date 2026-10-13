@@ -19,8 +19,8 @@ This document provides complete, step-by-step instructions for installing, confi
    - [Docker Compose Deployment](#step-2-deploy-via-docker-compose)
 5. [Method C: Native C++ Nx Meta Plugin (`integrations/nx/plugin`)](#5-method-c-native-c-nx-meta-plugin-integrationsnxplugin)
 6. [Configuration & Environment Setup](#6-configuration--environment-setup)
-   - [Application Configuration (`services/engine/configs/app_config.yaml`)](#61-application-configuration-servicesengineconfigsapp_configyaml)
-   - [Camera Stream Configuration (`services/engine/configs/cameras.yaml`)](#62-camera-stream-configuration-servicesengineconfigscamerasyaml)
+   - [Engine Configuration (environment variables)](#61-engine-configuration-environment-variables)
+   - [Camera Stream Configuration (API, optional YAML import)](#62-camera-stream-configuration-api-optional-yaml-import)
    - [Pipeline Rules Configuration (`services/engine/configs/rules/`)](#63-pipeline-rules-configuration-servicesengineconfigsrules)
    - [Model Weights & Acceleration Artifacts](#64-model-weights--acceleration-artifacts)
 7. [Verification & Smoke Testing](#7-verification--smoke-testing)
@@ -263,8 +263,8 @@ cd ~/zoo-vision/deploy
 
 # 2. Prepare configuration (see Section 6) and model weights
 cp .env.example .env              # ZOO_DATA_DIR (default ./data) and ZOO_VERSION
-cp ../services/engine/configs/app_config.yaml.example ../services/engine/configs/app_config.yaml
-cp ../services/engine/configs/cameras.yaml.example ../services/engine/configs/cameras.yaml
+cp ../services/engine/configs/cameras.yaml.example ../services/engine/configs/cameras.yaml   # only read by tools/import_yaml_config.py
+#    the engine's own settings are environment variables (section 6.1); its cameras come from the API
 #    and list every camera's RTSP URL under `paths:` in deploy/mediamtx.yml
 python3 ../tools/fetch_models.py --dest ./data/models    # offline site: add --from /media/usb/models
 
@@ -281,12 +281,13 @@ docker compose logs -f mediamtx      # "[path cam_...] [RTSP source] ready" per 
 1. In `deploy/mediamtx.yml`, add one path per camera:
    `cam_cashier_01: {source: rtsp://user:pass@<camera>/stream1}`. Set the cameras to H.264 so browsers can
    play the clips.
-2. In `services/engine/configs/cameras.yaml`, read each camera from MediaMTX and name its recording:
-   `source: rtsp://127.0.0.1:8554/cam_cashier_01` and `recording_path: cam_cashier_01`.
-3. In `services/engine/configs/app_config.yaml`:
-   * `api_server.host`: set to `0.0.0.0` if the dashboard runs on another host.
-   * `api_server.api_key`: set a long random key.
-   * `snapshots.retention_days`: how many days of event snapshots to keep.
+2. Give each camera its MediaMTX address and recording name: in `services/engine/configs/cameras.yaml`
+   (`source: rtsp://127.0.0.1:8554/cam_cashier_01`, `recording_path: cam_cashier_01`) and load it once with
+   `tools/import_yaml_config.py`, or set the same fields on the camera through the API.
+3. In the engine's environment (see [`services/engine/README.md`](../services/engine/README.md)):
+   * `PREVIEW_HOST`: set to `0.0.0.0` if the dashboard runs on another host.
+   * `PREVIEW_API_KEY`: set a long random key.
+   * `SNAPSHOT_RETENTION_DAYS`: how many days of event snapshots to keep.
 4. In the dashboard's `.env.local`:
    * `AI_ENGINE_URL=http://<ai-host>:8000`
    * `AI_ENGINE_API_KEY=<same key>`
@@ -371,56 +372,22 @@ For complete details, see [06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md](06_MAGNET
 
 ## 6. Configuration & Environment Setup
 
-Before starting the service, initialize your local configuration files from the provided `.example` templates.
+The engine reads no YAML. Its static settings are environment variables (Redis URL, `ENGINE_TOKEN`, API URL,
+device, models folder, preview port and key, snapshot retention); the full list is in
+[`services/engine/README.md`](../services/engine/README.md). Its cameras come from the API and follow changes
+live.
 
-```bash
-# From services/engine/: copy the example configuration templates (the copies are git-ignored)
-cp configs/app_config.yaml.example configs/app_config.yaml
-cp configs/cameras.yaml.example configs/cameras.yaml
-```
+### 6.1 Engine Configuration (environment variables)
 
-### 6.1 Application Configuration (`services/engine/configs/app_config.yaml`)
-
-Open `services/engine/configs/app_config.yaml` in your editor and configure your environment:
-
-```yaml
-# Nx Witness / Nx Meta Media Server Connection Settings
-nx_server:
-  host: "127.0.0.1"             # IP of Nx Media Server (e.g., 192.168.1.100)
-  port: 7001                    # Default Nx Server port
-  use_https: true
-  verify_ssl: false             # Set to false for self-signed certificates in lab
-  auth:
-    username: "admin"
-    password: "YOUR_PASSWORD_HERE" # Your Nx server credentials
-    token: ""                   # Optional bearer token (auto-negotiated if empty)
-  mock_mode: true               # Set to 'false' in production with live Nx Server!
-                                # When 'true', bookmarks and events are logged locally without network errors.
-
-# Logging & Storage Settings
-logging:
-  level: "INFO"                 # DEBUG, INFO, WARNING, ERROR
-  log_to_file: true
-  log_file_path: "logs/zoo_ai.log"
-
-# Global AI Settings
-ai_engine:
-  device: "cuda:0"              # "cuda:0" for NVIDIA GPU; "cpu" for local development
-  model_cache_dir: "models"
-  default_confidence: 0.35
-
-# Web Analytics Dashboard Integration (zoo-vision-fe)
-analytics:
-  enabled: true                 # Set to false if dashboard is not deployed
-  api_url: "http://localhost:3000/api/events"
-  api_key: ""                   # INGEST_API_KEY from dashboard .env.local (empty = no auth)
-```
+Set the variables in the shell that starts the engine, or in the service unit (section 8). The required ones are
+`REDIS_URL` and `ENGINE_TOKEN`; an invalid environment stops the engine at start and names each bad variable.
+`DEVICE` is `cpu` by default; set `cuda:0` on an NVIDIA GPU. Nx Witness is optional and is not configured here.
 
 ---
 
-### 6.2 Camera Stream Configuration (`services/engine/configs/cameras.yaml`)
+### 6.2 Camera Stream Configuration (API, optional YAML import)
 
-Define your RTSP video sources, target FPS, and pipeline bindings in `services/engine/configs/cameras.yaml` (`rule_config` paths are relative to `services/engine/`):
+Cameras live in the API (Swagger at `/api/docs`, or the web UI later). To load a first list in one go, write it in `services/engine/configs/cameras.yaml` and run `uv run tools/import_yaml_config.py --cameras services/engine/configs/cameras.yaml` once (existing cameras are skipped); see [10_LOCAL_QUICKSTART.md](10_LOCAL_QUICKSTART.md). The engine does not read this file. `rule_config` paths are relative to `services/engine/`:
 
 ```yaml
 cameras:
@@ -517,27 +484,16 @@ For complete export syntax and benchmarks, consult [05_MODEL_EXPORT_GUIDE.md](05
 
 ## 7. Verification & Smoke Testing
 
-### 7.1 Quick Smoke Test (Synthetic Frames)
+### 7.1 Quick Smoke Test (Automated Tests)
 
-Verify that the Python environment, PyTorch, ByteTrack, Shapely, and all pipeline logic operate without errors—no camera streams or video files needed:
+Verify that the Python environment, ByteTrack, Shapely, and all pipeline logic operate without errors. No camera streams, video files, models or GPU needed:
 
 ```bash
 # From services/engine/:
-uv run pytest                        # automated tests (no models or GPU needed)
-uv run python test_synthetic_demo.py  # synthetic-frame smoke test with real models
+uv run pytest
 ```
 
-*Expected output:*
-```text
-=== STARTING PHASE 1 SMOKE TEST ===
---- Testing Cashier Presence Pipeline ---
-✅ Cashier Presence pipeline processed frame successfully.
---- Testing Restaurant Counter Pipeline ---
-✅ Restaurant Counter pipeline processed frame successfully.
---- Testing Vehicle Gate Pipeline ---
-✅ Vehicle Gate pipeline processed frame successfully.
-=== ALL PHASE 1 PIPELINE TESTS PASSED! ===
-```
+The run ends with a pass count and no failures (about a minute).
 
 ---
 
@@ -589,9 +545,6 @@ uv run python main.py
 
 # With live OpenCV desktop preview windows:
 uv run python main.py --preview
-
-# Using custom configuration files:
-uv run python main.py --app-config configs/app_config.yaml --cameras-config configs/cameras.yaml
 ```
 
 ---
@@ -687,22 +640,21 @@ journalctl -u zoo-vision.service -f
 ---
 
 ### Q4: `NxClient: 401 Unauthorized` or SSL Certificate Errors
-* **Cause**: Incorrect username/password in `services/engine/configs/app_config.yaml` or untrusted self-signed SSL certificate.
+* **Cause**: Incorrect username/password for the Nx server, or an untrusted self-signed SSL certificate. (The engine no longer holds Nx credentials; this applies to the optional Nx plugin side.)
 * **Resolution**:
-  1. Verify credentials in `services/engine/configs/app_config.yaml` under `nx_server.auth`.
-  2. In test environments with self-signed SSL, ensure `verify_ssl: false` is set.
-  3. Set `mock_mode: true` to bypass Nx network authentication completely during offline development.
+  1. Verify the Nx server credentials in the Nx plugin's own configuration.
+  2. In test environments with self-signed SSL, allow the certificate in that configuration.
 
 ---
 
 ### Q5: EasyOCR model download hangs on first run
 * **Cause**: First-time initialization downloads pre-trained language weights from GitHub/PyTorch hub.
 * **Resolution**:
-  Ensure outgoing internet access on the server during the initial test run (`uv run python test_synthetic_demo.py` in `services/engine/`). Once downloaded, weights are cached locally in `~/.EasyOCR/model/` and work 100% offline.
+  Ensure outgoing internet access on the server during the initial test run (run `uv run python test_video.py --video sample_data/cars.mp4 --pipeline gate` in `services/engine/` while online). Once downloaded, weights are cached locally in `~/.EasyOCR/model/` and work 100% offline.
 
 ---
 
 ### Q6: Path separator errors on Windows vs Linux
 * **Cause**: Backslashes (`\`) vs Forward slashes (`/`) in YAML configuration files.
 * **Resolution**:
-  Always use forward slashes (`/`) in `services/engine/configs/app_config.yaml` and `services/engine/configs/cameras.yaml` (e.g. `sample_data/cars.mp4`). Python's `os.path` handles forward slashes transparently on both Windows and Linux.
+  Always use forward slashes (`/`) in `services/engine/configs/cameras.yaml` and in a camera's file source (e.g. `sample_data/cars.mp4`). Python's `os.path` handles forward slashes transparently on both Windows and Linux.

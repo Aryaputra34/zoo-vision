@@ -25,7 +25,7 @@ saved into the `zoo-vision` repo root (it is git-ignored).
 git clone https://github.com/Aryaputra34/zoo-vision.git
 cd zoo-vision
 git lfs pull                                  # sample_data/cars.mp4
-python tools\fetch_models.py                  # model weights → services\engine\models\ (checksummed)
+python tools\fetch_models.py --dest deploy\data\models   # model weights (checksummed); the API and the engine share this folder
 cd services\engine
 uv sync                                       # Python 3.12 + locked dependencies in .venv
 copy configs\cameras.yaml.example configs\cameras.yaml
@@ -98,15 +98,20 @@ $env:ZOO_API_TOKEN = "<token>"
 uv run tools/import_yaml_config.py --cameras services/engine/configs/cameras.yaml
 ```
 
-**Models.** The API and the engine share one models folder. Fetch the weights into `deploy\data\models` (the
-folder the `api` container mounts as `/data/models`) and point the engine at the same folder:
+**Models.** The API and the engine share one models folder: `deploy\data\models`, which the `api` container mounts
+as `/data/models`. The one-time setup already fetched the weights there. The API registers the files in that
+folder only when it starts and when you call rescan, so if you fetched them after `docker compose up` (or add more
+later), register them with the token from the step above:
 
 ```powershell
-python tools\fetch_models.py --dest deploy\data\models
+python tools\fetch_models.py --dest deploy\data\models      # only if the folder is empty
+curl.exe -s -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:3001/api/v1/models/rescan
 ```
 
-On its first start the API registers every model file in that folder and queues a validation for each. A `.pt` or
-`.engine` file from elsewhere goes into `deploy\data\models\inbox\`, then `POST /api/v1/models/rescan`.
+Each newly registered file gets a validation. A `.pt` or `.engine` file from elsewhere goes into
+`deploy\data\models\inbox\` (copy it in completely first: a rescan moves a file that is still being copied), then
+rescan. The engine below reads the same folder through `ZOO_MODELS_DIR`. `test_video.py` reads
+`services\engine\models` unless you set `ZOO_MODELS_DIR` in that terminal too.
 
 **Run the engine against the stack.** `<redis-password>` and `<port>` come from `deploy\.env`, and
 `<engine-token>` is `ENGINE_TOKEN` from the same file:
@@ -128,15 +133,32 @@ and the running engine follows within about a second, without reconnecting the s
 Stop it with Ctrl+C so open intervals are closed with `engine_stop`. After a crash the next start closes them with
 `engine_restart`.
 
-**A light, single-camera run** for a weak laptop: `PATCH /api/v1/cameras/<id>` with `{"enabled": false}` on every
-camera but one, and give that one `targetFps` 1 and a smaller model input (`imgsz` 640 in its settings). A `FILE`
-source is relative to `services/engine` (for example `sample_data/cars.mp4`). Then start the engine as above:
+**A light, single-camera run** for a weak laptop: keep one camera (here the gate camera) enabled, play a video
+file through it at 1 fps, and run a small model at imgsz 640. A `FILE` source is relative to `services/engine`, and
+the engine plays it in real time at the file's own frame rate, like a camera. `<token>` is the API token from the
+step above; the camera ids come from `GET /api/v1/cameras`.
 
 ```powershell
 $h = @{ Authorization = "Bearer <token>" }
-Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"enabled":false}' http://127.0.0.1:3001/api/v1/cameras/<id>
-uv run python main.py
+$api = "http://127.0.0.1:3001/api/v1/cameras"
+# 1. Disable every other camera (repeat for each id).
+Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"enabled":false}' "$api/<other id>"
+# 2. Point the gate camera at the file, at 1 fps.
+Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body '{"mainStreamUrl":"sample_data/cars.mp4","targetFps":1}' "$api/<gate id>"
+# 3. Read its config. Note "version" and the settings.
+Invoke-RestMethod -Headers $h "$api/<gate id>/config" | ConvertTo-Json -Depth 20
 ```
+
+Edit the settings from step 3: `model_name` `"yolo26s.onnx"`, `imgsz` `640`, `anpr.enabled` `false`. Then save them
+as a new version, with `baseVersion` set to the `version` you read (a stale one is refused with 409):
+
+```powershell
+$body = '{"baseVersion": <version>, "settings": { ...the edited settings... }, "note": "laptop run"}'
+Invoke-RestMethod -Method Post -Headers $h -ContentType "application/json" -Body $body "$api/<gate id>/config"
+```
+
+On a laptop keep `ENGINE_MODEL_JOBS=off` in the engine's terminal until you need validation or conversion jobs
+(they load models and use CPU). Then start the engine as above with `uv run python main.py`.
 
 **Status.** Per camera: `online` (false when the engine has reported nothing for 15 s) and the engine's `status`
 (its state, such as reconnecting, and `appliedVersion`, the config version it runs; null when offline). A frame
@@ -205,7 +227,6 @@ Stop everything with Ctrl+C in each terminal. Recordings collect in `zoo-vision\
 | `cars.mp4` won't open | git-lfs isn't installed, so the file is a small pointer. Install git-lfs, then `git lfs pull`. |
 | A camera never connects | Its stream URL in the API differs from the MediaMTX path name, or FFmpeg can't find the video in `deploy\mediamtx.yml`. Check the MediaMTX terminal. |
 | `/live` says the AI engine isn't connected | The engine isn't running, or `AI_ENGINE_API_KEY` in `.env.local` doesn't match the engine's `PREVIEW_API_KEY`. |
-| `test_synthetic_demo.py` fails with a CUDA error | It is hard-coded to `cuda:0`. On a laptop without an NVIDIA GPU, use `uv run pytest` instead. |
 | "reader is too slow, discarding frames" in MediaMTX | The CPU can't keep up. Lower `targetFps` per camera in the API, or enable fewer cameras. |
 
 More detail: [09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md](09_MEDIAMTX_SETUP_AND_TESTING_GUIDE.md) (MediaMTX and clips),

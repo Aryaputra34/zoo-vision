@@ -45,8 +45,8 @@ The `api` container runs as uid 1000 (`node`), so give it the folder after `fetc
 `sudo chown -R 1000:1000 "$ZOO_DATA_DIR/models"`.
 
 The web upload accepts ONNX files only (up to `MODEL_UPLOAD_MAX_BYTES`, default 1 GiB). To add a `.pt` or
-`.engine` model, copy it into `models/inbox/` and press Rescan in the models page. The API also rescans
-when it starts.
+`.engine` model, copy it into `models/inbox/` and press Rescan in the models page. Copy the file in completely
+first: a rescan moves a file that is still being copied. The API also rescans when it starts.
 
 ## Secrets
 

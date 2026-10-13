@@ -125,6 +125,11 @@ User routes under `/api/v1`:
 | `POST /models/:id/validate`, `POST /models/:id/convert` | SUPERADMIN | Queue a validation, or a conversion to ONNX, for the engine |
 | `DELETE /models/:id` | SUPERADMIN | Remove a model |
 
+A conversion whose report never reaches the API (the engine was stopped or could not reach the API) leaves the
+target row in `CONVERTING`. Validate cannot retry it: `POST /models/:id/validate` answers 409 ("The model is
+being converted"), and a converted row that ended `FAILED` has no file to validate. To try again, delete the
+target row (`DELETE /models/:id`) and start the conversion again from the source model.
+
 A camera has `inferenceStream` (`MAIN` or `SUB`): which stream URL the engine analyses. The engine applies camera
 changes live, so saving settings does not restart its stream.
 
