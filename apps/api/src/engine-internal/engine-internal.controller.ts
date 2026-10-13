@@ -2,12 +2,22 @@ import {
   BadRequestException,
   Controller,
   Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
   Query,
+  Body,
   UseGuards,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Public } from '../auth/decorators';
+import {
+  parseConversionReport,
+  parseValidationReport,
+} from '../models/dto/model.dto';
+import { ModelsService } from '../models/models.service';
 import {
   type EngineCamera,
   EngineCamerasService,
@@ -22,7 +32,10 @@ const GROUP = /^[a-z0-9_-]{1,32}$/;
 @UseGuards(EngineTokenGuard)
 @ApiExcludeController()
 export class EngineInternalController {
-  constructor(private readonly cameras: EngineCamerasService) {}
+  constructor(
+    private readonly cameras: EngineCamerasService,
+    private readonly models: ModelsService,
+  ) {}
 
   @Get('cameras')
   async list(
@@ -32,5 +45,23 @@ export class EngineInternalController {
       throw new BadRequestException('group must match ^[a-z0-9_-]{1,32}$');
     }
     return { cameras: await this.cameras.snapshot(group) };
+  }
+
+  @Post('models/:id/validation')
+  @HttpCode(204)
+  async validation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    await this.models.reportValidation(id, parseValidationReport(body));
+  }
+
+  @Post('models/:id/conversion')
+  @HttpCode(204)
+  async conversion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    await this.models.reportConversion(id, parseConversionReport(body));
   }
 }

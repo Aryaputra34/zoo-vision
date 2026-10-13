@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -13,7 +14,7 @@ import type Redis from 'ioredis';
 import type { Actor } from '../auth/actor';
 import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
-import type { AiModel } from '../generated/prisma/client';
+import type { AiModel, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { REDIS } from '../redis/redis.module';
 import {
@@ -26,10 +27,12 @@ import {
   type StoredUpload,
 } from './model-files';
 import {
+  type ConversionReport,
   type ModelView,
   type RescanResult,
   toModelView,
   type UploadModelDto,
+  type ValidationReport,
 } from './dto/model.dto';
 
 export const MODEL_JOBS_KEY = 'model:jobs';
@@ -130,17 +133,222 @@ export class ModelsService implements OnApplicationBootstrap {
     return this.get(id);
   }
 
-  /** Queues a validate job and then marks the model VALIDATING. Throws when Redis refuses. */
+  /**
+   * Queues a validate job and then marks the model VALIDATING, but only while the row still has the
+   * status it had before queueing, so a fast engine report is never overwritten. Throws when Redis
+   * refuses.
+   */
   async enqueueValidation(id: string): Promise<void> {
     const row = await this.getRow(id);
     await this.redis.lpush(
       MODEL_JOBS_KEY,
       JSON.stringify({ type: 'validate', modelId: id, path: row.filePath }),
     );
-    await this.prisma.aiModel.update({
-      where: { id },
+    await this.prisma.aiModel.updateMany({
+      where: { id, status: row.status },
       data: { status: 'VALIDATING' },
     });
+  }
+
+  /** Re-runs the validation. A model that is being converted has no complete file yet. */
+  async validate(id: string): Promise<ModelView> {
+    const row = await this.getRow(id);
+    if (row.status === 'CONVERTING') {
+      throw new ConflictException('The model is being converted');
+    }
+    await this.enqueueValidation(id);
+    return this.get(id);
+  }
+
+  /** Queues the export of a READY .pt model and creates the CONVERTING ONNX row it will fill. */
+  async convert(
+    actor: Actor,
+    id: string,
+    imgsz: number | [number, number],
+  ): Promise<{ source: ModelView; target: ModelView }> {
+    const source = await this.getRow(id);
+    if (source.format !== 'PT' || source.status !== 'READY') {
+      throw new ConflictException(
+        'Only a PT model with status READY can be converted',
+      );
+    }
+    const targetId = randomUUID();
+    const outPath = registryPath(targetId, 'onnx');
+    const stem = source.originalName.replace(/\.[^.]+$/, '');
+    const target = await this.prisma.aiModel.create({
+      data: {
+        id: targetId,
+        name: `${source.name} (ONNX)`,
+        version: source.version,
+        format: 'ONNX',
+        source: 'CONVERTED',
+        status: 'CONVERTING',
+        filePath: outPath,
+        originalName: `${stem}.onnx`,
+        convertedFromId: source.id,
+        createdById: actor.id,
+      },
+    });
+    try {
+      await this.redis.lpush(
+        MODEL_JOBS_KEY,
+        JSON.stringify({
+          type: 'convert',
+          modelId: source.id,
+          targetId,
+          path: source.filePath,
+          outPath,
+          imgsz,
+        }),
+      );
+    } catch (err) {
+      await this.prisma.aiModel.delete({ where: { id: targetId } });
+      throw err;
+    }
+    return { source: toModelView(source), target: toModelView(target) };
+  }
+
+  /** The engine's validation result. Only a VALIDATING model takes it; the update is atomic. */
+  async reportValidation(id: string, report: ValidationReport): Promise<void> {
+    const at = new Date().toISOString();
+    const data: Prisma.AiModelUpdateManyMutationInput = report.ok
+      ? {
+          status: 'READY',
+          classNames: report.classNames,
+          validation: {
+            ok: true,
+            latencyMs: report.latencyMs,
+            device: report.device,
+            at,
+          },
+        }
+      : {
+          status: 'FAILED',
+          validation: { ok: false, error: report.error, at },
+        };
+    await this.applyReport(id, 'VALIDATING', data);
+  }
+
+  /**
+   * The engine's conversion result for the target row. The reported path must be the row's own and
+   * is resolved inside the models folder. A good file moves the row to VALIDATING before the job is
+   * queued, so the engine's validation report always finds that status.
+   */
+  async reportConversion(id: string, report: ConversionReport): Promise<void> {
+    const at = new Date().toISOString();
+    const failed = (error: string): Prisma.AiModelUpdateManyMutationInput => ({
+      status: 'FAILED',
+      validation: { ok: false, error: error.slice(0, 500), at },
+    });
+    const row = await this.getRow(id);
+    if (row.status !== 'CONVERTING') {
+      throw new ConflictException(`The model is ${row.status}`);
+    }
+    if (!report.ok) {
+      await this.applyReport(id, 'CONVERTING', failed(report.error));
+      return;
+    }
+    if (report.path !== row.filePath) {
+      throw new BadRequestException('path is not the conversion target');
+    }
+    let size: number;
+    try {
+      size = (await stat(resolveInside(this.env.MODELS_DIR, row.filePath)))
+        .size;
+    } catch {
+      await this.applyReport(
+        id,
+        'CONVERTING',
+        failed('The converted file was not found'),
+      );
+      return;
+    }
+    const duplicate = await this.prisma.aiModel.findUnique({
+      where: { sha256: report.sha256 },
+    });
+    if (duplicate && duplicate.id !== id) {
+      await this.applyReport(
+        id,
+        'CONVERTING',
+        failed(`duplicate of ${duplicate.name}`),
+      );
+      return;
+    }
+    try {
+      await this.applyReport(id, 'CONVERTING', {
+        status: 'VALIDATING',
+        sha256: report.sha256,
+        sizeBytes: BigInt(size),
+      });
+    } catch (err) {
+      if (code(err) !== 'P2002') throw err;
+      const other = await this.prisma.aiModel.findUnique({
+        where: { sha256: report.sha256 },
+      });
+      await this.applyReport(
+        id,
+        'CONVERTING',
+        failed(`duplicate of ${other?.name ?? 'another model'}`),
+      );
+      return;
+    }
+    try {
+      await this.redis.lpush(
+        MODEL_JOBS_KEY,
+        JSON.stringify({ type: 'validate', modelId: id, path: row.filePath }),
+      );
+    } catch (err) {
+      await this.prisma.aiModel.updateMany({
+        where: { id, status: 'VALIDATING' },
+        data: failed('The validation could not be queued'),
+      });
+      throw err;
+    }
+  }
+
+  /** Applies `data` only if the row still has `from`; 404 for no such row, 409 for another status. */
+  private async applyReport(
+    id: string,
+    from: AiModel['status'],
+    data: Prisma.AiModelUpdateManyMutationInput,
+  ): Promise<void> {
+    const { count } = await this.prisma.aiModel.updateMany({
+      where: { id, status: from },
+      data,
+    });
+    if (count === 1) return;
+    const row = await this.getRow(id);
+    throw new ConflictException(`The model is ${row.status}`);
+  }
+
+  /** Cameras may select a READY model; keeping the model they already have is always allowed. */
+  async assertSelectable(
+    modelId: string | undefined,
+    previousModelId: string | undefined,
+  ): Promise<void> {
+    if (modelId === undefined || modelId === previousModelId) return;
+    const row = await this.prisma.aiModel.findUnique({
+      where: { id: modelId },
+      select: { status: true },
+    });
+    if (row?.status !== 'READY') {
+      const message = row
+        ? `The model is ${row.status}, not READY`
+        : 'No such model';
+      throw new BadRequestException({
+        message: 'Settings are invalid',
+        errors: [{ path: '/model_id', message }],
+      });
+    }
+  }
+
+  /** The registry path of a model, whatever its status; null for an unknown id. */
+  async resolvePath(modelId: string): Promise<string | null> {
+    const row = await this.prisma.aiModel.findUnique({
+      where: { id: modelId },
+      select: { filePath: true },
+    });
+    return row?.filePath ?? null;
   }
 
   /** The model stays UPLOADED when the job cannot be queued; the registry still has the file. */

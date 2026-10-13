@@ -264,4 +264,79 @@ describe('camera config versions', () => {
     });
     expect(row.entityId).toBe('cam_test_01');
   });
+
+  describe('model_id', () => {
+    const insertModel = async (status: string) => {
+      const [{ id }] = (await ownerQuery(
+        `INSERT INTO "AiModel" (id, name, format, source, status, "filePath", "originalName", sha256, "updatedAt")
+         VALUES (gen_random_uuid(), 'm', 'ONNX', 'UPLOAD', $1::"ModelStatus", 'registry/' || gen_random_uuid() || '.onnx', 'm.onnx', md5(random()::text), now())
+         RETURNING id`,
+        status,
+      )) as { id: string }[];
+      return id;
+    };
+
+    it('saving model_id of a VALIDATING model → 400 at /model_id; of a READY model → 201', async () => {
+      const validating = await insertModel('VALIDATING');
+      const res = await save(superadmin, {
+        baseVersion: 1,
+        settings: { ...settings, model_id: validating },
+      }).expect(400);
+      expect((res.body as { errors: unknown[] }).errors).toEqual([
+        { path: '/model_id', message: expect.any(String) as string },
+      ]);
+      await save(superadmin, {
+        baseVersion: 1,
+        settings: {
+          ...settings,
+          model_id: '5f0e2a4c-1d3b-4c6e-8a7f-9b0c1d2e3f40',
+        },
+      }).expect(400);
+      const ready = await insertModel('READY');
+      await save(superadmin, {
+        baseVersion: 1,
+        settings: { ...settings, model_id: ready },
+      }).expect(201);
+    });
+
+    it('creating a camera with the model_id of a non-READY model → 400', async () => {
+      const failed = await insertModel('FAILED');
+      await http()
+        .post('/api/v1/cameras')
+        .set('Cookie', superadmin)
+        .send({
+          id: 'cam_new',
+          name: 'New',
+          useCase: 'cashier_presence',
+          sourceType: 'RTSP',
+          mainStreamUrl: 'rtsp://10.1.2.3/main',
+          settings: { ...settings, model_id: failed },
+        })
+        .expect(400);
+    });
+
+    it('a MANAGER sending model_id → 403 (x-minRole)', async () => {
+      const ready = await insertModel('READY');
+      await save(manager, {
+        baseVersion: 1,
+        settings: { ...settings, model_id: ready },
+      }).expect(403);
+    });
+
+    it('keeping an unchanged model_id is accepted after the model was revalidated to FAILED', async () => {
+      const ready = await insertModel('READY');
+      await save(superadmin, {
+        baseVersion: 1,
+        settings: { ...settings, model_id: ready },
+      }).expect(201);
+      await ownerQuery(
+        `UPDATE "AiModel" SET status = 'FAILED' WHERE id = $1`,
+        ready,
+      );
+      await save(manager, {
+        baseVersion: 2,
+        settings: { ...settings, model_id: ready, clerk_zone: movedZone },
+      }).expect(201);
+    });
+  });
 });

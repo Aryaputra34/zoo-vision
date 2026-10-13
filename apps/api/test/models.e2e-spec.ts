@@ -9,7 +9,7 @@ import Redis from 'ioredis';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { ENV, type Env } from '../src/config/env';
-import { createTestApp } from './app';
+import { createTestApp, TEST_ENGINE_TOKEN } from './app';
 import { asRole } from './helpers/auth';
 import { validSettings } from './helpers/settings';
 import { flushRedis, ownerQuery, resetDb } from './setup/db';
@@ -323,11 +323,269 @@ describe('AI model registry', () => {
 
   it('a model named by a camera model_id cannot be deleted either', async () => {
     const m = (await upload('m.onnx', ONNX).expect(201)).body as ModelBody;
+    await ownerQuery(
+      `UPDATE "AiModel" SET status = 'READY' WHERE id = $1`,
+      m.id,
+    );
     await camera('cam_i', {
       ...validSettings('cashier_presence'),
       model_id: m.id,
     });
     await http().delete(`/api/v1/models/${m.id}`).set('Cookie', sa).expect(409);
     expect(await registryFiles()).toEqual([`${m.id}.onnx`]);
+  });
+
+  describe('engine reports', () => {
+    const bearer = `Bearer ${TEST_ENGINE_TOKEN}`;
+    const report = (
+      id: string,
+      kind: 'validation' | 'conversion',
+      body: object,
+    ) =>
+      http()
+        .post(`/internal/engine/models/${id}/${kind}`)
+        .set('Authorization', bearer)
+        .send(body);
+    const jobs = async () =>
+      (await redis.lrange('model:jobs', 0, -1)).map(
+        (j) => JSON.parse(j) as Record<string, unknown>,
+      );
+    const row = async (id: string) =>
+      (
+        (await ownerQuery(
+          `SELECT * FROM "AiModel" WHERE id = $1`,
+          id,
+        )) as Record<string, unknown>[]
+      )[0];
+    const ok = {
+      ok: true,
+      classNames: ['person', 'horse'],
+      latencyMs: 41,
+      device: 'cpu',
+    };
+    const readyPt = async () => {
+      await writeFile(join(dir, 'inbox', 'a.pt'), Buffer.from([0x80, 0x02, 1]));
+      const m = ((await rescan()).body as { added: ModelBody[] }).added[0];
+      await report(m.id, 'validation', ok).expect(204);
+      return m;
+    };
+    const convert = (id: string, body: object = {}, cookie = sa) =>
+      http()
+        .post(`/api/v1/models/${id}/convert`)
+        .set('Cookie', cookie)
+        .send(body);
+
+    it('engine report routes need the engine token', async () => {
+      const m = (await upload('x.onnx', ONNX).expect(201)).body as ModelBody;
+      for (const kind of ['validation', 'conversion'] as const) {
+        const url = `/internal/engine/models/${m.id}/${kind}`;
+        await http().post(url).send(ok).expect(401);
+        await http()
+          .post(url)
+          .set('Authorization', 'Bearer wrong')
+          .send(ok)
+          .expect(401);
+        await http().post(url).set('Cookie', sa).send(ok).expect(401);
+      }
+      expect((await row(m.id)).status).toBe('VALIDATING');
+    });
+
+    it('a validation report {ok: true} makes the model READY with classNames; a second report → 409 and nothing changes', async () => {
+      const m = (await upload('x.onnx', ONNX).expect(201)).body as ModelBody;
+      await report(m.id, 'validation', ok).expect(204);
+      const after = await row(m.id);
+      expect(after).toMatchObject({
+        status: 'READY',
+        classNames: ['person', 'horse'],
+      });
+      expect(after.validation).toMatchObject({
+        ok: true,
+        latencyMs: 41,
+        device: 'cpu',
+      });
+      expect((after.validation as { at: string }).at).toEqual(
+        expect.any(String),
+      );
+
+      await report(m.id, 'validation', { ok: false, error: 'late' }).expect(
+        409,
+      );
+      const again = await row(m.id);
+      expect(again).toMatchObject({
+        status: 'READY',
+        classNames: ['person', 'horse'],
+      });
+      expect(again.validation).toEqual(after.validation);
+    });
+
+    it('a validation report {ok: false} makes it FAILED with the error', async () => {
+      const m = (await upload('x.onnx', ONNX).expect(201)).body as ModelBody;
+      await report(m.id, 'validation', { ok: 'yes' }).expect(400);
+      await report(
+        '5f0e2a4c-1d3b-4c6e-8a7f-9b0c1d2e3f40',
+        'validation',
+        ok,
+      ).expect(404);
+      await report(m.id, 'validation', {
+        ok: false,
+        error: 'bad opset',
+      }).expect(204);
+      const after = await row(m.id);
+      expect(after.status).toBe('FAILED');
+      expect(after.validation).toMatchObject({ ok: false, error: 'bad opset' });
+    });
+
+    it('POST validate queues a job and sets VALIDATING; MANAGER → 403; 409 while CONVERTING', async () => {
+      const m = (await upload('x.onnx', ONNX).expect(201)).body as ModelBody;
+      await report(m.id, 'validation', { ok: false, error: 'x' }).expect(204);
+      await redis.del('model:jobs');
+      await http()
+        .post(`/api/v1/models/${m.id}/validate`)
+        .set('Cookie', manager)
+        .expect(403);
+      const res = await http()
+        .post(`/api/v1/models/${m.id}/validate`)
+        .set('Cookie', sa)
+        .expect(202);
+      expect((res.body as ModelBody).status).toBe('VALIDATING');
+      expect(await jobs()).toEqual([
+        { type: 'validate', modelId: m.id, path: m.filePath },
+      ]);
+      await ownerQuery(
+        `UPDATE "AiModel" SET status = 'CONVERTING' WHERE id = $1`,
+        m.id,
+      );
+      await http()
+        .post(`/api/v1/models/${m.id}/validate`)
+        .set('Cookie', sa)
+        .expect(409);
+    });
+
+    it('convert: a READY .pt (rescanned, then reported valid) → target CONVERTING and a convert job; a conversion report (file written at outPath first) → target VALIDATING and a validate job', async () => {
+      const src = await readyPt();
+      await redis.del('model:jobs');
+      const res = await convert(src.id, { imgsz: [640, 480] }).expect(202);
+      const { source, target } = res.body as {
+        source: ModelBody;
+        target: ModelBody & { convertedFromId: string };
+      };
+      expect(source).toMatchObject({ id: src.id, status: 'READY' });
+      expect(target).toMatchObject({
+        format: 'ONNX',
+        source: 'CONVERTED',
+        status: 'CONVERTING',
+        filePath: `registry/${target.id}.onnx`,
+        convertedFromId: src.id,
+        name: 'a.pt (ONNX)',
+      });
+      expect(await jobs()).toEqual([
+        {
+          type: 'convert',
+          modelId: src.id,
+          targetId: target.id,
+          path: src.filePath,
+          outPath: target.filePath,
+          imgsz: [640, 480],
+        },
+      ]);
+      await redis.del('model:jobs');
+
+      // the reported path must be the row's own; the row stays CONVERTING
+      await report(target.id, 'conversion', {
+        ok: true,
+        path: '../../etc/x.onnx',
+        sha256: sha(ONNX_B),
+      }).expect(400);
+      expect((await row(target.id)).status).toBe('CONVERTING');
+
+      await writeFile(join(dir, target.filePath), ONNX_B);
+      await report(target.id, 'conversion', {
+        ok: true,
+        path: target.filePath,
+        sha256: sha(ONNX_B),
+      }).expect(204);
+      expect(await row(target.id)).toMatchObject({
+        status: 'VALIDATING',
+        sha256: sha(ONNX_B),
+        sizeBytes: String(ONNX_B.length),
+      });
+      expect(await jobs()).toEqual([
+        { type: 'validate', modelId: target.id, path: target.filePath },
+      ]);
+      await report(target.id, 'conversion', {
+        ok: true,
+        path: target.filePath,
+        sha256: sha(ONNX_B),
+      }).expect(409);
+    });
+
+    it('a conversion that claims success without writing the file → FAILED; default imgsz is 640', async () => {
+      const src = await readyPt();
+      await redis.del('model:jobs');
+      const target = (
+        (await convert(src.id).expect(202)).body as { target: ModelBody }
+      ).target;
+      expect(await jobs()).toEqual([
+        expect.objectContaining({ imgsz: 640, targetId: target.id }),
+      ]);
+      await report(target.id, 'conversion', {
+        ok: true,
+        path: target.filePath,
+        sha256: sha(ONNX_B),
+      }).expect(204);
+      expect((await row(target.id)).status).toBe('FAILED');
+    });
+
+    it('a conversion whose sha256 is already registered → FAILED "duplicate of <name>"', async () => {
+      const src = await readyPt();
+      const dup = (await upload('same.onnx', ONNX).expect(201))
+        .body as ModelBody;
+      const target = (
+        (await convert(src.id).expect(202)).body as { target: ModelBody }
+      ).target;
+      await writeFile(join(dir, target.filePath), ONNX);
+      await report(target.id, 'conversion', {
+        ok: true,
+        path: target.filePath,
+        sha256: sha(ONNX),
+      }).expect(204);
+      const after = await row(target.id);
+      expect(after.status).toBe('FAILED');
+      expect(after.validation).toMatchObject({
+        ok: false,
+        error: `duplicate of ${dup.name}`,
+      });
+    });
+
+    it('convert on an ONNX model → 409; MANAGER → 403; a failed conversion → target FAILED', async () => {
+      const onnx = (await upload('x.onnx', ONNX).expect(201)).body as ModelBody;
+      await report(onnx.id, 'validation', ok).expect(204);
+      await convert(onnx.id).expect(409);
+      const src = await readyPt();
+      await convert(src.id, {}, manager).expect(403);
+      await convert(src.id, { imgsz: 100 }).expect(400);
+      await convert(src.id, { imgsz: 8192 }).expect(400);
+      await convert(src.id, { imgsz: [640] }).expect(400);
+      const target = (
+        (await convert(src.id, { imgsz: 320 }).expect(202)).body as {
+          target: ModelBody;
+        }
+      ).target;
+      await report(target.id, 'conversion', {
+        ok: false,
+        error: 'export blew up',
+      }).expect(204);
+      const after = await row(target.id);
+      expect(after.status).toBe('FAILED');
+      expect(after.validation).toMatchObject({
+        ok: false,
+        error: 'export blew up',
+      });
+      await ownerQuery(
+        `UPDATE "AiModel" SET status = 'FAILED' WHERE id = $1`,
+        src.id,
+      );
+      await convert(src.id).expect(409);
+    });
   });
 });

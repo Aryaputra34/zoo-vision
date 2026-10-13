@@ -9,6 +9,7 @@ import type { Actor } from '../auth/actor';
 import { ContractsService } from '../contracts/contracts.service';
 import type { Camera, Prisma } from '../generated/prisma/client';
 import type { SourceType } from '../generated/prisma/enums';
+import { ModelsService } from '../models/models.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { type CameraView, toCameraView } from './camera-view';
 import { ConfigNotifier } from './config-notifier';
@@ -47,6 +48,7 @@ export class CamerasService {
     private readonly prisma: PrismaService,
     private readonly contracts: ContractsService,
     private readonly notifier: ConfigNotifier,
+    private readonly models: ModelsService,
     readonly cipher: UrlCipher,
   ) {}
 
@@ -83,6 +85,10 @@ export class CamerasService {
         errors: result.errors,
       });
     }
+    await this.models.assertSelectable(
+      (dto.settings as { model_id?: string }).model_id,
+      undefined,
+    );
     const schemaVersion = registry.useCases.get(dto.useCase)?.schemaVersion;
     if (schemaVersion === undefined) {
       throw new BadRequestException('Unknown or unassignable use case');

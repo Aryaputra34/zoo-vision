@@ -21,6 +21,7 @@ import {
   ApiBody,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiAcceptedResponse,
   ApiOkResponse,
 } from '@nestjs/swagger';
 import { rm } from 'node:fs/promises';
@@ -32,6 +33,7 @@ import { CurrentActor, MinRole } from '../auth/decorators';
 import {
   type ModelView,
   type RescanResult,
+  parseImgsz,
   UploadModelDto,
 } from './dto/model.dto';
 import type { StoredUpload } from './model-files';
@@ -133,6 +135,40 @@ export class ModelsController {
       },
     });
     return view;
+  }
+
+  @MinRole('SUPERADMIN')
+  @Post(':id/validate')
+  @HttpCode(202)
+  @ApiAcceptedResponse({ description: 'The ModelView, VALIDATING' })
+  async validate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ): Promise<ModelView> {
+    const view = await this.models.validate(id);
+    setAudit(req, { action: 'model.validate', entity: 'model', entityId: id });
+    return view;
+  }
+
+  @MinRole('SUPERADMIN')
+  @Post(':id/convert')
+  @HttpCode(202)
+  @ApiAcceptedResponse({ description: '{ source, target } ModelViews' })
+  async convert(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<{ source: ModelView; target: ModelView }> {
+    const imgsz = parseImgsz(body);
+    const result = await this.models.convert(actor, id, imgsz);
+    setAudit(req, {
+      action: 'model.convert',
+      entity: 'model',
+      entityId: id,
+      after: { targetId: result.target.id, imgsz },
+    });
+    return result;
   }
 
   @MinRole('SUPERADMIN')

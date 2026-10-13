@@ -4,7 +4,7 @@ import { App } from 'supertest/types';
 import { createTestApp, TEST_ENGINE_TOKEN } from './app';
 import { asRole } from './helpers/auth';
 import { validSettings } from './helpers/settings';
-import { flushRedis, resetDb } from './setup/db';
+import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
 const MAIN = 'rtsp://admin:hunter2pw@10.1.2.3:554/main';
 const SUB = 'rtsp://admin:hunter2pw@10.1.2.3:554/sub';
@@ -148,5 +148,23 @@ describe('engine internal routes', () => {
     expect(cam.model).toEqual({ path: 'custom.onnx', imgsz: 960 });
     expect(cam.targetFps).toBe(3);
     expect(cam.nxCameraId).toBe('nx-1');
+  });
+
+  it("model.path is the AiModel's registry path when model_id is set, else model_name", async () => {
+    const [{ id, filePath }] = (await ownerQuery(
+      `INSERT INTO "AiModel" (id, name, format, source, status, "filePath", "originalName", sha256, "updatedAt")
+       VALUES (gen_random_uuid(), 'm', 'ONNX', 'UPLOAD', 'READY', 'registry/' || gen_random_uuid() || '.onnx', 'm.onnx', md5('x'), now())
+       RETURNING id, "filePath"`,
+    )) as { id: string; filePath: string }[];
+    const settings = validSettings('cashier_presence');
+    await create({ id: 'cam_plain', settings });
+    await create({ id: 'cam_model', settings: { ...settings, model_id: id } });
+    const byId = Object.fromEntries(
+      (await cameras()).map((c) => [c.id, c.model.path]),
+    );
+    expect(byId).toEqual({
+      cam_model: filePath,
+      cam_plain: settings.model_name,
+    });
   });
 });

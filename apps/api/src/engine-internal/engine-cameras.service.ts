@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { UrlCipher } from '../cameras/url-cipher';
 import { ContractsService } from '../contracts/contracts.service';
+import { ModelsService } from '../models/models.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type EngineCamera = {
@@ -17,7 +18,7 @@ export type EngineCamera = {
   sourceUrl: string;
   targetFps: number;
   nxCameraId: string | null;
-  /** `path` is relative to the models directory. */
+  /** `path` is relative to the models directory: the registry row of `model_id`, else `model_name`. */
   model: { path: string; imgsz: number | [number, number] };
 };
 
@@ -27,6 +28,7 @@ export class EngineCamerasService {
     private readonly prisma: PrismaService,
     private readonly contracts: ContractsService,
     private readonly cipher: UrlCipher,
+    private readonly models: ModelsService,
   ) {}
 
   /** The enabled cameras of an engine group, sorted by id. */
@@ -51,6 +53,10 @@ export class EngineCamerasService {
         camera.useCase,
         active.settings as object,
       ) as Record<string, unknown>;
+      const modelId = settings.model_id as string | undefined;
+      const registryFile = modelId
+        ? await this.models.resolvePath(modelId)
+        : null;
       const useSub = camera.inferenceStream === 'SUB' && camera.subStreamUrlEnc;
       out.push({
         id: camera.id,
@@ -65,7 +71,7 @@ export class EngineCamerasService {
         targetFps: camera.targetFps,
         nxCameraId: camera.nxCameraId,
         model: {
-          path: settings.model_name as string,
+          path: registryFile ?? (settings.model_name as string),
           imgsz: settings.imgsz as number | [number, number],
         },
       });
