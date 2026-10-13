@@ -11,6 +11,7 @@ import { EngineInternalModule } from './engine-internal/engine-internal.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
 import { JobsModule } from './jobs/jobs.module';
+import { ModelsModule } from './models/models.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TransientDbFilter } from './prisma/transient.filter';
 import { RedisModule } from './redis/redis.module';
@@ -36,6 +37,7 @@ export class AppModule {
         EngineInternalModule,
         IngestModule,
         JobsModule,
+        ModelsModule,
       ],
       controllers: [HealthController],
       providers: [

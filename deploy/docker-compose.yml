@@ -64,6 +64,9 @@ services:
       ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
       COOKIE_SECURE: "false" # no TLS until Caddy in Phase 3
       SWAGGER: public
+      MODELS_DIR: /data/models
+    volumes:
+      - ${ZOO_DATA_DIR:-./data}/models:/data/models
     ports:
       - "127.0.0.1:3001:3001"
     depends_on:

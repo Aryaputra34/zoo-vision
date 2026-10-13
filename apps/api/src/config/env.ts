@@ -16,6 +16,10 @@ export type Env = Readonly<{
   INGEST: 'on' | 'off';
   /** Whether background jobs (the offline check) run in this process. */
   JOBS: 'on' | 'off';
+  /** The AI models folder: `inbox/`, `registry/` and the built-in files of tools/fetch_models.py. */
+  MODELS_DIR: string;
+  /** Largest accepted model upload, in bytes. */
+  MODEL_UPLOAD_MAX_BYTES: number;
 }>;
 
 export class EnvError extends Error {
@@ -55,6 +59,15 @@ const port: Check<number> = (value) => {
   const n = Number(value);
   return /^\d+$/.test(value) && n >= 1 && n <= 65535 ? n : undefined;
 };
+
+const positiveInt: Check<number> = (value) => {
+  const n = Number(value);
+  return /^\d+$/.test(value) && Number.isSafeInteger(n) && n > 0
+    ? n
+    : undefined;
+};
+
+const text: Check<string> = (value) => value;
 
 /**
  * Validates the environment. Throws one {@link EnvError} naming every bad variable (never its
@@ -104,6 +117,13 @@ export function loadEnv(source: Source = process.env): Env {
     PORT: read('PORT', port, 'a port number (1-65535)', 3001),
     INGEST: read('INGEST', oneOf('on', 'off'), 'on or off', 'on'),
     JOBS: read('JOBS', oneOf('on', 'off'), 'on or off', 'on'),
+    MODELS_DIR: read('MODELS_DIR', text, 'a folder path', '/data/models'),
+    MODEL_UPLOAD_MAX_BYTES: read(
+      'MODEL_UPLOAD_MAX_BYTES',
+      positiveInt,
+      'a positive number of bytes',
+      1073741824,
+    ),
   };
 
   if (problems.length > 0) {

@@ -30,6 +30,8 @@ describe('loadEnv', () => {
       PORT: 3001,
       INGEST: 'on',
       JOBS: 'on',
+      MODELS_DIR: '/data/models',
+      MODEL_UPLOAD_MAX_BYTES: 1073741824,
     });
   });
 
@@ -41,6 +43,8 @@ describe('loadEnv', () => {
       PORT: '8080',
       INGEST: 'off',
       JOBS: 'off',
+      MODELS_DIR: '/srv/models',
+      MODEL_UPLOAD_MAX_BYTES: '2048',
     });
     expect(env).toMatchObject({
       COOKIE_SECURE: false,
@@ -48,6 +52,8 @@ describe('loadEnv', () => {
       PORT: 8080,
       INGEST: 'off',
       JOBS: 'off',
+      MODELS_DIR: '/srv/models',
+      MODEL_UPLOAD_MAX_BYTES: 2048,
     });
   });
 
@@ -67,6 +73,7 @@ describe('loadEnv', () => {
       PORT: '70000',
       INGEST: 'maybe',
       JOBS: 'sometimes',
+      MODEL_UPLOAD_MAX_BYTES: '0',
     });
     for (const name of [
       'DATABASE_URL',
@@ -78,6 +85,7 @@ describe('loadEnv', () => {
       'PORT',
       'INGEST',
       'JOBS',
+      'MODEL_UPLOAD_MAX_BYTES',
     ]) {
       expect(message).toMatch(new RegExp(`^  ${name}: `, 'm'));
     }

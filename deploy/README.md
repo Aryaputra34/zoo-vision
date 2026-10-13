@@ -27,6 +27,23 @@ First create the superadmin: `docker compose exec -e ZOO_ADMIN_PASSWORD=<passwor
 Use the same folder for `--dest` as `ZOO_DATA_DIR` in `.env`, plus `/models`. Host data lives under
 `ZOO_DATA_DIR` (default `./data`, git-ignored): `recordings/`, `snapshots/`, `models/`, `logs/`.
 
+## AI models folder
+
+`$ZOO_DATA_DIR/models` is mounted into the `api` container as `/data/models` (`MODELS_DIR`):
+
+| Path | What it holds |
+|---|---|
+| `models/*.onnx`, `*.pt`, `*.engine` | The built-in models that `fetch_models.py` downloads. Registered in place on Rescan |
+| `models/inbox/` | Drop zone. Rescan moves each model file here into the registry |
+| `models/registry/` | Registered files, named `<model id>.<ext>`. Uploads land here. Do not edit by hand |
+
+The `api` container runs as uid 1000 (`node`), so give it the folder after `fetch_models.py`:
+`sudo chown -R 1000:1000 "$ZOO_DATA_DIR/models"`.
+
+The web upload accepts ONNX files only (up to `MODEL_UPLOAD_MAX_BYTES`, default 1 GiB). To add a `.pt` or
+`.engine` model, copy it into `models/inbox/` and press Rescan in the models page. The API also rescans
+when it starts.
+
 ## Secrets
 
 `.env` is git-ignored. Generate each value and never reuse one:
