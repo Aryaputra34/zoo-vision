@@ -4,6 +4,7 @@ Ingests video from RTSP (Nx Server), webcams, or local MP4 files without frame b
 """
 
 import os
+import re
 import time
 import threading
 import logging
@@ -17,6 +18,16 @@ import numpy as np
 from typing import Optional, Tuple
 
 logger = logging.getLogger("StreamManager")
+
+RECONNECT_MIN_S = 2.0
+RECONNECT_MAX_S = 30.0
+
+_CREDENTIALS = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@")
+
+
+def mask_url(url: str) -> str:
+    """Hide user:password in a stream URL; anything without credentials is returned unchanged."""
+    return _CREDENTIALS.sub(r"\g<1>***@", str(url))
 
 
 class StreamManager:
@@ -43,7 +54,7 @@ class StreamManager:
         self._connect()
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.thread.start()
-        logger.info(f"[{self.camera_id}] Stream reader started @ target {self.target_fps} FPS (Source: {self.source})")
+        logger.info(f"[{self.camera_id}] Stream reader started @ target {self.target_fps} FPS (Source: {mask_url(self.source)})")
 
     def _connect(self):
         """Attempts connection to the video source."""
@@ -53,16 +64,17 @@ class StreamManager:
         logger.info(f"[{self.camera_id}] Connecting to stream source...")
         self.cap = cv2.VideoCapture(self.source)
         if not self.cap.isOpened():
-            logger.warning(f"[{self.camera_id}] Failed to open stream source: {self.source}")
+            logger.warning(f"[{self.camera_id}] Failed to open stream source: {mask_url(self.source)}")
 
     def _capture_loop(self):
         """Continuously pulls frames, dropping old ones to prevent RTSP buffer lag."""
-        reconnect_delay = 2.0
+        reconnect_delay = RECONNECT_MIN_S
         last_yield_time = 0.0
 
         while self.is_running:
             if self.cap is None or not self.cap.isOpened():
                 time.sleep(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, RECONNECT_MAX_S)
                 self._connect()
                 continue
 
@@ -76,9 +88,11 @@ class StreamManager:
 
                 logger.warning(f"[{self.camera_id}] RTSP stream read failed. Reconnecting in {reconnect_delay}s...")
                 time.sleep(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, RECONNECT_MAX_S)
                 self._connect()
                 continue
 
+            reconnect_delay = RECONNECT_MIN_S
             current_time = time.time()
             # Throttle to target FPS
             if current_time - last_yield_time >= self.frame_interval:
