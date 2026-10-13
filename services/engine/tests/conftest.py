@@ -1,7 +1,9 @@
 import json
 import threading
+import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 import ultralytics
@@ -158,3 +160,161 @@ def make_pipeline(use_case: str, settings=None, stream=None):
 
 def table_change(status):
     return {"tableId": "T1", "tableName": "Table 1", "oldStatus": "", "status": status, "dwellSec": 0, "timestampMs": 1}
+
+
+# --- Camera workers and the supervisor (test_worker.py, test_supervisor.py) ---
+
+def wait_until(cond, timeout: float = 2.0) -> bool:
+    """Polls `cond` every 10 ms until it is truthy (True) or `timeout` seconds have passed (False)."""
+    deadline = time.monotonic() + timeout
+    while not cond():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.01)
+    return True
+
+
+class FakeClock:
+    """An epoch clock the test sets by hand."""
+
+    def __init__(self, t: float = 1_000_000.0):
+        self.t = t
+
+    def __call__(self) -> float:
+        return self.t
+
+
+LIVE_FRAME = np.zeros((180, 320, 3), np.uint8)
+TABLES = {  # normalized polygons; on LIVE_FRAME a person box at PEOPLE[id] sits in table id
+    "T1": [[0.1, 0.1], [0.4, 0.1], [0.4, 0.5], [0.1, 0.5]],
+    "T2": [[0.6, 0.1], [0.9, 0.1], [0.9, 0.5], [0.6, 0.5]],
+}
+PEOPLE = {"T1": (50, 25, 75, 75), "T2": (200, 25, 225, 75)}
+
+
+def people_in(*table_ids):
+    """FakeYOLO.boxes with one person in each named table."""
+    return torch.tensor([[*PEOPLE[t], 0.9, 0.0] for t in table_ids]) if table_ids else torch.zeros((0, 6))
+
+
+def sessions(stream, message: str, camera_id: str = "cam1") -> list:
+    """The table_session interval messages of one kind ("interval_open" / "interval_close") a camera sent."""
+    return [m for m in stream.sent
+            if m["message"] == message and m.get("kind") == "table_session" and m["cameraId"] == camera_id]
+
+
+def opened_tables(stream, camera_id: str = "cam1") -> set:
+    return {m["subjectId"] for m in sessions(stream, "interval_open", camera_id)}
+
+
+def table_dict(*table_ids, **changes) -> dict:
+    """API-filled restaurant_table settings: the example's, with tables from TABLES whose sessions open on the
+    first frame with a person."""
+    d = example_dict("restaurant_table")
+    d["tables"] = [{"id": t, "name": f"Table {t}", "capacity": 4, "polygon": TABLES[t]} for t in table_ids]
+    d["dwell_time"] = {"enabled": True, "min_occupied_sec": 0.0, "empty_debounce_sec": 2.0, "alert_dwell_sec": 3600.0}
+    d.update(changes)
+    return d
+
+
+def cfg(**over):
+    """A restaurant_table CameraConfig, version 1, on model a.onnx."""
+    from core.camera_config import CameraConfig
+
+    fields = dict(
+        id="cam1", name="Cam 1", use_case="restaurant_table", version=1, settings=table_dict("T1", "T2"),
+        source_url="rtsp://admin:s3cret@10.0.0.5/main", target_fps=5, model_path="a.onnx", imgsz=1920,
+        nx_camera_id=None,
+    )
+    fields.update(over)
+    return CameraConfig(**fields)
+
+
+class FakeStream:
+    """Stands in for StreamManager. While started, get_frame() serves LIVE_FRAME with a new timestamp at most every
+    10 ms (epoch ms from `clock`, strictly increasing); with deliver=False it never has a frame. Counts its starts,
+    stops and get_frame() calls (`reads`)."""
+
+    def __init__(self, source, camera_id, target_fps, *, clock=time.time, deliver=True):
+        self.source, self.camera_id, self.target_fps = source, camera_id, target_fps
+        self.clock, self.deliver = clock, deliver
+        self.starts = self.stops = self.reads = 0
+        self._lock = threading.Lock()
+        self._ts = 0
+        self._minted = 0.0
+
+    def start(self):
+        self.starts += 1
+
+    def stop(self):
+        self.stops += 1
+
+    def get_frame(self):
+        with self._lock:
+            self.reads += 1
+            if not self.deliver or not self.starts or self.stops:
+                return None, 0
+            now = time.monotonic()
+            if not self._ts or now - self._minted >= 0.01:
+                self._ts = max(self._ts + 1, int(self.clock() * 1000))
+                self._minted = now
+            return LIVE_FRAME, self._ts
+
+
+class Streams:
+    """A stream_factory that makes FakeStreams and keeps them. Streams of the cameras in `silent` never deliver."""
+
+    def __init__(self):
+        self.made: list[FakeStream] = []
+        self.clock = time.time
+        self.silent: set[str] = set()
+
+    def __call__(self, source, camera_id, target_fps):
+        s = FakeStream(source, camera_id, target_fps, clock=self.clock, deliver=camera_id not in self.silent)
+        self.made.append(s)
+        return s
+
+    def started(self) -> int:
+        return sum(s.starts for s in self.made)
+
+    def stopped(self) -> int:
+        return sum(s.stops for s in self.made)
+
+
+@pytest.fixture
+def streams():
+    return Streams()
+
+
+@pytest.fixture
+def deps(fake_pool, streams, stream):
+    from core.worker import WorkerDeps
+
+    return WorkerDeps(pool=fake_pool, events=stream, snapshots=None, nx_client=NxClient(mock_mode=True),
+                      device="cpu", stream_factory=streams)
+
+
+def camera_threads() -> list[str]:
+    """Names of the live threads a camera worker started (its own, its loaders and stream starters)."""
+    return [t.name for t in threading.enumerate() if t.name.startswith("cam-")]
+
+
+@pytest.fixture
+def make_worker(deps, fake_yolo):
+    """Builds CameraWorkers on `deps`; at teardown opens the FakeYOLO gates, stops them, and checks that none of
+    their threads is left."""
+    from core.worker import CameraWorker
+
+    made = []
+
+    def make(config=None, *, clock=time.time):
+        w = CameraWorker(config or cfg(), deps, clock=clock)
+        made.append(w)
+        return w
+
+    yield make
+    fake_yolo.gate.set()
+    fake_yolo.load_gate.set()
+    for w in made:
+        w.stop("engine_stop", timeout=5.0)
+    assert camera_threads() == []
