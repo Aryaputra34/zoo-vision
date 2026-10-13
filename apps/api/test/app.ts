@@ -25,6 +25,7 @@ export async function createTestApp(
     COOKIE_SECURE: 'false',
     SWAGGER: 'off',
     INGEST: 'off',
+    JOBS: 'off',
     ...env,
   });
   const moduleRef = await Test.createTestingModule({

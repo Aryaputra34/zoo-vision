@@ -10,6 +10,7 @@ import { ContractsModule } from './contracts/contracts.module';
 import { EngineInternalModule } from './engine-internal/engine-internal.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
+import { JobsModule } from './jobs/jobs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TransientDbFilter } from './prisma/transient.filter';
 import { RedisModule } from './redis/redis.module';
@@ -34,6 +35,7 @@ export class AppModule {
         CamerasModule,
         EngineInternalModule,
         IngestModule,
+        JobsModule,
       ],
       controllers: [HealthController],
       providers: [

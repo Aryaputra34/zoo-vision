@@ -29,6 +29,7 @@ describe('loadEnv', () => {
       SWAGGER: 'off',
       PORT: 3001,
       INGEST: 'on',
+      JOBS: 'on',
     });
   });
 
@@ -39,12 +40,14 @@ describe('loadEnv', () => {
       SWAGGER: 'public',
       PORT: '8080',
       INGEST: 'off',
+      JOBS: 'off',
     });
     expect(env).toMatchObject({
       COOKIE_SECURE: false,
       SWAGGER: 'public',
       PORT: 8080,
       INGEST: 'off',
+      JOBS: 'off',
     });
   });
 
@@ -63,6 +66,7 @@ describe('loadEnv', () => {
       SWAGGER: 'private',
       PORT: '70000',
       INGEST: 'maybe',
+      JOBS: 'sometimes',
     });
     for (const name of [
       'DATABASE_URL',
@@ -73,6 +77,7 @@ describe('loadEnv', () => {
       'SWAGGER',
       'PORT',
       'INGEST',
+      'JOBS',
     ]) {
       expect(message).toMatch(new RegExp(`^  ${name}: `, 'm'));
     }

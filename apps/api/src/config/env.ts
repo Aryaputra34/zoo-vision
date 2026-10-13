@@ -14,6 +14,8 @@ export type Env = Readonly<{
   PORT: number;
   /** Whether the Redis stream consumer runs in this process. */
   INGEST: 'on' | 'off';
+  /** Whether background jobs (the offline check) run in this process. */
+  JOBS: 'on' | 'off';
 }>;
 
 export class EnvError extends Error {
@@ -101,6 +103,7 @@ export function loadEnv(source: Source = process.env): Env {
     SWAGGER: read('SWAGGER', oneOf('public', 'off'), 'public or off', 'off'),
     PORT: read('PORT', port, 'a port number (1-65535)', 3001),
     INGEST: read('INGEST', oneOf('on', 'off'), 'on or off', 'on'),
+    JOBS: read('JOBS', oneOf('on', 'off'), 'on or off', 'on'),
   };
 
   if (problems.length > 0) {

@@ -25,6 +25,7 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `SWAGGER` | `off` (default) or `public` |
 | `PORT` | default `3001` |
 | `INGEST` | `on` (default) or `off`: whether this process consumes the Redis stream |
+| `JOBS` | `on` (default) or `off`: whether this process runs background jobs (the camera offline check, every 5 s) |
 
 The Prisma CLI reads only `DATABASE_MIGRATE_URL` (Postgres as the owner role `zoo_owner`), from
 `prisma.config.ts`. The running API never has the owner password.
