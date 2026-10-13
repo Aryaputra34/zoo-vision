@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "vehicle_crossing": {
+      "title": "VehicleCrossing",
+      "type": "object",
+      "properties": {
+        "direction": {
+          "enum": [
+            "ENTRY",
+            "EXIT"
+          ]
+        },
+        "vehicleType": {
+          "type": "string"
+        },
+        "plate": {
+          "type": "string"
+        },
+        "plateValid": {
+          "type": "boolean"
+        },
+        "ocrConfidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "trackerId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "direction",
+        "vehicleType",
+        "plate",
+        "plateValid",
+        "ocrConfidence",
+        "trackerId"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

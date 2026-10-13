@@ -13,12 +13,14 @@ Usage Examples:
 import os
 import sys
 import time
+import uuid
 import argparse
 import logging
 import cv2
 import yaml
 
-from core.analytics_dispatcher import AnalyticsDispatcher
+from core.event_stream import EventStream
+from core.messages import event_message
 from core.api_server import create_app, start_api_server
 from core.snapshot_store import SnapshotStore
 from nx_integration.nx_client import NxClient
@@ -172,20 +174,23 @@ def test_video(
         pipeline.show_labels = True
         logger.info("[DISPLAY] Debug Mode: Bounding boxes and confidence labels visible.")
 
-    # Optionally send events to the web dashboard (api_url/api_key from app_config.yaml; its 'enabled' flag is ignored here),
-    # with event snapshots and the live preview API, so the run shows up in the dashboard like a real camera
-    dispatcher = snapshots = api_server = None
+    # Optionally send events, intervals and metrics to the Redis stream (REDIS_URL), with event snapshots
+    # and the live preview API, so the run looks like a real camera
+    events = snapshots = api_server = None
     if analytics:
         app_cfg = {}
         if os.path.exists("configs/app_config.yaml"):
             with open("configs/app_config.yaml", "r") as f:
                 app_cfg = yaml.safe_load(f) or {}
-        an_cfg = app_cfg.get("analytics", {})
-        dispatcher = AnalyticsDispatcher(
-            api_url=an_cfg.get("api_url", "http://localhost:3000/api/events"),
-            api_key=an_cfg.get("api_key") or None,
-        )
-        pipeline.analytics = dispatcher
+        redis_url = os.environ.get("REDIS_URL")
+        if redis_url:
+            engine_group = os.environ.get("ENGINE_GROUP", "default")
+            events = EventStream(redis_url, engine_group=engine_group)
+            events.send(event_message(None, "system", "engine_started",
+                                      {"bootId": uuid.uuid4().hex, "engineGroup": engine_group}))
+            pipeline.events = events
+        else:
+            logger.warning("REDIS_URL is not set: events, intervals and metrics are not sent.")
         snap_cfg = app_cfg.get("snapshots", {})
         if snap_cfg.get("enabled", True):
             snapshots = SnapshotStore(root=snap_cfg.get("dir", "snapshots"), retention_days=snap_cfg.get("retention_days", 30))
@@ -335,10 +340,11 @@ def test_video(
     cap.release()
     if api_server:
         api_server.should_exit = True
+    pipeline.shutdown()
     if snapshots:
         snapshots.stop()
-    if dispatcher:
-        dispatcher.stop()
+    if events:
+        events.stop()
     if writer:
         writer.release()
         logger.info(f"[SAVED] Client demo video saved to {save_output}")
@@ -367,7 +373,7 @@ if __name__ == "__main__":
     parser.add_argument("--preview", action="store_true", help="Optional/compatibility flag; GUI is shown by default unless --no-gui is passed")
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
-    parser.add_argument("--analytics", action="store_true", help="Send events + snapshots to the web dashboard and serve the live preview (configs/app_config.yaml)")
+    parser.add_argument("--analytics", action="store_true", help="Send events, intervals and metrics to the Redis stream (REDIS_URL) with snapshots, and serve the live preview (configs/app_config.yaml)")
     args = parser.parse_args()
 
     test_video(

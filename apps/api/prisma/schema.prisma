@@ -1,0 +1,197 @@
+// The URL lives in prisma.config.ts (DATABASE_MIGRATE_URL, owner role, CLI only).
+// The running API connects through @prisma/adapter-pg with DATABASE_URL (zoo_api role).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  SUPERADMIN
+  MANAGER
+  USER
+}
+
+enum SourceType {
+  RTSP
+  MEDIAMTX
+  NX
+  FILE
+}
+
+enum StreamChoice {
+  MAIN
+  SUB
+}
+
+enum LoginResult {
+  SUCCESS
+  WRONG_PASSWORD
+  DISABLED
+  LOCKED
+  RATE_LIMITED
+  LOGOUT
+}
+
+enum Severity {
+  info
+  warning
+  critical
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  username     String     @unique
+  name         String
+  passwordHash String
+  role         Role
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+  apiTokens    ApiToken[]
+}
+
+model ApiToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  prefix      String
+  tokenHash   String    @unique
+  role        Role
+  createdById String    @db.Uuid
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  lastUsedAt  DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  time      DateTime @default(now()) @db.Timestamptz(3)
+  actorType String // user|token
+  actorId   String
+  actorName String
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  ip        String?
+
+  @@index([entity, entityId, time])
+  @@index([time])
+}
+
+model LoginLog {
+  id        BigInt      @id @default(autoincrement())
+  time      DateTime    @default(now()) @db.Timestamptz(3)
+  username  String // as typed
+  userId    String?     @db.Uuid
+  result    LoginResult
+  ip        String?
+  userAgent String?
+
+  @@index([time])
+}
+
+model Camera {
+  id               String                @id // slug
+  name             String
+  area             String?
+  useCase          String
+  enabled          Boolean               @default(true)
+  sourceType       SourceType
+  mainStreamUrlEnc String
+  subStreamUrlEnc  String?
+  recordingPath    String?
+  targetFps        Int                   @default(5)
+  engineGroup      String                @default("default")
+  auditCamera      Boolean               @default(false)
+  recordingEnabled Boolean               @default(true)
+  recordingStream  StreamChoice          @default(MAIN)
+  retentionDays    Int? // null = site default
+  clipBeforeSec    Int                   @default(15)
+  clipAfterSec     Int                   @default(15)
+  nxCameraId       String?
+  activeVersion    Int
+  createdAt        DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime              @updatedAt @db.Timestamptz(3)
+  versions         CameraConfigVersion[]
+  events           Event[]
+  intervals        Interval[]
+  metrics          Metric[]
+}
+
+model CameraConfigVersion {
+  cameraId      String
+  camera        Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  version       Int
+  useCase       String
+  settings      Json
+  schemaVersion Int
+  authorType    String
+  authorId      String
+  authorName    String
+  note          String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([cameraId, version])
+}
+
+model Event {
+  id            String   @id // evt_…
+  time          DateTime @db.Timestamptz(3)
+  cameraId      String?
+  camera        Camera?  @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  useCase       String
+  type          String
+  severity      Severity
+  configVersion Int?
+  schemaVersion Int
+  snapshotPath  String?
+  data          Json
+  ingestedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([cameraId, type, time])
+  @@index([time])
+}
+
+model Interval {
+  id            String    @id // ses_…
+  cameraId      String
+  camera        Camera    @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  useCase       String
+  kind          String
+  subjectId     String?
+  start         DateTime  @db.Timestamptz(3)
+  end           DateTime? @db.Timestamptz(3)
+  endReason     String?
+  configVersion Int?
+  schemaVersion Int
+  data          Json
+
+  @@index([cameraId, kind, start])
+}
+
+model Metric {
+  cameraId String
+  camera   Camera   @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  useCase  String
+  name     String
+  minute   DateTime @db.Timestamptz(3)
+  value    Float
+
+  @@id([cameraId, name, minute])
+}
+
+model DeadEvent {
+  id        BigInt   @id @default(autoincrement())
+  streamId  String
+  payload   String // raw msg
+  reason    String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}

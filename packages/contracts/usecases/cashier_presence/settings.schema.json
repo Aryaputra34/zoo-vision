@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CashierPresenceSettings",
+  "type": "object",
+  "properties": {
+    "model_name": {
+      "$ref": "../../common/detection.schema.json#/$defs/ModelName",
+      "default": "yolo11s.onnx",
+      "x-minRole": "SUPERADMIN"
+    },
+    "imgsz": {
+      "$ref": "../../common/detection.schema.json#/$defs/ImageSize",
+      "default": 640,
+      "x-minRole": "SUPERADMIN"
+    },
+    "confidence_threshold": {
+      "$ref": "../../common/detection.schema.json#/$defs/ConfidenceThreshold",
+      "default": 0.22
+    },
+    "clerk_zone": {
+      "$ref": "../../common/geometry.schema.json#/$defs/Polygon"
+    },
+    "visitor_zone": {
+      "$ref": "../../common/geometry.schema.json#/$defs/Polygon"
+    },
+    "absence_alert_timeout_sec": {
+      "type": "integer",
+      "default": 10,
+      "minimum": 1
+    },
+    "min_waiting_confirm_sec": {
+      "type": "integer",
+      "default": 3,
+      "minimum": 0
+    },
+    "visitor_waiting_alert_timeout_sec": {
+      "type": "integer",
+      "default": 5,
+      "minimum": 1
+    },
+    "debounce_alert_sec": {
+      "type": "integer",
+      "default": 30,
+      "minimum": 0
+    },
+    "nx_bookmark": {
+      "$ref": "../../common/detection.schema.json#/$defs/NxBookmark"
+    }
+  },
+  "required": [
+    "clerk_zone"
+  ],
+  "additionalProperties": false
+}

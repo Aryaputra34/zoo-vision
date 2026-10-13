@@ -1,0 +1,13 @@
+{
+  "message": "event",
+  "cameraId": null,
+  "useCase": "system",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:05:00.123Z",
+  "id": "evt_00000000000000000000000000000002",
+  "type": "events_dropped",
+  "severity": "warning",
+  "snapshotPath": null,
+  "data": { "engineGroup": "default", "count": 12 }
+}

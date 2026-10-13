@@ -1,0 +1,41 @@
+{
+  "model_name": "yolo11s.pt",
+  "confidence_threshold": 0.22,
+  "clerk_zone": [
+    [
+      0.33,
+      0.46
+    ],
+    [
+      0.72,
+      0.46
+    ]
+  ],
+  "visitor_zone": [
+    [
+      0.36,
+      0.12
+    ],
+    [
+      0.64,
+      0.12
+    ],
+    [
+      0.64,
+      0.46
+    ],
+    [
+      0.36,
+      0.46
+    ]
+  ],
+  "absence_alert_timeout_sec": 10,
+  "min_waiting_confirm_sec": 3,
+  "visitor_waiting_alert_timeout_sec": 5,
+  "debounce_alert_sec": 30,
+  "nx_bookmark": {
+    "tag": "#cashier_unattended",
+    "title": "[STAFF ALERT] Cashier Desk Unattended",
+    "duration_ms": 10000
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "message": "event",
+  "cameraId": "cam-example",
+  "useCase": "restaurant_counter",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "id": "evt_00000000000000000000000000000005",
+  "type": "capacity_alert",
+  "severity": "warning",
+  "snapshotPath": null,
+  "data": {
+    "occupancy": 47,
+    "maxCapacity": 60,
+    "warningCapacity": 45,
+    "level": "near_limit"
+  }
+}

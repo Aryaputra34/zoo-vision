@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tables",
+  "description": "Table monitoring settings shared by the restaurant use cases.",
+  "$defs": {
+    "DwellTime": {
+      "title": "DwellTime",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "min_occupied_sec": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0
+        },
+        "empty_debounce_sec": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0
+        },
+        "alert_dwell_sec": {
+          "type": "number",
+          "default": 3600,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Table": {
+      "title": "Table",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,32}$"
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        },
+        "capacity": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1
+        },
+        "polygon": {
+          "title": "Polygon",
+          "type": "array",
+          "items": {
+            "title": "Point",
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "minItems": 3,
+          "x-geometry": "polygon"
+        },
+        "confidence_threshold": {
+          "title": "ConfidenceThreshold",
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 1
+        },
+        "min_occupied_sec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "empty_debounce_sec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "track_dwell_time": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "polygon"
+      ],
+      "additionalProperties": false
+    },
+    "TableList": {
+      "title": "TableList",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Table"
+      },
+      "x-geometry": "polygon-list"
+    }
+  }
+}

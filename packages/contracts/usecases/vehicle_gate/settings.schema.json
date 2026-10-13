@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VehicleGateSettings",
+  "type": "object",
+  "properties": {
+    "model_name": {
+      "$ref": "../../common/detection.schema.json#/$defs/ModelName",
+      "default": "yolo26s.onnx",
+      "x-minRole": "SUPERADMIN"
+    },
+    "imgsz": {
+      "$ref": "../../common/detection.schema.json#/$defs/ImageSize",
+      "default": 640,
+      "x-minRole": "SUPERADMIN"
+    },
+    "confidence_threshold": {
+      "$ref": "../../common/detection.schema.json#/$defs/ConfidenceThreshold",
+      "default": 0.3
+    },
+    "tripwire": {
+      "$ref": "../../common/geometry.schema.json#/$defs/Line",
+      "default": {
+        "start": [
+          0.76,
+          0.58
+        ],
+        "end": [
+          0.05,
+          0.43
+        ]
+      }
+    },
+    "roi_polygon": {
+      "$ref": "../../common/geometry.schema.json#/$defs/Polygon"
+    },
+    "track_activation_thresh": {
+      "type": "number",
+      "default": 0.25,
+      "x-minRole": "SUPERADMIN"
+    },
+    "lost_track_buffer": {
+      "type": "integer",
+      "default": 75,
+      "x-minRole": "SUPERADMIN"
+    },
+    "matching_thresh": {
+      "type": "number",
+      "default": 0.7,
+      "x-minRole": "SUPERADMIN"
+    },
+    "frame_rate": {
+      "type": "integer",
+      "default": 15,
+      "x-minRole": "SUPERADMIN"
+    },
+    "anpr": {
+      "title": "Anpr",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "model_path": {
+          "type": "string",
+          "default": "models/license_plate_detector.onnx"
+        },
+        "min_plate_confidence": {
+          "type": "number",
+          "default": 0.25
+        }
+      },
+      "additionalProperties": false,
+      "default": {},
+      "x-minRole": "SUPERADMIN"
+    },
+    "nx_bookmark": {
+      "$ref": "../../common/detection.schema.json#/$defs/NxBookmark"
+    }
+  },
+  "additionalProperties": false
+}

@@ -52,3 +52,21 @@ Interactive picker for tripwire lines, polygons and restaurant tables on a video
 ```bash
 uv run --project services/engine python tools/pick_coordinates.py --help
 ```
+
+## import_yaml_config.py: one-off import of cameras.yaml
+
+Creates each camera of the engine's `cameras.yaml` through `POST /api/v1/cameras`, with the settings the
+engine runs today: the rule file, then the inline `rules`, then the inline `roi`, merged as
+`BasePipeline` does. Keys the use case's settings schema doesn't define are dropped and listed per
+camera as JSON pointers. Stream URLs are masked in all output.
+
+```bash
+uv run tools/import_yaml_config.py --cameras services/engine/configs/cameras.yaml.example --dry-run
+export ZOO_API_TOKEN=zv_...    # a SUPERADMIN API token
+uv run tools/import_yaml_config.py --cameras services/engine/configs/cameras.yaml [--api http://127.0.0.1:3001]
+```
+
+- A camera that already exists (409) is skipped. A rejected one prints the status and the API's reply.
+- Exit code: 0 when every camera was created or skipped, 1 when any failed, 2 when the token is missing.
+- The tools tests need `pyyaml`, `jsonschema` and `requests`:
+  `uvx --from "pytest>=8.3" --with pyyaml --with jsonschema --with requests pytest -q tools/tests`

@@ -11,13 +11,15 @@ import logging
 import signal
 import threading
 from typing import Optional
+from uuid import uuid4
 import yaml
 import cv2
 
 from nx_integration.nx_client import NxClient
 from core.base_pipeline import BasePipeline
-from core.analytics_dispatcher import AnalyticsDispatcher
 from core.api_server import create_app, start_api_server
+from core.event_stream import EventStream
+from core.messages import event_message
 from core.snapshot_store import SnapshotStore
 from core.stream_manager import StreamManager
 from pipelines.cashier_presence_pipeline import CashierPresencePipeline
@@ -121,19 +123,21 @@ def main():
         mock_mode=nx_cfg.get("mock_mode", True)
     )
 
-    # Web analytics dashboard (zoo-vision-fe)
-    an_cfg = app_cfg.get("analytics", {})
-    analytics = AnalyticsDispatcher(
-        api_url=an_cfg.get("api_url", "http://localhost:3000/api/events"),
-        api_key=an_cfg.get("api_key") or None,
-    ) if an_cfg.get("enabled") else None
+    # Events, intervals and metrics go to the Redis stream; without REDIS_URL nothing is sent
+    redis_url = os.environ.get("REDIS_URL")
+    engine_group = os.environ.get("ENGINE_GROUP", "default")
+    events = EventStream(redis_url, engine_group=engine_group) if redis_url else None
+    if events is None:
+        logger.warning("REDIS_URL is not set: events, intervals and metrics are not sent.")
+    else:
+        events.send(event_message(None, "system", "engine_started", {"bootId": uuid4().hex, "engineGroup": engine_group}))
 
-    # One JPEG per dashboard event, served by the API server below
+    # One JPEG per event, served by the API server below
     snap_cfg = app_cfg.get("snapshots", {})
     snapshots = SnapshotStore(
         root=snap_cfg.get("dir", "snapshots"),
         retention_days=snap_cfg.get("retention_days", 30),
-    ) if analytics and snap_cfg.get("enabled", True) else None
+    ) if events and snap_cfg.get("enabled", True) else None
 
     device = app_cfg.get("ai_engine", {}).get("device", "cpu")
 
@@ -154,9 +158,8 @@ def main():
         pipeline = create_pipeline(cam, nx_client, device)
         if pipeline is None:
             continue
-        pipeline.analytics = analytics
+        pipeline.events = events
         pipeline.snapshots = snapshots
-        pipeline.recording_path = cam.get("recording_path")  # MediaMTX path, for event clips in the dashboard
 
         # Ingest stream
         stream = StreamManager(source=source, camera_id=cam_id, target_fps=target_fps)
@@ -213,14 +216,16 @@ def main():
         stop.set()
         for w in workers:
             w.join(timeout=10.0)  # let an in-flight inference finish before its stream is released
+        for _, _, _, pipeline in active_pipelines:
+            pipeline.shutdown()
         for stream in active_streams:
             stream.stop()
         if api_server:
             api_server.should_exit = True
         if snapshots:
             snapshots.stop()
-        if analytics:
-            analytics.stop()
+        if events:
+            events.stop()
         if args.preview:
             cv2.destroyAllWindows()
         logger.info("Zoo Vision Service successfully stopped.")

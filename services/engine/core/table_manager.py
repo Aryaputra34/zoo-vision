@@ -14,6 +14,26 @@ import supervision as sv
 logger = logging.getLogger("TableManager")
 
 
+class TableSessions:
+    """Turns table_state_change callbacks into one `table_session` interval per occupied spell."""
+
+    def __init__(self, pipeline):
+        self.pipeline = pipeline
+        self._open: Dict[str, str] = {}  # table id -> session id
+
+    def on_change(self, data: Dict[str, Any]) -> None:
+        table_id = data["tableId"]
+        if data.get("status") == "OCCUPIED":
+            if table_id not in self._open:
+                self._open[table_id] = self.pipeline.open_interval(
+                    "table_session", table_id, {"tableName": data.get("tableName", table_id)}
+                )
+        else:
+            session_id = self._open.pop(table_id, None)
+            if session_id:
+                self.pipeline.close_interval(session_id)
+
+
 class TableZone:
     """Represents a single dining table ROI and its occupancy state machine."""
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "table_session": {
+      "title": "RestaurantCounterTableSession",
+      "type": "object",
+      "properties": {
+        "tableName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tableName"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

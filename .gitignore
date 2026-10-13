@@ -5,6 +5,11 @@ __pycache__/
 .ruff_cache/
 .env
 
+# Node
+node_modules/
+apps/api/dist/
+apps/api/src/generated/
+
 # Local operator config (camera URLs with passwords, API keys), including renamed copies such as
 # cameras.yaml.bak: only the *.example files and rules/ are tracked
 services/engine/configs/*
@@ -30,6 +35,9 @@ snapshots/
 recordings/
 logs/
 deploy/data/
+
+# Per-machine compose additions (e.g. the Postgres admin port); the .example is tracked
+deploy/docker-compose.override.yml
 
 # Local binaries and SDKs (deployment uses the bluenviron/mediamtx image)
 /mediamtx.exe

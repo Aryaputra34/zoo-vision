@@ -1,0 +1,10 @@
+{
+  "occupied_tables": {
+    "label": "Occupied tables",
+    "unit": "tables"
+  },
+  "table_occupancy_pct": {
+    "label": "Table occupancy",
+    "unit": "percent"
+  }
+}

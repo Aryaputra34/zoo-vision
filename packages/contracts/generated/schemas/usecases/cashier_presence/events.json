@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "cashier_unattended": {
+      "title": "CashierUnattended",
+      "type": "object",
+      "properties": {
+        "absentSec": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "absentSec"
+      ],
+      "additionalProperties": false
+    },
+    "customer_waiting": {
+      "title": "CustomerWaiting",
+      "type": "object",
+      "properties": {
+        "waitingSec": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "waitingSec"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

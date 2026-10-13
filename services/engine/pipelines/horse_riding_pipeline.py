@@ -20,6 +20,7 @@ logger = logging.getLogger("HorseRidingPipeline")
 
 class HorseRidingPipeline(BasePipeline):
     use_case = "horse_riding"
+    metric_fields = {"activeHorses": "active_horses"}
 
     def __init__(
         self,

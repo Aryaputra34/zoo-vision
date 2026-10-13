@@ -1,0 +1,10 @@
+{
+  "message": "metric",
+  "cameraId": "cam-example",
+  "useCase": "horse_riding",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "name": "active_horses",
+  "value": 3
+}

@@ -1,6 +1,82 @@
 # Zoo Vision on one park server. Run from this folder: docker compose up -d
+# On a laptop without an NVIDIA GPU, name the services: docker compose up -d --build postgres redis api-migrate api
 # Host data lives in ${ZOO_DATA_DIR} (default ./data): recordings, snapshots, models, logs. See README.md.
 services:
+  postgres:
+    image: postgres:17.11-alpine
+    container_name: zoo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zoo_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: zoo_vision
+      ZOO_API_DB_PASSWORD: ${ZOO_API_DB_PASSWORD:?set ZOO_API_DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zoo_owner -d zoo_vision"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.11-alpine
+    container_name: zoo_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    ports:
+      # The engine uses host networking, so Redis is published on the loopback only.
+      # Set ZOO_REDIS_PORT when 6379 is taken by another Redis.
+      - "127.0.0.1:${ZOO_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  # One-shot: applies the Prisma migrations as the owner role, then exits.
+  api-migrate:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: zoo-vision-api:${ZOO_VERSION:-dev}
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+    environment:
+      DATABASE_MIGRATE_URL: postgresql://zoo_owner:${POSTGRES_PASSWORD}@postgres:5432/zoo_vision
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: zoo-vision-api:${ZOO_VERSION:-dev}
+    container_name: zoo_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://zoo_api:${ZOO_API_DB_PASSWORD}@postgres:5432/zoo_vision
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CAMERA_URL_KEY: ${CAMERA_URL_KEY:?set CAMERA_URL_KEY in .env}
+      COOKIE_SECURE: "false" # no TLS until Caddy in Phase 3
+      SWAGGER: public
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      api-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   # Pulls every camera once, records it (mediamtx.yml), re-serves RTSP to the AI engine
   # and serves event clips to the dashboard on :9996.
   mediamtx:
@@ -22,6 +98,7 @@ services:
     network_mode: "host" # Host networking for lowest latency RTSP & REST calls
     depends_on:
       - mediamtx
+      - redis
     deploy:
       resources:
         reservations:
@@ -36,3 +113,9 @@ services:
       - ${ZOO_DATA_DIR:-./data}/snapshots:/app/snapshots # Event JPEGs served to the dashboard
     environment:
       - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:${ZOO_REDIS_PORT:-6379}/0
+      - ENGINE_GROUP=default
+
+volumes:
+  pgdata:
+  redisdata:

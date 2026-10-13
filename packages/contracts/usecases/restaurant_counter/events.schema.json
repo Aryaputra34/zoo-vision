@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "capacity_alert": {
+      "title": "CapacityAlert",
+      "type": "object",
+      "properties": {
+        "occupancy": {
+          "type": "integer"
+        },
+        "maxCapacity": {
+          "type": "integer"
+        },
+        "warningCapacity": {
+          "type": "integer"
+        },
+        "level": {
+          "enum": [
+            "full",
+            "near_limit"
+          ]
+        }
+      },
+      "required": [
+        "occupancy",
+        "maxCapacity",
+        "warningCapacity",
+        "level"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

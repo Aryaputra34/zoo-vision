@@ -1,0 +1,10 @@
+{
+  "occupancy": {
+    "label": "Occupancy",
+    "unit": "persons"
+  },
+  "occupied_tables": {
+    "label": "Occupied tables",
+    "unit": "tables"
+  }
+}

@@ -43,6 +43,13 @@ ANPR off.
 `sample_data/cars.mp4` is stored with Git LFS. Without git-lfs it is a small pointer file that
 OpenCV cannot open: install git-lfs, then run `git lfs pull`.
 
+The engine sends events, intervals and per-minute metrics to the Redis stream `events`. Environment:
+
+| Variable | Meaning |
+| :--- | :--- |
+| `REDIS_URL` | e.g. `redis://localhost:6379/0`. If unset, nothing is sent and one warning says so. |
+| `ENGINE_GROUP` | Name of this engine in `engine_started` messages (default `default`). |
+
 ```bash
 uv run python main.py                                              # all enabled cameras
 uv run python test_video.py --video <file.mp4> --pipeline <name>   # one pipeline on a video file
@@ -51,7 +58,7 @@ uv run python test_video.py --video <file.mp4> --pipeline <name>   # one pipelin
 ## Test and lint
 
 ```bash
-uv run pytest
+uv run pytest          # set REDIS_URL to also run the Redis test
 uv run ruff check .
 ```
 

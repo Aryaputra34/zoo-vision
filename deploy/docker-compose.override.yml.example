@@ -1,0 +1,7 @@
+# Local admin access to Postgres (Navicat, psql, DBeaver). Copy to docker-compose.override.yml
+# (git-ignored); docker compose loads it automatically next to docker-compose.yml.
+# Bound to 127.0.0.1 only: on a server, reach it through an SSH tunnel, never from the LAN.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${ZOO_PG_PORT:-5433}:5432"

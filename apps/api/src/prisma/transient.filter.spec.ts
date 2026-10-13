@@ -1,0 +1,52 @@
+import { ArgumentsHost, BadRequestException } from '@nestjs/common';
+import { HttpAdapterHost } from '@nestjs/core';
+import { TransientDbFilter } from './transient.filter';
+
+describe('TransientDbFilter', () => {
+  const host = {} as ArgumentsHost;
+  const setup = () => {
+    const reply = jest.fn();
+    const filter = new TransientDbFilter();
+    Object.assign(filter, {
+      httpAdapterHost: { httpAdapter: { reply } } as unknown as HttpAdapterHost,
+    });
+    return { filter, reply };
+  };
+
+  it('maps a transient database error to 503 without its text', () => {
+    const { filter, reply } = setup();
+    const err = Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), {
+      code: 'P1001',
+    });
+    const res = {};
+    const h = {
+      switchToHttp: () => ({ getResponse: () => res }),
+    } as unknown as ArgumentsHost;
+
+    filter.catch(err, h);
+
+    expect(reply).toHaveBeenCalledWith(
+      res,
+      { statusCode: 503, message: 'Service unavailable' },
+      503,
+    );
+  });
+
+  it('leaves other errors to Nest', () => {
+    const { filter, reply } = setup();
+    const err = new BadRequestException('nope');
+    // BaseExceptionFilter handles it via the adapter; here we only check we did not answer 503
+    const spy = jest
+      .spyOn(
+        Object.getPrototypeOf(TransientDbFilter.prototype) as {
+          catch: () => void;
+        },
+        'catch',
+      )
+      .mockImplementation(() => undefined);
+    filter.catch(err, host);
+    expect(spy).toHaveBeenCalled();
+    expect(reply).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});

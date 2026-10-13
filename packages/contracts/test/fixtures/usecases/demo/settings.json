@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DemoSettings",
+  "type": "object",
+  "properties": {
+    "zone": { "$ref": "#/$defs/Polygon" },
+    "tables": {
+      "type": "array",
+      "x-geometry": "polygon-list",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,32}$" },
+          "name": { "type": "string" },
+          "polygon": { "$ref": "#/$defs/Polygon" }
+        },
+        "required": ["id", "name", "polygon"],
+        "additionalProperties": false
+      }
+    },
+    "model_name": { "type": "string", "default": "a.onnx", "x-minRole": "SUPERADMIN" },
+    "tracker": {
+      "type": "object",
+      "default": {},
+      "properties": {
+        "lost_track_buffer": { "type": "integer", "minimum": 1, "default": 30, "x-minRole": "SUPERADMIN" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["zone", "tables"],
+  "additionalProperties": false,
+  "$defs": {
+    "Point": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "Polygon": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/Point" },
+      "x-geometry": "polygon"
+    }
+  }
+}

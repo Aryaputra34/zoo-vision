@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RestaurantTableSettings",
+  "type": "object",
+  "properties": {
+    "model_name": {
+      "$ref": "../../common/detection.schema.json#/$defs/ModelName",
+      "default": "yolo11s.onnx",
+      "x-minRole": "SUPERADMIN"
+    },
+    "imgsz": {
+      "$ref": "../../common/detection.schema.json#/$defs/ImageSize",
+      "default": 1920,
+      "x-minRole": "SUPERADMIN"
+    },
+    "confidence_threshold": {
+      "$ref": "../../common/detection.schema.json#/$defs/ConfidenceThreshold",
+      "default": 0.2
+    },
+    "deduplication_enabled": {
+      "type": "boolean",
+      "default": true,
+      "x-minRole": "SUPERADMIN"
+    },
+    "iou_threshold": {
+      "type": "number",
+      "default": 0.45,
+      "x-minRole": "SUPERADMIN"
+    },
+    "containment_threshold": {
+      "type": "number",
+      "default": 0.65,
+      "x-minRole": "SUPERADMIN"
+    },
+    "show_person_boxes": {
+      "type": "boolean",
+      "default": false
+    },
+    "show_person_labels": {
+      "type": "boolean",
+      "default": false
+    },
+    "show_overlay": {
+      "type": "boolean",
+      "default": true
+    },
+    "show_labels": {
+      "type": "boolean",
+      "default": true
+    },
+    "show_summary_card": {
+      "type": "boolean",
+      "default": true
+    },
+    "dwell_time": {
+      "$ref": "../../common/tables.schema.json#/$defs/DwellTime",
+      "default": {}
+    },
+    "tables": {
+      "$ref": "../../common/tables.schema.json#/$defs/TableList",
+      "minItems": 1
+    },
+    "nx_bookmark": {
+      "$ref": "../../common/detection.schema.json#/$defs/NxBookmark"
+    }
+  },
+  "required": [
+    "tables"
+  ],
+  "additionalProperties": false
+}

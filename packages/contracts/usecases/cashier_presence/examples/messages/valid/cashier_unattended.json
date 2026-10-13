@@ -1,0 +1,15 @@
+{
+  "message": "event",
+  "cameraId": "cam-example",
+  "useCase": "cashier_presence",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-09T10:00:00.000Z",
+  "id": "evt_00000000000000000000000000000001",
+  "type": "cashier_unattended",
+  "severity": "warning",
+  "snapshotPath": null,
+  "data": {
+    "absentSec": 12
+  }
+}

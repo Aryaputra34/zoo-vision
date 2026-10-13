@@ -16,13 +16,14 @@ import yaml
 
 from core.base_pipeline import BasePipeline
 from nx_integration.nx_client import NxClient
-from core.table_manager import TableOccupancyEngine
+from core.table_manager import TableOccupancyEngine, TableSessions
 
 logger = logging.getLogger("RestaurantPipeline")
 
 
 class RestaurantCounterPipeline(BasePipeline):
     use_case = "restaurant_counter"
+    metric_fields = {"occupancy": "occupancy", "occupiedTables": "occupied_tables"}
 
     def __init__(
         self,
@@ -114,6 +115,7 @@ class RestaurantCounterPipeline(BasePipeline):
         # Optional Table Monitoring Engine (Modular Multi-Table Occupancy)
         self.table_engine: Optional[TableOccupancyEngine] = None
         self.table_summary: Dict[str, Any] = {}
+        self.table_sessions = TableSessions(self)
         table_cfg = self.rules.get("table_monitoring")
         if table_cfg and table_cfg.get("enabled", True):
             self.table_engine = TableOccupancyEngine(
@@ -477,8 +479,9 @@ class RestaurantCounterPipeline(BasePipeline):
         )
 
     def _handle_table_event(self, event_type: str, data: Dict[str, Any], severity: str):
-        """Dispatches table events to Web Analytics Dashboard and Nx Meta Bookmarks."""
-        self.emit(event_type, data, severity)
+        """Turns table state changes into table_session intervals and Nx Meta Bookmarks."""
+        if event_type == "table_state_change":
+            self.table_sessions.on_change(data)
 
         if self.nx_client and event_type == "table_state_change":
             tbl_name = data.get("tableName", data.get("tableId", "Table"))

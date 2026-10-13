@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Geometry",
+  "description": "Shared geometry types. Coordinates are normalized to the frame, 0 to 1 inclusive.",
+  "$defs": {
+    "Point": {
+      "title": "Point",
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "Polygon": {
+      "title": "Polygon",
+      "type": "array",
+      "items": { "$ref": "#/$defs/Point" },
+      "minItems": 3,
+      "x-geometry": "polygon"
+    },
+    "Line": {
+      "title": "Line",
+      "type": "object",
+      "properties": {
+        "start": { "$ref": "#/$defs/Point" },
+        "end": { "$ref": "#/$defs/Point" }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "x-geometry": "line"
+    }
+  }
+}
