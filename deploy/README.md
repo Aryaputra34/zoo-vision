@@ -52,6 +52,16 @@ Run the engine from source against it; see [docs/10_LOCAL_QUICKSTART.md](../docs
 Stop: `docker compose stop api redis postgres`. Start again: `docker compose start postgres redis api`.
 `docker compose down -v` also deletes the `pgdata` and `redisdata` volumes.
 
+## Database access (Navicat, psql)
+
+Postgres publishes no port by default; the API reaches it inside the compose network. To browse it,
+copy `docker-compose.override.yml.example` to `docker-compose.override.yml` (git-ignored) and run
+`docker compose up -d postgres`. Postgres is then on `127.0.0.1:5433` (set `ZOO_PG_PORT` in `.env` to change
+it), database `zoo_vision`, user `zoo_owner`, password `POSTGRES_PASSWORD` from `.env`.
+
+`zoo_owner` owns the schema and can change anything, including the append-only analytics, audit and login
+tables. On a park server, keep the port on 127.0.0.1 and connect through an SSH tunnel.
+
 ## Windows development
 
 Run MediaMTX v1.21.1 locally. Download the Windows build from the MediaMTX GitHub releases into the

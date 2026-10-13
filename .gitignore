@@ -36,6 +36,9 @@ recordings/
 logs/
 deploy/data/
 
+# Per-machine compose additions (e.g. the Postgres admin port); the .example is tracked
+deploy/docker-compose.override.yml
+
 # Local binaries and SDKs (deployment uses the bluenviron/mediamtx image)
 /mediamtx.exe
 /mediamtx.yml
