@@ -47,3 +47,12 @@ def test_out_of_range_values_rejected(name, value):
     with pytest.raises(EnvError) as e:
         load_env({**BASE, name: value})
     assert name in str(e.value)
+
+
+def test_repr_hides_the_secrets():
+    env = load_env({**BASE, "REDIS_URL": "redis://:hunter2@redis:6379/0", "ENGINE_TOKEN": "tok-" + "s" * 40,
+                    "PREVIEW_API_KEY": "preview-secret"})
+    text = repr(env)
+    assert "hunter2" not in text and "tok-sss" not in text and "preview-secret" not in text
+    assert "engine_group='default'" in text  # the rest is still there
+    assert env.redis_url == "redis://:hunter2@redis:6379/0" and env.preview_api_key == "preview-secret"

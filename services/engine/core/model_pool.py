@@ -7,8 +7,9 @@ Locking:
   * `ModelPool._lock` guards the entries map, ref counts and the closed flag. It is never held while a
     model loads, while a thread is joined, or while a caller waits for a result.
   * `_Entry.lock` makes "check not stopping, then enqueue" atomic against "mark stopping, then enqueue
-    the stop sentinel". So nothing is ever queued behind the sentinel, and every request queued before
-    it is answered by the thread before it exits.
+    the stop sentinel". So nothing is ever queued behind the sentinel. A request queued before it is run
+    before the thread exits, unless its caller stopped waiting (call timeout: it is skipped) or a model call
+    hangs past stop()'s bounded join (the thread is abandoned; requests still queued fail or time out).
 """
 
 import logging

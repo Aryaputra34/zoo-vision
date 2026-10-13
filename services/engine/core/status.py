@@ -3,9 +3,12 @@ every 2 s (a status also goes out at once when a worker's state, applied version
 
 A status key expires 15 s after the camera's last processed frame (or its worker's start, before the first one),
 whatever the engine does, so a dead stream turns into an offline interval. The publisher only reads the workers'
-attributes; Redis errors are logged and the next round tries again, so the keys come back after a Redis restart.
+attributes; Redis errors are logged and the next round tries again, so the keys come back after a Redis restart: once
+a write works again, every status is written at once (not at the next heartbeat). One camera whose status cannot be
+built is logged and skipped; the others are still written.
 """
 
+import contextlib
 import json
 import logging
 import threading
@@ -41,6 +44,7 @@ class StatusPublisher(threading.Thread):
         self._frame_marks: dict[str, float] = {}  # camera id -> last_frame_at of the frame published last
         self._published: dict[str, tuple] = {}  # camera id -> (state, applied version, config error) last published
         self._failing = False
+        self._broken: set[str] = set()  # cameras whose status could not be built (logged once until it works)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -71,6 +75,7 @@ class StatusPublisher(threading.Thread):
             publish(self._clock())
             if self._failing:
                 self._failing = False
+                self._published.clear()  # _changed(): every status goes out at the next tick, as keys may be gone
                 logger.info("Publishing to Redis works again")
         except redis.RedisError as e:
             if not self._failing:
@@ -80,38 +85,55 @@ class StatusPublisher(threading.Thread):
             logger.exception("Publishing failed")
 
     def publish_status(self, now: float) -> None:
+        """Writes each worker's status. A Redis error ends the round (the caller retries); any other error skips
+        that worker only."""
         for w in list(self._workers()):
-            if w.state == "stopped":  # the supervisor deletes its key
-                continue
-            last_frame_at = w.last_frame_at
-            anchor = w.started_at if last_frame_at is None else max(last_frame_at, w.started_at)
-            expire_at = anchor + STATUS_TTL_S
-            if expire_at <= now:
-                self._published[w.id] = _signature(w)  # nothing to write; don't retry before something changes
-                continue
-            state = w.state
-            if state == "running" and last_frame_at is not None and now - last_frame_at > RECONNECTING_AFTER_S:
-                state = "reconnecting"
-            pipeline = w.pipeline
-            key = f"cam:{w.id}:status"
-            fields = {
-                "state": state,
-                "fps": f"{w.fps:.1f}",
-                "lastFrameAt": "" if last_frame_at is None else str(int(last_frame_at * 1000)),
-                "appliedVersion": _text(w.applied_version),
-                "configError": _text(w.config_error),
-                "useCase": w.config.use_case,
-                "engineGroup": self._group,
-                "bootId": self._boot_id,
-                "restarts": str(w.restarts),
-                "live": json.dumps(pipeline.live if pipeline is not None else {}),
-                "updatedAt": str(int(now * 1000)),
-            }
-            pipe = self._r.pipeline(transaction=False)
-            pipe.hset(key, mapping=fields)
-            pipe.pexpireat(key, int(expire_at * 1000))
-            pipe.execute()
-            self._published[w.id] = _signature(w)
+            camera_id = getattr(w, "id", "?")
+            try:
+                self._publish_one(w, now)
+                self._broken.discard(camera_id)
+            except redis.RedisError:
+                raise
+            except Exception:
+                if camera_id not in self._broken:
+                    self._broken.add(camera_id)
+                    logger.exception("[%s] Could not publish the status; trying again at every heartbeat", camera_id)
+                with contextlib.suppress(Exception):  # no retry at every tick: at the heartbeat, or on a change
+                    self._published[camera_id] = _signature(w)
+
+    def _publish_one(self, w, now: float) -> None:
+        if w.state == "stopped":  # the supervisor deletes its key
+            return
+        last_frame_at = w.last_frame_at
+        anchor = w.started_at if last_frame_at is None else max(last_frame_at, w.started_at)
+        expire_at = anchor + STATUS_TTL_S
+        if expire_at <= now:
+            self._published[w.id] = _signature(w)  # nothing to write; don't retry before something changes
+            return
+        state = w.state
+        if state == "running" and last_frame_at is not None and now - last_frame_at > RECONNECTING_AFTER_S:
+            state = "reconnecting"
+        pipeline = w.pipeline
+        key = f"cam:{w.id}:status"
+        fields = {
+            "state": state,
+            "fps": f"{w.fps:.1f}",
+            "lastFrameAt": "" if last_frame_at is None else str(int(last_frame_at * 1000)),
+            "appliedVersion": _text(w.applied_version),
+            "configError": _text(w.config_error),
+            "useCase": w.config.use_case,
+            "engineGroup": self._group,
+            "bootId": self._boot_id,
+            "restarts": str(w.restarts),
+            # a value JSON cannot hold (a numpy number, ...) goes out as its text
+            "live": json.dumps(pipeline.live if pipeline is not None else {}, default=str),
+            "updatedAt": str(int(now * 1000)),
+        }
+        pipe = self._r.pipeline(transaction=False)
+        pipe.hset(key, mapping=fields)
+        pipe.pexpireat(key, int(expire_at * 1000))
+        pipe.execute()
+        self._published[w.id] = _signature(w)
 
     def publish_frames(self, now: float) -> None:
         workers = list(self._workers())
@@ -129,6 +151,7 @@ class StatusPublisher(threading.Thread):
     def forget(self, camera_id: str) -> None:
         self._frame_marks.pop(camera_id, None)
         self._published.pop(camera_id, None)
+        self._broken.discard(camera_id)
         try:
             self._r.delete(f"cam:{camera_id}:status")
         except redis.RedisError as e:

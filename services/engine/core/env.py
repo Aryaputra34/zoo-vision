@@ -2,7 +2,7 @@
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
 GROUP_PATTERN = re.compile(r"^[a-z0-9_-]{1,32}$")
@@ -14,9 +14,11 @@ class EnvError(ValueError):
 
 @dataclass(frozen=True)
 class EngineEnv:
-    redis_url: str
+    """The secrets (the Redis URL may hold a password) stay out of repr(), so logging the env never leaks them."""
+
+    redis_url: str = field(repr=False)
     api_url: str
-    engine_token: str
+    engine_token: str = field(repr=False)
     engine_group: str
     device: str
     models_dir: str
@@ -24,7 +26,7 @@ class EngineEnv:
     snapshot_retention_days: int
     preview_host: str
     preview_port: int
-    preview_api_key: str
+    preview_api_key: str = field(repr=False)
     max_batch: int
     model_jobs: bool
 

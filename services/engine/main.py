@@ -5,6 +5,8 @@ The engine reads its settings from the environment (core/env.py) and its cameras
 on every `cfg:changed` notice. It publishes each camera's status and latest frame to Redis for the API.
 
     uv run python main.py [--preview]     # --preview shows an OpenCV window per camera
+
+Ctrl+C (or SIGTERM) stops it gracefully; on Windows Ctrl+Break does too.
 """
 
 import argparse
@@ -120,6 +122,24 @@ def _run_with_windows(supervisor: Supervisor, stop: threading.Event) -> None:
         cv2.destroyAllWindows()
 
 
+def _stop_on_signals(stop: threading.Event) -> None:
+    """Ctrl+C (SIGINT) and SIGTERM set `stop`; on Windows Ctrl+Break (SIGBREAK) does too.
+
+    On Windows a process can start with Ctrl+C ignored: a process created in a new process group ignores it, and
+    every child inherits that (seen with `Start-Process uv run python ...`: uv, the venv launcher and the engine all
+    ignored it, so Ctrl+C did nothing). SetConsoleCtrlHandler(NULL, FALSE) turns Ctrl+C handling back on.
+    """
+    signals = [signal.SIGINT, signal.SIGTERM]
+    if sys.platform == "win32":
+        signals.append(signal.SIGBREAK)
+        import ctypes
+
+        if not ctypes.windll.kernel32.SetConsoleCtrlHandler(None, False):
+            logger.warning("Could not turn Ctrl+C handling on; Ctrl+Break stops the engine")
+    for sig in signals:
+        signal.signal(sig, lambda *_: stop.set())
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Zoo Vision engine")
     parser.add_argument("--preview", action="store_true", help="show an OpenCV window per camera")
@@ -132,8 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         print(e, file=sys.stderr)  # names the variables, never their values
         return 2
     stop = threading.Event()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda *_: stop.set())
+    _stop_on_signals(stop)
     run(env, stop, preview=args.preview)
     return 0
 

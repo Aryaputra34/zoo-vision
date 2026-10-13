@@ -113,3 +113,18 @@ def test_reports_post_json(api_server):
     api_server.status = 500
     with pytest.raises(ApiError):
         api.report_validation("m1", {})
+
+
+@pytest.mark.parametrize("status", [204, 200])
+def test_a_report_answered_without_a_body_is_a_success(api_server, status):
+    api_server.status, api_server.body = status, b""
+    api = EngineApi(api_server.url, TOKEN, "g")
+    api.report_validation("m1", {"ok": True})
+    api.report_conversion("m2", {"status": "READY"})
+    assert len(api_server.requests) == 2
+
+
+def test_a_camera_list_answered_without_a_body_is_not_json(api_server):
+    api_server.status, api_server.body = 204, b""
+    with pytest.raises(ApiError, match="not JSON"):
+        EngineApi(api_server.url, TOKEN, "g").cameras()

@@ -1,4 +1,5 @@
 """Tells the supervisor to resync whenever the API publishes on `cfg:changed`, and after every (re)subscribe.
+Any error (Redis or not) is logged once per outage; the listener backs off and subscribes again.
 
 The notice itself is only a trigger (its content is ignored): the supervisor refetches the whole snapshot. A
 notice published while the connection was down is lost, so each successful subscribe triggers a resync too.
@@ -45,9 +46,12 @@ class ConfigListener(threading.Thread):
                     elif message["type"] != "message":
                         continue
                     self._trigger()
-            except redis.RedisError as e:
+            except Exception as e:  # anything: if this thread ended, live config would wait for the 60 s resync
                 if not down:
-                    logger.warning("Lost the %s subscription (%s); retrying", self._channel, type(e).__name__)
+                    if isinstance(e, redis.RedisError):
+                        logger.warning("Lost the %s subscription (%s); retrying", self._channel, type(e).__name__)
+                    else:
+                        logger.exception("The %s subscription failed; retrying", self._channel)
                     down = True
                 self._stop_event.wait(backoff)
                 backoff = min(backoff * 2, BACKOFF_MAX_S)
@@ -55,7 +59,7 @@ class ConfigListener(threading.Thread):
                 if pubsub is not None:
                     try:
                         pubsub.close()
-                    except redis.RedisError:
+                    except Exception:
                         pass
 
     def _trigger(self) -> None:

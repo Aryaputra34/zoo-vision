@@ -76,6 +76,8 @@ uv run python main.py                                              # all enabled
 uv run python test_video.py --video <file.mp4> --pipeline <name>   # one pipeline on a video file
 ```
 
+Stop the engine with Ctrl+C (also Ctrl+Break on Windows, SIGTERM under Docker); it stops every camera and closes their open intervals first.
+
 `test_video.py` does not use the API: it still takes a rule YAML from `configs/rules/`.
 
 ## Use cases

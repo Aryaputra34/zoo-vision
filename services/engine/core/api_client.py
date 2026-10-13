@@ -23,7 +23,7 @@ class EngineApi:
         self._headers = {"Authorization": f"Bearer {token}"}
 
     def cameras(self) -> CameraList:
-        body = self._request("GET", "/internal/engine/cameras", params={"group": self._group})
+        body = self._request("GET", "/internal/engine/cameras", json_answer=True, params={"group": self._group})
         entries = body.get("cameras") if isinstance(body, dict) else None
         if not isinstance(entries, list):
             raise ApiError("the API answer has no 'cameras' list")
@@ -45,7 +45,9 @@ class EngineApi:
     def report_conversion(self, model_id: str, body: dict) -> None:
         self._request("POST", f"/internal/engine/models/{quote(model_id, safe='')}/conversion", json=body)
 
-    def _request(self, method: str, path: str, **kwargs):
+    def _request(self, method: str, path: str, *, json_answer: bool = False, **kwargs):
+        """Any 2xx is a success. With json_answer, returns the parsed answer (no body or not JSON: ApiError); else
+        the answer is not read (a report is answered 204, with no body)."""
         try:
             response = self._session.request(method, self._base + path, headers=self._headers,
                                              timeout=self._timeout, **kwargs)
@@ -53,6 +55,8 @@ class EngineApi:
             raise ApiError(f"{method} {path}: {type(e).__name__}") from None
         if not response.ok:
             raise ApiError(f"{method} {path}: HTTP {response.status_code}")
+        if not json_answer:
+            return None
         try:
             return response.json()
         except ValueError:
