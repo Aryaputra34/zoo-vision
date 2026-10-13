@@ -315,6 +315,14 @@ describe('camera config versions', () => {
         .expect(400);
     });
 
+    it('a MANAGER sending a VALIDATING model_id gets 403, not a 400 that reveals its status', async () => {
+      const validating = await insertModel('VALIDATING');
+      await save(manager, {
+        baseVersion: 1,
+        settings: { ...settings, model_id: validating },
+      }).expect(403);
+    });
+
     it('a MANAGER sending model_id → 403 (x-minRole)', async () => {
       const ready = await insertModel('READY');
       await save(manager, {

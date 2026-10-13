@@ -134,20 +134,41 @@ export class ModelsService implements OnApplicationBootstrap {
   }
 
   /**
-   * Queues a validate job and then marks the model VALIDATING, but only while the row still has the
-   * status it had before queueing, so a fast engine report is never overwritten. Throws when Redis
-   * refuses.
+   * Marks the model VALIDATING (guarded: only from its current status) and then queues the validate
+   * job, so no engine report can arrive before VALIDATING. A refused push reverts the row to
+   * `revert` (its prior status by default) and rethrows.
    */
   async enqueueValidation(id: string): Promise<void> {
     const row = await this.getRow(id);
-    await this.redis.lpush(
-      MODEL_JOBS_KEY,
-      JSON.stringify({ type: 'validate', modelId: id, path: row.filePath }),
-    );
-    await this.prisma.aiModel.updateMany({
-      where: { id, status: row.status },
-      data: { status: 'VALIDATING' },
+    await this.startValidation(id, row.filePath, row.status);
+  }
+
+  private async startValidation(
+    id: string,
+    filePath: string,
+    from: AiModel['status'],
+    data: Prisma.AiModelUpdateManyMutationInput = {},
+    revert: Prisma.AiModelUpdateManyMutationInput = { status: from },
+  ): Promise<void> {
+    const { count } = await this.prisma.aiModel.updateMany({
+      where: { id, status: from },
+      data: { ...data, status: 'VALIDATING' },
     });
+    if (count !== 1) {
+      throw new ConflictException('The model changed meanwhile; retry');
+    }
+    try {
+      await this.redis.lpush(
+        MODEL_JOBS_KEY,
+        JSON.stringify({ type: 'validate', modelId: id, path: filePath }),
+      );
+    } catch (err) {
+      await this.prisma.aiModel.updateMany({
+        where: { id, status: 'VALIDATING' },
+        data: revert,
+      });
+      throw err;
+    }
   }
 
   /** Re-runs the validation. A model that is being converted has no complete file yet. */
@@ -231,8 +252,8 @@ export class ModelsService implements OnApplicationBootstrap {
 
   /**
    * The engine's conversion result for the target row. The reported path must be the row's own and
-   * is resolved inside the models folder. A good file moves the row to VALIDATING before the job is
-   * queued, so the engine's validation report always finds that status.
+   * is resolved inside the models folder. The file is hashed here; the reported hash must match. A
+   * good file moves the row to VALIDATING before the job is queued.
    */
   async reportConversion(id: string, report: ConversionReport): Promise<void> {
     const at = new Date().toISOString();
@@ -249,12 +270,19 @@ export class ModelsService implements OnApplicationBootstrap {
       return;
     }
     if (report.path !== row.filePath) {
+      await this.applyReport(
+        id,
+        'CONVERTING',
+        failed('reported path mismatch'),
+      );
       throw new BadRequestException('path is not the conversion target');
     }
     let size: number;
+    let sha256: string;
     try {
-      size = (await stat(resolveInside(this.env.MODELS_DIR, row.filePath)))
-        .size;
+      const file = resolveInside(this.env.MODELS_DIR, row.filePath);
+      size = (await stat(file)).size;
+      sha256 = await sha256File(file);
     } catch {
       await this.applyReport(
         id,
@@ -263,8 +291,12 @@ export class ModelsService implements OnApplicationBootstrap {
       );
       return;
     }
+    if (sha256 !== report.sha256) {
+      await this.applyReport(id, 'CONVERTING', failed('sha256 mismatch'));
+      return;
+    }
     const duplicate = await this.prisma.aiModel.findUnique({
-      where: { sha256: report.sha256 },
+      where: { sha256 },
     });
     if (duplicate && duplicate.id !== id) {
       await this.applyReport(
@@ -275,34 +307,23 @@ export class ModelsService implements OnApplicationBootstrap {
       return;
     }
     try {
-      await this.applyReport(id, 'CONVERTING', {
-        status: 'VALIDATING',
-        sha256: report.sha256,
-        sizeBytes: BigInt(size),
-      });
+      await this.startValidation(
+        id,
+        row.filePath,
+        'CONVERTING',
+        { sha256, sizeBytes: BigInt(size) },
+        failed('The validation could not be queued'),
+      );
     } catch (err) {
       if (code(err) !== 'P2002') throw err;
       const other = await this.prisma.aiModel.findUnique({
-        where: { sha256: report.sha256 },
+        where: { sha256 },
       });
       await this.applyReport(
         id,
         'CONVERTING',
         failed(`duplicate of ${other?.name ?? 'another model'}`),
       );
-      return;
-    }
-    try {
-      await this.redis.lpush(
-        MODEL_JOBS_KEY,
-        JSON.stringify({ type: 'validate', modelId: id, path: row.filePath }),
-      );
-    } catch (err) {
-      await this.prisma.aiModel.updateMany({
-        where: { id, status: 'VALIDATING' },
-        data: failed('The validation could not be queued'),
-      });
-      throw err;
     }
   }
 

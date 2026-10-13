@@ -490,14 +490,6 @@ describe('AI model registry', () => {
       ]);
       await redis.del('model:jobs');
 
-      // the reported path must be the row's own; the row stays CONVERTING
-      await report(target.id, 'conversion', {
-        ok: true,
-        path: '../../etc/x.onnx',
-        sha256: sha(ONNX_B),
-      }).expect(400);
-      expect((await row(target.id)).status).toBe('CONVERTING');
-
       await writeFile(join(dir, target.filePath), ONNX_B);
       await report(target.id, 'conversion', {
         ok: true,
@@ -517,6 +509,40 @@ describe('AI model registry', () => {
         path: target.filePath,
         sha256: sha(ONNX_B),
       }).expect(409);
+    });
+
+    it('a reported path that is not the row own → 400 and the target is FAILED; a wrong sha256 → FAILED "sha256 mismatch"', async () => {
+      const src = await readyPt();
+      const make = async () =>
+        ((await convert(src.id).expect(202)).body as { target: ModelBody })
+          .target;
+      const t1 = await make();
+      await report(t1.id, 'conversion', {
+        ok: true,
+        path: '../../etc/x.onnx',
+        sha256: sha(ONNX_B),
+      }).expect(400);
+      const bad = await row(t1.id);
+      expect(bad.status).toBe('FAILED');
+      expect(bad.validation).toMatchObject({
+        ok: false,
+        error: 'reported path mismatch',
+      });
+
+      const t2 = await make();
+      await writeFile(join(dir, t2.filePath), ONNX_B);
+      await report(t2.id, 'conversion', {
+        ok: true,
+        path: t2.filePath,
+        sha256: sha(ONNX),
+      }).expect(204);
+      const after = await row(t2.id);
+      expect(after.status).toBe('FAILED');
+      expect(after.sha256).toBeNull();
+      expect(after.validation).toMatchObject({
+        ok: false,
+        error: 'sha256 mismatch',
+      });
     });
 
     it('a conversion that claims success without writing the file → FAILED; default imgsz is 640', async () => {

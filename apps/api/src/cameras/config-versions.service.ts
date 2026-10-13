@@ -146,10 +146,6 @@ export class ConfigVersionsService {
             errors: valid.errors,
           });
         }
-        await this.models.assertSelectable(
-          (input.settings as { model_id?: string }).model_id,
-          (current?.settings as { model_id?: string } | null)?.model_id,
-        );
         // Across use cases the restricted fields are not comparable; a superadmin made the switch.
         if (!useCaseChanged) {
           const restricted = restrictedChanges(
@@ -166,6 +162,10 @@ export class ConfigVersionsService {
             });
           }
         }
+        await this.models.assertSelectable(
+          (input.settings as { model_id?: string }).model_id,
+          (current?.settings as { model_id?: string } | null)?.model_id,
+        );
         const version = camera.activeVersion + 1;
         await tx.cameraConfigVersion.create({
           data: {
