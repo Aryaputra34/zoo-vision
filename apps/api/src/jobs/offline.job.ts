@@ -18,8 +18,10 @@ const INTERVAL_NAME = 'offline-job';
 const TICK_MS = 5000;
 
 /**
- * Turns a missing `cam:{id}:status` key into an open `camera_offline` interval (useCase `system`)
- * and closes it again when the key returns or the camera is disabled. The partial unique index
+ * Turns a missing `cam:{id}:status` key into an open `camera_offline` interval (useCase `system`),
+ * but only for a camera whose key the API has seen at least once (`Camera.firstSeenAt`): a camera no
+ * engine has run yet has no downtime to record and stays deletable. The job closes the interval again
+ * when the key returns or the camera is disabled. The partial unique index
  * `Interval_open_camera_offline` allows one open interval per camera.
  */
 @Injectable()
@@ -62,13 +64,26 @@ export class OfflineJob implements OnModuleInit, OnModuleDestroy {
 
   private async run(now: Date): Promise<void> {
     const cameras = await this.prisma.camera.findMany({
-      select: { id: true, enabled: true },
+      select: { id: true, enabled: true, firstSeenAt: true },
     });
     const openRows = await this.prisma.$queryRaw<{ cameraId: string }[]>`
       SELECT "cameraId" FROM "Interval"
        WHERE "useCase" = 'system' AND "kind" = 'camera_offline' AND "end" IS NULL`;
     const open = new Set(openRows.map((r) => r.cameraId));
     const present = await this.keysPresent(cameras.map((c) => c.id));
+
+    // A camera counts as seen from the first tick that finds its key. One UPDATE per newly seen camera.
+    const seen = new Set<string>();
+    for (const { id, firstSeenAt } of cameras) {
+      if (firstSeenAt) {
+        seen.add(id);
+      } else if (present.has(id)) {
+        await this.prisma.$executeRaw`
+          UPDATE "Camera" SET "firstSeenAt" = ${now}::timestamptz
+           WHERE "id" = ${id} AND "firstSeenAt" IS NULL`;
+        seen.add(id);
+      }
+    }
 
     const toOpen: string[] = [];
     const toClose: { id: string; reason: 'online' | 'disabled' }[] = [];
@@ -77,7 +92,7 @@ export class OfflineJob implements OnModuleInit, OnModuleDestroy {
         if (open.has(id)) toClose.push({ id, reason: 'disabled' });
       } else if (present.has(id)) {
         if (open.has(id)) toClose.push({ id, reason: 'online' });
-      } else if (!open.has(id)) {
+      } else if (seen.has(id) && !open.has(id)) {
         toOpen.push(id);
       }
     }

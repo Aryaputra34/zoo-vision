@@ -119,6 +119,7 @@ model Camera {
   clipAfterSec     Int                   @default(15)
   nxCameraId       String?
   activeVersion    Int
+  firstSeenAt      DateTime?             @db.Timestamptz(3) // first time the engine's status key was seen
   createdAt        DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime              @updatedAt @db.Timestamptz(3)
   versions         CameraConfigVersion[]

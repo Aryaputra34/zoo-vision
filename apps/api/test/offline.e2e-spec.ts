@@ -1,9 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import Redis from 'ioredis';
+import request from 'supertest';
 import { App } from 'supertest/types';
 import { IngestService } from '../src/ingest/ingest.service';
 import { OfflineJob } from '../src/jobs/offline.job';
 import { createTestApp } from './app';
+import { asRole } from './helpers/auth';
 import { engineStarted } from './helpers/messages';
 import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
@@ -39,6 +41,13 @@ describe('OfflineJob: camera_offline intervals', () => {
   const online = (id: string) =>
     redis.hset(`cam:${id}:status`, { state: 'running' });
 
+  /** The engine reported the camera once (the API sees the key), then the key expired. */
+  const seenOnce = async (id: string, now?: Date) => {
+    await redis.hset(`cam:${id}:status`, { state: 'starting' });
+    await tick(now);
+    await redis.del(`cam:${id}:status`);
+  };
+
   beforeEach(async () => {
     await resetDb();
     await flushRedis();
@@ -51,8 +60,21 @@ describe('OfflineJob: camera_offline intervals', () => {
     await redis.quit();
   });
 
-  it('an enabled camera without a status key gets one open camera_offline interval (useCase system); a second tick adds none', async () => {
+  it('a camera no engine has reported yet gets no interval, and can be deleted', async () => {
     await seedCamera('cam_a');
+    await tick();
+    await tick();
+    expect(await rows()).toHaveLength(0);
+    const { cookie } = await asRole(app, 'SUPERADMIN');
+    await request(app.getHttpServer())
+      .delete('/api/v1/cameras/cam_a')
+      .set('Cookie', cookie)
+      .expect(204);
+  });
+
+  it('a camera seen once whose key then disappears gets one open camera_offline interval (useCase system); a second tick adds none', async () => {
+    await seedCamera('cam_a');
+    await seenOnce('cam_a');
     await tick();
     await tick();
     const found = await rows();
@@ -72,6 +94,7 @@ describe('OfflineJob: camera_offline intervals', () => {
 
   it('the key coming back closes it with endReason online; the key going away opens a new one', async () => {
     await seedCamera('cam_a');
+    await seenOnce('cam_a');
     await tick();
     await online('cam_a');
     await tick();
@@ -89,6 +112,7 @@ describe('OfflineJob: camera_offline intervals', () => {
 
   it('disabling the camera closes its open interval with endReason disabled', async () => {
     await seedCamera('cam_a');
+    await seenOnce('cam_a');
     await tick();
     await ownerQuery(`UPDATE "Camera" SET "enabled" = false`);
     await tick();
@@ -108,6 +132,7 @@ describe('OfflineJob: camera_offline intervals', () => {
 
   it('engine_started for its group leaves the camera_offline interval open', async () => {
     await seedCamera('cam_a');
+    await seenOnce('cam_a', new Date('2026-10-09T08:59:00.000Z'));
     await tick(new Date('2026-10-09T09:00:00.000Z'));
     const msg = engineStarted('default', '2026-10-09T10:00:00.000Z');
     await app
@@ -118,14 +143,30 @@ describe('OfflineJob: camera_offline intervals', () => {
     expect(found[0]).toMatchObject({ end: null, endReason: null });
   });
 
-  it('a never-connecting camera: no key at all → offline interval; other cameras with keys stay without one', async () => {
+  it('a never-connecting camera (key seen once as starting, then gone) opens an interval; a camera never seen and cameras with keys do not', async () => {
     await seedCamera('cam_a');
     await seedCamera('cam_b');
     await seedCamera('cam_c');
+    await seedCamera('cam_d');
     await online('cam_b');
     await online('cam_c');
+    await redis.hset('cam:cam_a:status', { state: 'starting' });
+    await tick();
+    await redis.del('cam:cam_a:status');
     await tick();
     const found = await rows();
     expect(found.map((r) => r.cameraId)).toEqual(['cam_a']);
+  });
+
+  it('firstSeenAt is set once, on the first tick that sees the key', async () => {
+    await seedCamera('cam_a');
+    await online('cam_a');
+    const t1 = new Date('2026-10-09T09:00:00.000Z');
+    await tick(t1);
+    await tick(new Date('2026-10-09T09:05:00.000Z'));
+    const [row] = (await ownerQuery(
+      `SELECT "firstSeenAt" FROM "Camera" WHERE "id" = 'cam_a'`,
+    )) as { firstSeenAt: Date }[];
+    expect(row.firstSeenAt.toISOString()).toBe(t1.toISOString());
   });
 });
