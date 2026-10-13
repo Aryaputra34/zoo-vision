@@ -9,4 +9,4 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.10"
-      - run: uvx --from "pytest>=8.3" pytest -q tools/tests
+      - run: uvx --from "pytest>=8.3" --with pyyaml --with jsonschema --with requests pytest -q tools/tests
