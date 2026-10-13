@@ -43,7 +43,7 @@ class _FlakyCapture:
 def sleeps(monkeypatch):
     """Record time.sleep instead of sleeping; stop the loop after enough waits."""
     class Waits(list):
-        holder: dict = {}
+        pass
 
     waits = Waits()
     holder = waits.holder = {}
@@ -76,6 +76,13 @@ def _run_loop(mgr, sleeps, limit=6):
     ("rtsp://10.0.0.5/main", "rtsp://10.0.0.5/main"),
     ("sample_data/cars.mp4", "sample_data/cars.mp4"),
     ("0", "0"),
+    ("rtsp://admin:pa/ss@10.0.0.5/x", "rtsp://***@10.0.0.5/x"),
+    ("rtsp://a:p@ss@host/x", "rtsp://***@host/x"),
+    ("rtsp://admin@host/x", "rtsp://***@host/x"),
+    ("rtsp://host/x?password=x&channel=1", "rtsp://host/x?password=***&channel=1"),
+    ("rtsp://host/x?channel=1&Token=abc", "rtsp://host/x?channel=1&Token=***"),
+    ("rtsp://host/x?token=abc", "rtsp://host/x?token=***"),
+    ("rtsp://host/x?channel=1&subtype=0", "rtsp://host/x?channel=1&subtype=0"),
 ])
 def test_mask_url(url, masked):
     assert mask_url(url) == masked

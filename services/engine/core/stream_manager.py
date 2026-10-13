@@ -22,12 +22,28 @@ logger = logging.getLogger("StreamManager")
 RECONNECT_MIN_S = 2.0
 RECONNECT_MAX_S = 30.0
 
-_CREDENTIALS = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@")
+_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+_SECRET_PARAM = re.compile(
+    r"(?i)([?&;](?:password|passwd|pwd|pass|token|key|auth|secret|sig|signature)=)[^&#]*"
+)
 
 
 def mask_url(url: str) -> str:
-    """Hide user:password in a stream URL; anything without credentials is returned unchanged."""
-    return _CREDENTIALS.sub(r"\g<1>***@", str(url))
+    """Hide credentials in a stream URL. Fails closed: over-masking is fine, leaking is not.
+
+    Everything between `scheme://` and the last `@` before any `?`/`#` becomes `***`, and the values
+    of secret-looking query parameters become `***`. Other strings are returned unchanged.
+    """
+    url = str(url)
+    scheme = _SCHEME.match(url)
+    if not scheme:
+        return url
+    prefix, rest = url[: scheme.end()], url[scheme.end():]
+    cut = [i for i in (rest.find("?"), rest.find("#")) if i >= 0]
+    at = rest[: min(cut) if cut else len(rest)].rfind("@")
+    if at >= 0:
+        rest = "***" + rest[at:]
+    return _SECRET_PARAM.sub(r"\g<1>***", prefix + rest)
 
 
 class StreamManager:
