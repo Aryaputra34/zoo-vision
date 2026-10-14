@@ -15,6 +15,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { ModelsModule } from './models/models.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { UsecasesModule } from './usecases/usecases.module';
 import { UsersModule } from './users/users.module';
 
 @Module({})
@@ -38,6 +39,7 @@ export class AppModule {
         IngestModule,
         JobsModule,
         ModelsModule,
+        UsecasesModule,
       ],
       controllers: [HealthController],
       providers: [

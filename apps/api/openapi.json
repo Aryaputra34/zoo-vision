@@ -2106,6 +2106,50 @@
           "Models"
         ]
       }
+    },
+    "/api/v1/usecases": {
+      "get": {
+        "operationId": "usecasesList",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Sorted by id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UseCaseDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Usecases"
+        ]
+      }
     }
   },
   "info": {
@@ -3309,6 +3353,120 @@
         "required": [
           "source",
           "target"
+        ]
+      },
+      "UseCaseEventDto": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "A JSON Schema (draft 2020-12)"
+          },
+          "type": {
+            "type": "string",
+            "description": "The `type` of an `event` message."
+          }
+        },
+        "required": [
+          "schema",
+          "type"
+        ]
+      },
+      "UseCaseIntervalDto": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "A JSON Schema (draft 2020-12)"
+          },
+          "kind": {
+            "type": "string",
+            "description": "The `kind` of an `interval_open` message."
+          }
+        },
+        "required": [
+          "schema",
+          "kind"
+        ]
+      },
+      "UseCaseMetricDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "unit"
+        ]
+      },
+      "UseCaseDto": {
+        "type": "object",
+        "properties": {
+          "settingsSchema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true,
+            "description": "The camera settings schema, dereferenced, with defaults, x-geometry (\"polygon\", \"line\", \"polygon-list\") and x-minRole"
+          },
+          "liveSchema": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true,
+            "description": "The shape of `live` in the camera status"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UseCaseEventDto"
+            }
+          },
+          "intervals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UseCaseIntervalDto"
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UseCaseMetricDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "number"
+          },
+          "assignable": {
+            "type": "boolean",
+            "description": "False for `system`, which has no settings and cannot be given to a camera."
+          }
+        },
+        "required": [
+          "settingsSchema",
+          "liveSchema",
+          "events",
+          "intervals",
+          "metrics",
+          "id",
+          "label",
+          "schemaVersion",
+          "assignable"
         ]
       }
     }
