@@ -2,7 +2,10 @@
 
 The Zoo Vision backend: NestJS 11 + Prisma 7 on Postgres 17 and Redis 7.4. Routes live under
 `/api/v1/...`; the health check is `GET /api/health`; Swagger is at `/api/docs` (JSON at
-`/api/docs-json`) when `SWAGGER=public`.
+`/api/docs-json`) according to `SWAGGER` (below).
+
+The frontend builds against three files, pinned by a git tag `contract-vX.Y`: `openapi.json` (this folder),
+`packages/contracts/generated/web/index.d.ts` and `docs/fe-contract.md`.
 
 ## Setup
 
@@ -22,7 +25,7 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `CAMERA_URL_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts stored camera stream URLs |
 | `ENGINE_TOKEN` | at least 32 characters (`openssl rand -hex 32`); the engine sends it as `Authorization: Bearer` to `/internal/engine/*` |
 | `COOKIE_SECURE` | `true` (default) or `false` (plain HTTP, before TLS) |
-| `SWAGGER` | `off` (default) or `public` |
+| `SWAGGER` | `off` (default), `superadmin` (the docs answer 404 unless a SUPERADMIN session or API token asks) or `public` (development only) |
 | `PORT` | default `3001` |
 | `INGEST` | `on` (default) or `off`: whether this process consumes the Redis stream |
 | `JOBS` | `on` (default) or `off`: whether this process runs background jobs (the camera offline check, every 5 s) |
@@ -31,6 +34,54 @@ Checked at boot: the app refuses to start and lists every bad variable.
 
 The Prisma CLI reads only `DATABASE_MIGRATE_URL` (Postgres as the owner role `zoo_owner`), from
 `prisma.config.ts`. The running API never has the owner password.
+
+## Endpoints
+
+All under `/api/v1` unless noted; the roles are in `docs/fe-contract.md`. Every error has the shape
+`{statusCode, code, message, errors?}` (`src/common/errors.ts`).
+
+| Area | Endpoints |
+|---|---|
+| Health (public, `/api/health`) | `GET /health` |
+| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `PUT /auth/password` |
+| Use cases | `GET /usecases` |
+| Cameras | `GET/POST /cameras`, `GET/PATCH/DELETE /cameras/:id` |
+| Config | `GET/POST /cameras/:id/config`, `GET /cameras/:id/config/versions[/:version]`, `POST /cameras/:id/config/rollback` |
+| Live state | `GET /camera-status`, `GET /cameras/:id/status`, `GET /cameras/:id/frame` |
+| Models | `GET/POST /models`, `POST /models/rescan`, `GET/DELETE /models/:id`, `POST /models/:id/validate`, `POST /models/:id/convert` |
+| Users, tokens | `GET/POST /users`, `PATCH /users/:id`, `GET/POST /api-tokens`, `DELETE /api-tokens/:id` |
+
+## OpenAPI document
+
+`openapi.json` is generated and committed; CI fails when it is stale.
+
+```
+npm run openapi          # writes openapi.json; needs no Postgres or Redis
+npm run openapi:check    # regenerates, then fails when the committed file differs
+```
+
+Operation ids are `<controller><Method>` (`camerasList`), so the generated hooks read `useCamerasList`. The
+script builds the app without `init()`, so no lifecycle hook runs and nothing connects. Response classes live in
+`dto/*.dto.ts` files, where the `@nestjs/swagger` build plugin fills each property from its TypeScript type.
+
+## Demo commands
+
+For frontend development without a GPU (profile `demo` in `deploy/`; see `docs/fe-dev-setup.md`):
+
+```
+ZOO_DEMO=on DEMO_PASSWORD=... node dist/cli.js demo-seed        # five cameras (engine group demo), three users
+node dist/cli.js demo-feed --backfill-days 14                    # plays the engine: history, live, status, frames
+```
+
+`demo-seed` refuses unless `ZOO_DEMO=on`, so known-password users cannot appear on a real site by accident, and
+refuses a `DEMO_PASSWORD` shorter than 10 characters. It is idempotent: existing users and cameras are skipped.
+`demo-feed` reads `REDIS_URL`, `API_URL`, `ENGINE_TOKEN`, `SNAPSHOT_DIR`, `SITE_TIMEZONE` and `DEMO_SEED`
+(default 42), writes the history once per Redis volume (key `demo:backfilled`) and stops cleanly on SIGINT.
+
+## Smoke check
+
+`npm run smoke -- http://localhost:8080` checks the stack through Caddy: `/api/health` is 200, the engine's
+`/internal/*` paths are 404, and the security headers are set.
 
 ## Scripts
 
