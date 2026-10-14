@@ -1,10 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
-  HttpException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { apiError } from '../common/errors';
 import { LoginResult, Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { LockoutService } from './lockout.service';
@@ -46,9 +46,10 @@ export class AuthService {
     const lockedSec = await this.lockout.reserve(username);
     if (lockedSec > 0) {
       await this.record('LOCKED', typed, user?.id, meta);
-      throw new HttpException(
-        `Account locked. Try again in ${Math.ceil(lockedSec / 60)} minutes.`,
+      throw apiError(
         423,
+        'ACCOUNT_LOCKED',
+        `Account locked. Try again in ${Math.ceil(lockedSec / 60)} minutes.`,
       );
     }
 

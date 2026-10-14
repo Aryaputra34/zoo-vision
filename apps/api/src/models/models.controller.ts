@@ -22,17 +22,23 @@ import {
   ApiConsumes,
   ApiCreatedResponse,
   ApiAcceptedResponse,
+  ApiConflictResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
 } from '@nestjs/swagger';
 import { rm } from 'node:fs/promises';
 import type { Request } from 'express';
 import { catchError, finalize, Observable, throwError } from 'rxjs';
 import { setAudit } from '../audit/audit-context';
+import { ApiErrorBody } from '../common/errors';
 import type { Actor } from '../auth/actor';
 import { CurrentActor, MinRole } from '../auth/decorators';
 import {
+  ConvertResultDto,
+  ModelViewDto,
   type ModelView,
   type RescanResult,
+  RescanResultDto,
   parseImgsz,
   UploadModelDto,
 } from './dto/model.dto';
@@ -73,7 +79,7 @@ export class ModelsController {
 
   @MinRole('MANAGER')
   @Get()
-  @ApiOkResponse({ description: 'ModelView[], newest first' })
+  @ApiOkResponse({ type: [ModelViewDto], description: 'Newest first' })
   list(): Promise<ModelView[]> {
     return this.models.list();
   }
@@ -81,6 +87,7 @@ export class ModelsController {
   /** Declared before `:id` so that "rescan" is never read as an id. */
   @MinRole('SUPERADMIN')
   @Post('rescan')
+  @ApiCreatedResponse({ type: RescanResultDto })
   async rescan(@Req() req: Request): Promise<RescanResult> {
     const result = await this.models.rescan();
     setAudit(req, {
@@ -96,6 +103,7 @@ export class ModelsController {
 
   @MinRole('MANAGER')
   @Get(':id')
+  @ApiOkResponse({ type: ModelViewDto })
   get(@Param('id', ParseUUIDPipe) id: string): Promise<ModelView> {
     return this.models.get(id);
   }
@@ -116,7 +124,11 @@ export class ModelsController {
       },
     },
   })
-  @ApiCreatedResponse({ description: 'The ModelView (ONNX files only)' })
+  @ApiCreatedResponse({ type: ModelViewDto, description: 'ONNX files only' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'The file is registered already',
+  })
   async upload(
     @CurrentActor() actor: Actor,
     @UploadedFile() file: (Express.Multer.File & StoredUpload) | undefined,
@@ -143,7 +155,11 @@ export class ModelsController {
   @MinRole('SUPERADMIN')
   @Post(':id/validate')
   @HttpCode(202)
-  @ApiAcceptedResponse({ description: 'The ModelView, VALIDATING' })
+  @ApiAcceptedResponse({ type: ModelViewDto, description: 'Status VALIDATING' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'The model is in a state that cannot be validated',
+  })
   async validate(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
@@ -156,7 +172,11 @@ export class ModelsController {
   @MinRole('SUPERADMIN')
   @Post(':id/convert')
   @HttpCode(202)
-  @ApiAcceptedResponse({ description: '{ source, target } ModelViews' })
+  @ApiAcceptedResponse({ type: ConvertResultDto })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'Only a READY PT model can be converted',
+  })
   async convert(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,
@@ -177,6 +197,11 @@ export class ModelsController {
   @MinRole('SUPERADMIN')
   @Delete(':id')
   @HttpCode(204)
+  @ApiNoContentResponse()
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'A camera uses the model (MODEL_IN_USE)',
+  })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,

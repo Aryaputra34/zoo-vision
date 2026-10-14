@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VehicleGateLive",
+  "description": "What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.",
+  "type": "object",
+  "properties": {
+    "inCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "anprEnabled": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

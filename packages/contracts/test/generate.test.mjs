@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,4 +51,15 @@ test('derefSettings gives each reference only its own default and x-minRole', as
   assert.equal(s.properties.a['x-minRole'], 'SUPERADMIN');
   assert.equal(s.properties.b.default, undefined);
   assert.equal(s.properties.b['x-minRole'], undefined);
+});
+
+test('generated/web/index.d.ts compiles alone with tsc --noEmit --strict and exports ServerToClientEvents', () => {
+  const file = join(root, 'generated', 'web', 'index.d.ts');
+  const text = readFileSync(file, 'utf8');
+  assert.match(text, /export interface ServerToClientEvents/);
+  assert.match(text, /export interface ClientToServerEvents/);
+  assert.doesNotMatch(text, /^import /m, 'the file has no imports');
+  const tsc = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+  const run = spawnSync(process.execPath, [tsc, '--noEmit', '--strict', file], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
 });

@@ -322,7 +322,7 @@ docker compose restart
 docker compose down
 
 # Check resource consumption (GPU memory, CPU, RAM)
-docker stats zoo_vision_service
+docker stats $(docker compose ps -q zoo-ai-engine)
 ```
 
 ---

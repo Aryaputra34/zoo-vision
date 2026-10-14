@@ -170,6 +170,31 @@ describe('auth', () => {
     ).toBe(1);
   });
 
+  it('a login with X-Forwarded-For: 203.0.113.7 writes LoginLog.ip 203.0.113.7', async () => {
+    const user = await seedUser(app, 'USER');
+    await attempt(user.username, user.password)
+      .set('X-Forwarded-For', '203.0.113.7')
+      .expect(200);
+    expect((await lastLog()).ip).toBe('203.0.113.7');
+  });
+
+  it('PUT /auth/password: the 6th attempt within 15 minutes → 429 RATE_LIMITED, even with the right password', async () => {
+    const user = await seedUser(app, 'USER');
+    const cookie = await login(app, user.username, user.password);
+    const put = (currentPassword: string) =>
+      request(app.getHttpServer())
+        .put('/api/v1/auth/password')
+        .set('Cookie', cookie)
+        .send({ currentPassword, newPassword: 'another-pass-123' });
+    for (let i = 0; i < 5; i++) await put('wrong-password-x').expect(400);
+
+    const res = await put(user.password).expect(429);
+
+    expect(res.body).toMatchObject({ statusCode: 429, code: 'RATE_LIMITED' });
+    // the refused request never ran: the old password still logs in
+    await login(app, user.username, user.password);
+  });
+
   it('an extra body field gives 400 with no LoginLog row and no session', async () => {
     const user = await seedUser(app, 'USER');
     const redis = app.get<Redis>(REDIS);

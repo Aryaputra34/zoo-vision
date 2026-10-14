@@ -28,6 +28,24 @@ describe('health, env and Swagger', () => {
     );
   });
 
+  it('Redis unreachable → 503 and the body is {"redis": {"status": "down"}, ...} with no "message" key', async () => {
+    const noRedis = await createTestApp({ REDIS_URL: 'redis://127.0.0.1:1' });
+    try {
+      const res = await request(noRedis.getHttpServer())
+        .get('/api/health')
+        .expect(503);
+      const body = res.body as {
+        error: Record<string, unknown>;
+        details: Record<string, unknown>;
+      };
+      expect(body.error.redis).toEqual({ status: 'down' });
+      expect(body.details.redis).toEqual({ status: 'down' });
+      expect(res.body).toMatchObject({ statusCode: 503, code: 'UNAVAILABLE' });
+    } finally {
+      await noRedis.close();
+    }
+  });
+
   it('refuses to start without a 32-byte CAMERA_URL_KEY', async () => {
     await expect(
       createTestApp({ CAMERA_URL_KEY: Buffer.alloc(16).toString('base64') }),

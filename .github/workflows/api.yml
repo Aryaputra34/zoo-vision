@@ -1,7 +1,7 @@
 name: api
 on:
   push:
-    paths: ["apps/api/**", "packages/contracts/**", ".github/workflows/api.yml"]
+    paths: ["apps/api/**", "packages/contracts/**", "packages/contracts/fixtures/**", ".github/workflows/api.yml"]
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -22,6 +22,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      # fails when the committed openapi.json is stale
+      - run: npm run openapi:check
       - run: npm test
       # Testcontainers uses the runner's Docker
       - run: npm run test:e2e

@@ -18,7 +18,7 @@ export class UpdateUserDto {
   @MaxLength(100)
   name?: string;
 
-  @ApiPropertyOptional({ enum: Role })
+  @ApiPropertyOptional({ enum: Role, enumName: 'Role' })
   @IsOptional()
   @IsEnum(Role)
   role?: Role;

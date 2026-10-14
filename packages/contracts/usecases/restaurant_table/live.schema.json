@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RestaurantTableLive",
+  "description": "What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.",
+  "type": "object",
+  "properties": {
+    "totalTables": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occupiedTables": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "vacantTables": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occupancyRatePct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "dwellTimeEnabled": {
+      "type": "boolean"
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "$ref": "../../common/tables.schema.json#/$defs/TableLive"
+      }
+    }
+  },
+  "additionalProperties": true
+}

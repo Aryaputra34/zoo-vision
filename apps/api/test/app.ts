@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { INestApplication } from '@nestjs/common';
@@ -63,4 +65,16 @@ function required(name: string): string {
     );
   }
   return value;
+}
+
+/**
+ * Makes the app listen on a free port of the loopback and returns its base URL, for code that
+ * talks to the API over HTTP (the demo feed, like the engine). Closed with the app.
+ */
+export async function listenTestApp(
+  app: INestApplication<App>,
+): Promise<string> {
+  await app.listen(0, '127.0.0.1');
+  const address = (app.getHttpServer() as Server).address() as AddressInfo;
+  return `http://127.0.0.1:${address.port}`;
 }

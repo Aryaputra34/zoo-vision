@@ -75,3 +75,13 @@ export interface HorseCrossing {
   direction: "DEPARTURE" | "RETURN";
   trackerId: number;
 }
+
+/**
+ * What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.
+ */
+export interface HorseRidingLive {
+  activeHorses?: number;
+  departures?: number | null;
+  returns?: number | null;
+  [k: string]: unknown;
+}

@@ -4,46 +4,57 @@ import {
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import type { Express } from 'express';
+import { ActorResolver } from './auth/actor-resolver';
+import { validationException } from './common/errors';
 import { ENV, type Env } from './config/env';
+import { DOCS_PATHS, docsAccess } from './openapi/docs-access';
+import { createOpenApiDocument } from './openapi/swagger';
 
 /**
- * Everything main.ts and the e2e tests both apply before `init`/`listen`: routes live under
- * /api/v1/... (health is version-neutral at /api/health), DTOs are whitelisted, and Swagger
- * is served at /api/docs (+ /api/docs-json) only when SWAGGER=public.
+ * The URL layout, shared with the `openapi` script: routes live under /api/v1/... (health is
+ * version-neutral at /api/health); /internal/engine/* is the Python engine's and /media/* the
+ * snapshots and clips, both outside the `api` prefix and URI versioning.
+ */
+export function configureRoutes(app: INestApplication): void {
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'internal/{*path}', method: RequestMethod.ALL },
+      { path: 'media/{*path}', method: RequestMethod.ALL },
+    ],
+  });
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+}
+
+/**
+ * Everything main.ts and the e2e tests both apply before `init`/`listen`: the proxy setting,
+ * cookies, routes, whitelisted DTOs and Swagger at /api/docs (+ /api/docs-json) per SWAGGER
+ * (`public`, `superadmin` or `off`).
  */
 export function configureApp(app: INestApplication): void {
   const env = app.get<Env>(ENV);
 
+  // Exactly one proxy (Caddy) sits in front: req.ip is the client's address from X-Forwarded-For,
+  // so the login throttle, the lockout log and LoginLog see the client, not the proxy.
+  (app.getHttpAdapter().getInstance() as Express).set('trust proxy', 1);
   app.use(cookieParser());
-  // /internal/engine/* is the Python engine's, outside the `api` prefix (and URI versioning)
-  app.setGlobalPrefix('api', {
-    exclude: [{ path: 'internal/{*path}', method: RequestMethod.ALL }],
-  });
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  configureRoutes(app);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: validationException,
     }),
   );
   app.enableShutdownHooks();
 
-  if (env.SWAGGER === 'public') {
-    const config = new DocumentBuilder()
-      .setTitle('Zoo Vision API')
-      .setVersion('1')
-      .addCookieAuth(
-        'zoo_session',
-        { type: 'apiKey', in: 'cookie' },
-        'zoo_session',
-      )
-      .addBearerAuth()
-      .build();
-    SwaggerModule.setup('api/docs', app, () =>
-      SwaggerModule.createDocument(app, config),
-    );
+  if (env.SWAGGER !== 'off') {
+    if (env.SWAGGER === 'superadmin') {
+      app.use(DOCS_PATHS, docsAccess(app.get(ActorResolver)));
+    }
+    SwaggerModule.setup('api/docs', app, () => createOpenApiDocument(app));
   }
 }

@@ -10,8 +10,9 @@ import { ENV, type Env } from '../config/env';
 
 /**
  * Injection token for the shared ioredis client, for ordinary commands. Anything that blocks
- * (XREADGROUP BLOCK, SUBSCRIBE) must use its own `redis.duplicate()`, give it an `error`
- * listener and close it itself.
+ * (XREADGROUP BLOCK, SUBSCRIBE) must use its own
+ * `redis.duplicate({ maxRetriesPerRequest: null, commandTimeout: undefined })` (the shared
+ * client's timeouts would cut a BLOCK), give it an `error` listener and close it itself.
  */
 export const REDIS = Symbol('REDIS');
 
@@ -24,7 +25,12 @@ const logger = new Logger('Redis');
       provide: REDIS,
       inject: [ENV],
       useFactory: (env: Env) => {
-        const redis = new Redis(env.REDIS_URL);
+        // A dead Redis must fail a request in seconds, not hang it: queued commands give up after
+        // 2 reconnect attempts, and a command that gets no answer times out after 5 s.
+        const redis = new Redis(env.REDIS_URL, {
+          maxRetriesPerRequest: 2,
+          commandTimeout: 5000,
+        });
         // Without a listener ioredis prints every failed reconnect as an "Unhandled error event".
         redis.on('error', (err: Error) => logger.warn(err.message));
         return redis;

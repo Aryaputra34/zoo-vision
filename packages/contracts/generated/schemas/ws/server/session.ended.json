@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SessionEnded",
+  "description": "Sent just before the server disconnects the user. role_changed keeps the session: reconnect instead of logging out.",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "enum": [
+        "logout",
+        "revoked",
+        "disabled",
+        "role_changed",
+        "expired"
+      ]
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "additionalProperties": false
+}

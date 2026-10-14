@@ -6,7 +6,7 @@ export class UserDto {
   @ApiProperty() id!: string;
   @ApiProperty() username!: string;
   @ApiProperty() name!: string;
-  @ApiProperty({ enum: Role }) role!: Role;
+  @ApiProperty({ enum: Role, enumName: 'Role' }) role!: Role;
   @ApiProperty() active!: boolean;
   @ApiProperty() createdAt!: Date;
 

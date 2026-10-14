@@ -1,0 +1,25 @@
+{
+  "occupancy": 4,
+  "rawOccupancy": 4,
+  "maxCapacity": 60,
+  "warningCapacity": 45,
+  "mode": "tripwire",
+  "totalTables": 1,
+  "occupiedTables": 1,
+  "vacantTables": 0,
+  "occupancyRatePct": 100.0,
+  "dwellTimeEnabled": true,
+  "tables": [
+    {
+      "id": "T1",
+      "name": "Table 1",
+      "status": "OCCUPIED",
+      "isOccupied": true,
+      "personCount": 3,
+      "capacity": 4,
+      "dwellSec": 1260,
+      "trackDwellTime": true,
+      "totalSessions": 5
+    }
+  ]
+}

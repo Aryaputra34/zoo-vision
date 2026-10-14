@@ -26,7 +26,7 @@ export class CreateUserDto {
   @MaxLength(MAX_PASSWORD_LENGTH)
   password!: string;
 
-  @ApiProperty({ enum: Role })
+  @ApiProperty({ enum: Role, enumName: 'Role' })
   @IsEnum(Role)
   role!: Role;
 }

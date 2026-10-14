@@ -1,0 +1,5 @@
+# The customer's certificate: put cert.pem and key.pem in ${ZOO_DATA_DIR}/certs (mounted as /certs).
+{$ZOO_SITE_ADDRESS:localhost} {
+	tls /certs/cert.pem /certs/key.pem
+	import zoo_routes
+}

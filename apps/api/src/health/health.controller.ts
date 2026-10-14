@@ -1,4 +1,11 @@
-import { Controller, Get, Inject, VERSION_NEUTRAL } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpException,
+  Inject,
+  Logger,
+  VERSION_NEUTRAL,
+} from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
@@ -15,6 +22,8 @@ const PROBE_TIMEOUT_MS = 2000;
 @Public()
 @Controller({ path: 'health', version: VERSION_NEUTRAL })
 export class HealthController {
+  private readonly log = new Logger(HealthController.name);
+
   constructor(
     private readonly health: HealthCheckService,
     private readonly indicators: HealthIndicatorService,
@@ -22,13 +31,30 @@ export class HealthController {
     @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
+  /** 503 keeps terminus's per-dependency map next to the standard error fields. */
   @Get()
   @HealthCheck()
-  check() {
-    return this.health.check([
-      () => this.probe('database', () => this.prisma.$queryRaw`SELECT 1`),
-      () => this.probe('redis', () => this.redis.ping()),
-    ]);
+  async check() {
+    try {
+      return await this.health.check([
+        () => this.probe('database', () => this.prisma.$queryRaw`SELECT 1`),
+        () => this.probe('redis', () => this.redis.ping()),
+      ]);
+    } catch (err) {
+      if (err instanceof HttpException && err.getStatus() === 503) {
+        const result = err.getResponse();
+        throw new HttpException(
+          {
+            ...(typeof result === 'object' ? result : {}),
+            statusCode: 503,
+            code: 'UNAVAILABLE',
+            message: 'A dependency is down',
+          },
+          503,
+        );
+      }
+      throw err;
+    }
   }
 
   private async probe<Key extends string>(
@@ -47,7 +73,9 @@ export class HealthController {
       await Promise.race([run(), timeout]);
       return indicator.up();
     } catch (err) {
-      return indicator.down({ message: (err as Error).message });
+      // the body only says "down"; the reason is for the operator's log
+      this.log.warn(`${key} probe failed: ${(err as Error).message}`);
+      return indicator.down();
     } finally {
       clearTimeout(timer);
     }

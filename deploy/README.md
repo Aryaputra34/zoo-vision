@@ -8,9 +8,132 @@ command from this folder.
 | `postgres` | Postgres 17. Creates the `zoo_api` role on first start (`postgres/init`). No host port |
 | `redis` | Redis 7.4 with a password and AOF persistence. Published on `127.0.0.1:${ZOO_REDIS_PORT:-6379}` for the host-networked engine |
 | `api-migrate` | One-shot: `prisma migrate deploy` as `zoo_owner`, then exits |
-| `api` | The NestJS API on `127.0.0.1:3001` (Swagger at `/api/docs`). Serves the engine its cameras and runs the offline check |
-| `mediamtx` | Pulls each camera once, records it, re-serves RTSP to the engine, serves event clips on :9996 |
-| `zoo-ai-engine` | The Python engine (`services/engine`), image `zoo-vision-engine:${ZOO_VERSION}`. Configured by environment only; gets its cameras from the API and reloads them live |
+| `api` | The NestJS API on `127.0.0.1:${ZOO_API_PORT}` (Swagger at `/api/docs`, see `ZOO_SWAGGER`). Serves the engine its cameras and runs the offline check |
+| `caddy` | The only service with public ports. `/api`, `/media` and `/ws` go to the API, `/internal/*` is a 404, everything else goes to the dashboard |
+| `web` | Profile `web`: the dashboard (Next.js), built from the frontend checkout `ZOO_WEB_DIR` |
+| `mediamtx` | Profile `engine`: pulls each camera once, records it, re-serves RTSP to the engine, serves event clips on :9996 |
+| `zoo-ai-engine` | Profile `engine`: the Python engine (`services/engine`), image `zoo-vision-engine:${ZOO_VERSION}`. Configured by environment only; gets its cameras from the API and reloads them live |
+
+Container names are not fixed: Compose prefixes them with the project name (`zoo-vision` by default, or
+`COMPOSE_PROJECT_NAME` in `.env`), so two stacks can share a server. Use `docker compose exec api ...` rather than
+`docker exec <name>`.
+
+## Upgrading a stack from before Phase 3
+
+Phase 3 sets the Compose project name to `zoo-vision` (it was the folder name, `deploy`) and removes the fixed
+container names. On the first `docker compose up` after pulling:
+
+- **The new project has empty volumes** (`zoo-vision_pgdata`, `zoo-vision_redisdata`). The old data is not deleted:
+  it stays in `deploy_pgdata` and `deploy_redisdata`. To keep using it, add `COMPOSE_PROJECT_NAME=deploy` to
+  `.env` before you start. To move to the new name instead, take a backup first (see below) and restore it into
+  the new stack.
+- **The old containers (`zoo_api`, `zoo_postgres`, ...) keep their ports.** Run `docker compose stop` with the
+  old file (or `docker stop zoo_api zoo_redis zoo_postgres`) before the first start, or the API's loopback port
+  is taken.
+- Caddy is new and is the only service on the public ports; set `ZOO_HTTP_PORT` and the Caddy variables in `.env`
+  (see Ports and Caddy modes).
+
+## Ports
+
+Every host port is a variable in `.env`. Change one when the default is taken.
+
+| Variable | Default | What |
+|---|---|---|
+| `ZOO_BIND_ADDR` | `0.0.0.0` | The host address Caddy's ports are published on. `127.0.0.1` keeps a development stack (public demo logins) off the LAN |
+| `ZOO_HTTP_PORT` | 80 | Caddy, http. The dashboard is opened here. Caddy listens on the same number inside the container |
+| `ZOO_HTTPS_PORT` | 443 | Caddy, https |
+| `ZOO_API_PORT` | 3001 | The API, on `127.0.0.1` only: for the engine run from source and for debugging |
+| `ZOO_REDIS_PORT` | 6379 | Redis, on `127.0.0.1` only (the host-networked engine reaches it here) |
+| `ZOO_PG_PORT` | 5433 | Postgres admin access, only with `docker-compose.override.yml` |
+| `ZOO_WEB_UPSTREAM` | `web:3000` | Where Caddy sends the dashboard's paths. In development: `host.docker.internal:3000` (`next dev` on the host) |
+
+MediaMTX and the engine use host networking, so their ports are changed in their own settings.
+
+## Variables added in Phase 3
+
+Set in `.env` (see `.env.example`); Compose passes them to the API as the variable named in the last column.
+
+| Variable | Default | API variable | What |
+|---|---|---|---|
+| `COMPOSE_PROFILES` | none | | Which optional services start (see Profiles) |
+| `ZOO_HTTP_PORT`, `ZOO_HTTPS_PORT`, `ZOO_API_PORT`, `ZOO_REDIS_PORT`, `ZOO_BIND_ADDR` | see Ports | | Host ports and the bind address |
+| `ZOO_CADDY_MODE`, `ZOO_SITE_ADDRESS`, `ZOO_WEB_UPSTREAM`, `ZOO_WEB_DIR` | `internal-tls`, `localhost`, `web:3000`, `../../zoo-vision-fe` | | Caddy and the dashboard |
+| `ZOO_COOKIE_SECURE` | `true` | `COOKIE_SECURE` | `false` only for plain http in development |
+| `ZOO_SWAGGER` | `off` | `SWAGGER` | `off`, `superadmin` or `public` (development only) |
+| `ZOO_SITE_TIMEZONE` | `Asia/Jakarta` | `SITE_TIMEZONE` | The IANA zone reports bucket by and CSV files write local times in. Zones that shift their clocks at midnight or by 30 minutes are not supported |
+| `ZOO_MEDIAMTX_PLAYBACK_URL` | `http://host.docker.internal:9996` | `MEDIAMTX_PLAYBACK_URL` | Where the API asks MediaMTX for event clips. Set but empty: clips answer `RECORDING_NOT_AVAILABLE`. The API logs a warning when playback is unreachable |
+| `ZOO_DEMO`, `DEMO_PASSWORD` | off | | Only for the demo profile (below) |
+| | | `SNAPSHOT_DIR` | Fixed to `/data/snapshots` (`$ZOO_DATA_DIR/snapshots`, mounted read-only) |
+
+`INGEST` and `JOBS` (API) are unchanged and stay on in the one API container.
+
+Two things in the API need no variable: the WebSocket at `/ws` (Caddy forwards the upgrade) and the `audit_camera`
+migration, which `api-migrate` applies on the next `docker compose up -d --build api-migrate api`.
+
+## The demo stack
+
+The profile `demo` plays the engine's part for five demo cameras (one per use case, engine group `demo`) so the
+frontend can be built without a GPU or a camera. It needs `ZOO_DEMO=on` and `DEMO_PASSWORD` (at least 10
+characters) in `.env`; `.env.demo.example` is a complete file for it.
+
+```bash
+docker compose --profile demo up -d --build postgres redis api-migrate api caddy demo-seed demo-feed
+```
+
+- `demo-seed` creates the five cameras and the users `demo-superadmin`, `demo-manager` and `demo-user` (all with
+  `DEMO_PASSWORD`), once. It refuses to run without `ZOO_DEMO=on`.
+- `demo-feed` writes 14 days of history into the `events` stream once per Redis volume (its events have no
+  snapshots), then live events, intervals and metrics, `cam:<id>:status` every 5 s and a still in `cam:<id>:frame`
+  every 2 s; one camera goes silent for 2 minutes every 10 minutes. It follows `cfg:changed` and reports the new
+  `appliedVersion`, so Saved to Applied works. Live demo events get snapshots in `$ZOO_DATA_DIR/snapshots`
+  (about 80 MB a day, never pruned).
+- The users have a **public password**: keep `ZOO_BIND_ADDR=127.0.0.1` on a machine that other people can reach.
+  The demo cameras and users stay in the database they were created in (`down -v` removes them).
+- It runs next to a real engine: the engine group is `default`, the demo's is `demo`, so neither runs the
+  other's cameras.
+
+## Profiles
+
+`COMPOSE_PROFILES` in `.env` decides which optional services start. `postgres`, `redis`, `api-migrate`, `api` and
+`caddy` always run.
+
+| Profile | Adds | Use |
+|---|---|---|
+| `engine` | `mediamtx`, `zoo-ai-engine` | A park server (needs the NVIDIA GPU) |
+| `web` | `web` | The dashboard in a container |
+| `demo` | `demo-seed`, `demo-feed` | Fake cameras, users and history, no GPU (frontend development) |
+
+A park server sets `COMPOSE_PROFILES=engine,web`. A laptop leaves it unset and names the services it wants.
+
+## Caddy modes
+
+`ZOO_CADDY_MODE` picks the site file in `caddy/sites/`:
+
+| Mode | Certificate | Use |
+|---|---|---|
+| `dev` | none, plain http on `ZOO_HTTP_PORT` | Development. Set `ZOO_COOKIE_SECURE=false` |
+| `internal-tls` (default) | Caddy's own CA signs one for `ZOO_SITE_ADDRESS` | A park server without a certificate |
+| `custom-tls` | `${ZOO_DATA_DIR}/certs/cert.pem` and `key.pem` | The customer's certificate |
+
+The API sets `COOKIE_SECURE=true` by default (`ZOO_COOKIE_SECURE`), so the login cookie needs https outside `dev`.
+
+### Trusting the internal CA on park PCs
+
+With `internal-tls` browsers warn until the CA's root certificate is installed once on each PC:
+
+```bash
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .
+```
+
+Copy `root.crt` to the PC and add it to the trusted root certificate authorities (Windows: double-click, Install
+Certificate, Local Machine, Trusted Root Certification Authorities).
+
+## Checking the front door
+
+From `apps/api`: `npm run smoke -- http://localhost:8080` (use your `ZOO_HTTP_PORT`). It checks `/api/health`
+through Caddy, that `/internal/engine/*` is a 404 and that the security headers are set. With
+`DEMO_PASSWORD` set (the demo stack) it also logs in as `demo-user`, opens the WebSocket at `/ws` through Caddy,
+subscribes to `status` and waits for a `status.snapshot`.
 
 ## First run
 

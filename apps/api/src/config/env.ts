@@ -10,7 +10,8 @@ export type Env = Readonly<{
   /** Shared secret of the Python engine for /internal/engine/* (Authorization: Bearer). */
   ENGINE_TOKEN: string;
   COOKIE_SECURE: boolean;
-  SWAGGER: 'public' | 'off';
+  /** `superadmin`: the docs answer 404 unless a SUPERADMIN session or API token asks. */
+  SWAGGER: 'public' | 'superadmin' | 'off';
   PORT: number;
   /** Whether the Redis stream consumer runs in this process. */
   INGEST: 'on' | 'off';
@@ -20,6 +21,12 @@ export type Env = Readonly<{
   MODELS_DIR: string;
   /** Largest accepted model upload, in bytes. */
   MODEL_UPLOAD_MAX_BYTES: number;
+  /** IANA zone the reports bucket by and the CSV exports write local times in (until SiteSettings). */
+  SITE_TIMEZONE: string;
+  /** The folder the engine writes event JPEGs to, as `<camera>/<date>/<event>.jpg` (read-only here). */
+  SNAPSHOT_DIR: string;
+  /** MediaMTX's playback server, e.g. http://host.docker.internal:9996; unset: clips are unavailable. */
+  MEDIAMTX_PLAYBACK_URL: string | undefined;
 }>;
 
 export class EnvError extends Error {
@@ -69,6 +76,19 @@ const positiveInt: Check<number> = (value) => {
 
 const text: Check<string> = (value) => value;
 
+// Region/City names only: Intl also takes "+07:00", which Postgres reads with the sign flipped
+const timeZone: Check<string> = (value) => {
+  if (value !== 'UTC' && !/^[A-Za-z]+\/[A-Za-z0-9_+\-/]+$/.test(value)) {
+    return undefined;
+  }
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value });
+    return value;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Validates the environment. Throws one {@link EnvError} naming every bad variable (never its
  * value, which may be a secret), so the app refuses to start.
@@ -113,7 +133,12 @@ export function loadEnv(source: Source = process.env): Env {
     COOKIE_SECURE:
       read('COOKIE_SECURE', oneOf('true', 'false'), 'true or false', 'true') ===
       'true',
-    SWAGGER: read('SWAGGER', oneOf('public', 'off'), 'public or off', 'off'),
+    SWAGGER: read(
+      'SWAGGER',
+      oneOf('public', 'superadmin', 'off'),
+      'public, superadmin or off',
+      'off',
+    ),
     PORT: read('PORT', port, 'a port number (1-65535)', 3001),
     INGEST: read('INGEST', oneOf('on', 'off'), 'on or off', 'on'),
     JOBS: read('JOBS', oneOf('on', 'off'), 'on or off', 'on'),
@@ -124,6 +149,21 @@ export function loadEnv(source: Source = process.env): Env {
       'a positive number of bytes',
       1073741824,
     ),
+    SITE_TIMEZONE: read(
+      'SITE_TIMEZONE',
+      timeZone,
+      'an IANA time zone such as Asia/Jakarta',
+      'Asia/Jakarta',
+    ),
+    SNAPSHOT_DIR: read(
+      'SNAPSHOT_DIR',
+      text,
+      'a folder path',
+      '/data/snapshots',
+    ),
+    MEDIAMTX_PLAYBACK_URL: source.MEDIAMTX_PLAYBACK_URL
+      ? read('MEDIAMTX_PLAYBACK_URL', url('http:', 'https:'), 'an http(s) URL')
+      : undefined,
   };
 
   if (problems.length > 0) {

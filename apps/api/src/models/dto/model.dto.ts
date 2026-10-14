@@ -1,7 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import type { AiModel } from '../../generated/prisma/client';
+import {
+  ModelFormat,
+  ModelSource,
+  ModelStatus,
+} from '../../generated/prisma/enums';
 
 /** The text fields of the multipart upload; the `file` part is read by multer. */
 export class UploadModelDto {
@@ -26,6 +31,52 @@ export class UploadModelDto {
 }
 
 /** An AiModel row as the API returns it: `sizeBytes` is a number. */
+export class ModelViewDto {
+  id!: string;
+  name!: string;
+  version!: string | null;
+  @ApiProperty({ enum: ModelFormat, enumName: 'ModelFormat' })
+  format!: ModelFormat;
+  @ApiProperty({ enum: ModelSource, enumName: 'ModelSource' })
+  source!: ModelSource;
+  @ApiProperty({ enum: ModelStatus, enumName: 'ModelStatus' })
+  status!: ModelStatus;
+  /** Relative to the models folder, "/" separators. */
+  filePath!: string;
+  originalName!: string;
+  sha256!: string | null;
+  sizeBytes!: number | null;
+  @ApiProperty({ type: [String], nullable: true })
+  classNames!: string[] | null;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description: '{ ok, latencyMs?, device?, error?, at } after a validation',
+  })
+  validation!: Record<string, unknown> | null;
+  convertedFromId!: string | null;
+  createdById!: string | null;
+  notes!: string | null;
+  createdAt!: Date;
+  updatedAt!: Date;
+}
+
+export class RescanSkippedDto {
+  file!: string;
+  reason!: string;
+}
+
+export class RescanResultDto {
+  @ApiProperty({ type: [ModelViewDto] }) added!: ModelViewDto[];
+  @ApiProperty({ type: [RescanSkippedDto] }) skipped!: RescanSkippedDto[];
+}
+
+export class ConvertResultDto {
+  source!: ModelViewDto;
+  target!: ModelViewDto;
+}
+
 export type ModelView = Omit<AiModel, 'sizeBytes'> & {
   sizeBytes: number | null;
 };

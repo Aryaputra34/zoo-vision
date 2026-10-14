@@ -1,12 +1,13 @@
 import {
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AccessEvents } from '../auth/access-events';
 import type { Actor } from '../auth/actor';
 import { hashPassword } from '../auth/password';
 import { SessionService } from '../auth/session.service';
+import { apiError } from '../common/errors';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateUserDto } from './dto/create-user.dto';
@@ -20,6 +21,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessions: SessionService,
+    private readonly access: AccessEvents,
   ) {}
 
   /** A manager sees USER and MANAGER accounts; a superadmin sees everyone. */
@@ -50,7 +52,7 @@ export class UsersService {
       return UserDto.from(user);
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') {
-        throw new ConflictException('Username already exists');
+        throw apiError(409, 'USERNAME_TAKEN', 'Username already exists');
       }
       throw err;
     }
@@ -88,7 +90,9 @@ export class UsersService {
         const locked = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM "User" WHERE role = 'SUPERADMIN' AND active = true FOR UPDATE`;
         if (locked.length <= 1) {
-          throw new ConflictException(
+          throw apiError(
+            409,
+            'LAST_SUPERADMIN',
             'Cannot remove the last active superadmin',
           );
         }
@@ -107,7 +111,16 @@ export class UsersService {
     });
 
     if (dto.active === false || passwordHash) {
-      await this.sessions.revokeAllForUser(id);
+      // the sockets of a disabled user are told "disabled"; after a password reset, "revoked"
+      await this.sessions.revokeAllForUser(
+        id,
+        undefined,
+        dto.active === false ? 'disabled' : 'revoked',
+      );
+    }
+    if (before.role !== after.role) {
+      // the session stays valid: the client reconnects and lands in the rooms of its new role
+      this.access.ended$.next({ userId: id, reason: 'role_changed' });
     }
     return { before: UserDto.from(before), after: UserDto.from(after) };
   }

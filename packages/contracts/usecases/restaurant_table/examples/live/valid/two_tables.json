@@ -1,0 +1,31 @@
+{
+  "totalTables": 2,
+  "occupiedTables": 1,
+  "vacantTables": 1,
+  "occupancyRatePct": 50.0,
+  "dwellTimeEnabled": true,
+  "tables": [
+    {
+      "id": "T1",
+      "name": "Table 1",
+      "status": "OCCUPIED",
+      "isOccupied": true,
+      "personCount": 3,
+      "capacity": 4,
+      "dwellSec": 1260,
+      "trackDwellTime": true,
+      "totalSessions": 5
+    },
+    {
+      "id": "T2",
+      "name": "Table 2",
+      "status": "EMPTY",
+      "isOccupied": false,
+      "personCount": 0,
+      "capacity": 4,
+      "dwellSec": 0,
+      "trackDwellTime": true,
+      "totalSessions": 5
+    }
+  ]
+}

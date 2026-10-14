@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, RootModel, conint, constr
 
@@ -33,3 +34,12 @@ class ConfigRejected(BaseModel):
     )
     version: conint(ge=1)
     reason: constr(min_length=1, max_length=500)
+
+
+class ModelValidationFailed(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    modelId: UUID
+    name: constr(min_length=1, max_length=200)
+    error: constr(min_length=1, max_length=500)

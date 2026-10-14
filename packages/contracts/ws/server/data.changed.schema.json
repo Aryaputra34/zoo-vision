@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DataChanged",
+  "description": "Room alerts: something was ingested; refetch what the page shows. At most one message per 5 seconds.",
+  "type": "object",
+  "properties": {
+    "cameraIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "useCases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "shapes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "event",
+          "interval",
+          "metric"
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "cameraIds",
+    "useCases",
+    "shapes"
+  ],
+  "additionalProperties": false
+}

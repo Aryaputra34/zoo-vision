@@ -1,11 +1,10 @@
 import {
   BadRequestException,
-  ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { type Actor, roleAtLeast } from '../auth/actor';
+import { apiError, needsSuperadmin } from '../common/errors';
 import { ContractsService } from '../contracts/contracts.service';
 import type { CameraConfigVersion, Prisma } from '../generated/prisma/client';
 import { ModelsService } from '../models/models.service';
@@ -24,6 +23,8 @@ export type SaveResult = {
   version: number;
   before: ConfigSnapshot;
   after: ConfigSnapshot;
+  /** The camera has `auditCamera` set: the change is an audit-camera change. */
+  auditCamera: boolean;
 };
 
 type SaveInput = {
@@ -118,7 +119,9 @@ export class ConfigVersionsService {
         const camera = await tx.camera.findUnique({ where: { id: cameraId } });
         if (!camera) throw new NotFoundException('Camera not found');
         if (input.baseVersion !== camera.activeVersion) {
-          throw new ConflictException(
+          throw apiError(
+            409,
+            'STALE_VERSION',
             `The config is at version ${camera.activeVersion}; reload and retry`,
           );
         }
@@ -130,10 +133,9 @@ export class ConfigVersionsService {
         const useCase = input.useCase ?? camera.useCase;
         const useCaseChanged = useCase !== camera.useCase;
         if (useCaseChanged && !roleAtLeast(actor.role, 'SUPERADMIN')) {
-          throw new ForbiddenException({
-            message: 'Only a superadmin can change the use case',
-            fields: ['/useCase'],
-          });
+          throw needsSuperadmin('Only a superadmin can change the use case', [
+            '/useCase',
+          ]);
         }
         const contract = registry.useCases.get(useCase);
         if (!validator.assignableUseCases().includes(useCase) || !contract) {
@@ -141,10 +143,12 @@ export class ConfigVersionsService {
         }
         const valid = validator.validateSettings(useCase, input.settings);
         if (!valid.ok) {
-          throw new BadRequestException({
-            message: 'Settings are invalid',
-            errors: valid.errors,
-          });
+          throw apiError(
+            400,
+            'SETTINGS_INVALID',
+            'Settings are invalid',
+            valid.errors,
+          );
         }
         // Across use cases the restricted fields are not comparable; a superadmin made the switch.
         if (!useCaseChanged) {
@@ -156,10 +160,10 @@ export class ConfigVersionsService {
             actor.role,
           );
           if (restricted.length > 0) {
-            throw new ForbiddenException({
-              message: `Only a superadmin can change: ${restricted.join(', ')}`,
-              fields: restricted,
-            });
+            throw needsSuperadmin(
+              `Only a superadmin can change: ${restricted.join(', ')}`,
+              restricted,
+            );
           }
         }
         await this.models.assertSelectable(
@@ -192,12 +196,15 @@ export class ConfigVersionsService {
             settings: current?.settings ?? null,
           },
           after: { version, useCase, settings: input.settings },
+          auditCamera: camera.auditCamera,
         };
       });
     } catch (err) {
       // The primary key (cameraId, version) is the guard against a concurrent save.
       if ((err as { code?: string }).code === 'P2002') {
-        throw new ConflictException(
+        throw apiError(
+          409,
+          'STALE_VERSION',
           'The config changed meanwhile; reload and retry',
         );
       }

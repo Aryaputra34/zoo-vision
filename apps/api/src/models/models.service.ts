@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type Redis from 'ioredis';
 import type { Actor } from '../auth/actor';
+import { apiError } from '../common/errors';
 import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
 import type { AiModel, Prisma } from '../generated/prisma/client';
@@ -248,6 +249,49 @@ export class ModelsService implements OnApplicationBootstrap {
           validation: { ok: false, error: report.error, at },
         };
     await this.applyReport(id, 'VALIDATING', data);
+    if (!report.ok) await this.recordValidationFailure(id, report.error);
+  }
+
+  /**
+   * A failed validation is also a system event, so the System events page shows it. It does not
+   * come through ingest and is not pushed over the WebSocket. A failure to write it is logged:
+   * the model is FAILED either way.
+   */
+  private async recordValidationFailure(
+    id: string,
+    error: string,
+  ): Promise<void> {
+    try {
+      const row = await this.prisma.aiModel.findUnique({
+        where: { id },
+        select: { name: true },
+      });
+      const schemaVersion =
+        this.contracts.registry.useCases.get('system')?.schemaVersion ?? 1;
+      await this.prisma.event.create({
+        data: {
+          id: `evt_${randomBytes(16).toString('hex')}`,
+          time: new Date(),
+          cameraId: null,
+          useCase: 'system',
+          type: 'model_validation_failed',
+          severity: 'warning',
+          configVersion: null,
+          schemaVersion,
+          data: {
+            modelId: id,
+            name: (row?.name || id).slice(0, 200),
+            error: error.slice(0, 500) || 'validation failed',
+          },
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `could not record model_validation_failed for ${id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**
@@ -356,10 +400,9 @@ export class ModelsService implements OnApplicationBootstrap {
       const message = row
         ? `The model is ${row.status}, not READY`
         : 'No such model';
-      throw new BadRequestException({
-        message: 'Settings are invalid',
-        errors: [{ path: '/model_id', message }],
-      });
+      throw apiError(400, 'SETTINGS_INVALID', 'Settings are invalid', [
+        { path: '/model_id', message },
+      ]);
     }
   }
 
@@ -546,7 +589,9 @@ export class ModelsService implements OnApplicationBootstrap {
     const row = await this.getRow(id);
     const using = await this.camerasUsing(row);
     if (using.length > 0) {
-      throw new ConflictException(
+      throw apiError(
+        409,
+        'MODEL_IN_USE',
         `The model is used by camera ${using.join(', ')}`,
       );
     }

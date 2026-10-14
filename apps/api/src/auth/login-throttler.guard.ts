@@ -4,12 +4,12 @@ import {
   InjectThrottlerOptions,
   InjectThrottlerStorage,
   ThrottlerGuard,
-  type ThrottlerLimitDetail,
   type ThrottlerModuleOptions,
   type ThrottlerStorage,
 } from '@nestjs/throttler';
 import type { Request } from 'express';
 import Redis from 'ioredis';
+import { apiError } from '../common/errors';
 import { REDIS } from '../redis/redis.module';
 import { AuthService } from './auth.service';
 import { requestMeta } from './request-meta';
@@ -31,7 +31,6 @@ export class LoginThrottlerGuard extends ThrottlerGuard {
 
   protected override async throwThrottlingException(
     context: ExecutionContext,
-    detail: ThrottlerLimitDetail,
   ): Promise<void> {
     const req = context.switchToHttp().getRequest<Request>();
     const body = req.body as { username?: unknown } | undefined;
@@ -57,6 +56,10 @@ export class LoginThrottlerGuard extends ThrottlerGuard {
       // the 429 must still be sent when the log write fails
       this.log.error(`could not write the RATE_LIMITED log: ${String(err)}`);
     }
-    return super.throwThrottlingException(context, detail);
+    throw apiError(
+      429,
+      'RATE_LIMITED',
+      'Too many attempts; try again in a minute',
+    );
   }
 }

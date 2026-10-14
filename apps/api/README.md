@@ -2,7 +2,10 @@
 
 The Zoo Vision backend: NestJS 11 + Prisma 7 on Postgres 17 and Redis 7.4. Routes live under
 `/api/v1/...`; the health check is `GET /api/health`; Swagger is at `/api/docs` (JSON at
-`/api/docs-json`) when `SWAGGER=public`.
+`/api/docs-json`) according to `SWAGGER` (below).
+
+The frontend builds against three files, pinned by a git tag `contract-vX.Y`: `openapi.json` (this folder),
+`packages/contracts/generated/web/index.d.ts` and `docs/fe-contract.md`.
 
 ## Setup
 
@@ -22,15 +25,105 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `CAMERA_URL_KEY` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts stored camera stream URLs |
 | `ENGINE_TOKEN` | at least 32 characters (`openssl rand -hex 32`); the engine sends it as `Authorization: Bearer` to `/internal/engine/*` |
 | `COOKIE_SECURE` | `true` (default) or `false` (plain HTTP, before TLS) |
-| `SWAGGER` | `off` (default) or `public` |
+| `SWAGGER` | `off` (default), `superadmin` (the docs answer 404 unless a SUPERADMIN session or API token asks) or `public` (development only) |
 | `PORT` | default `3001` |
 | `INGEST` | `on` (default) or `off`: whether this process consumes the Redis stream |
 | `JOBS` | `on` (default) or `off`: whether this process runs background jobs (the camera offline check, every 5 s) |
 | `MODELS_DIR` | default `/data/models`: the AI models folder (`inbox/`, `registry/`, built-ins in the root), shared with the engine |
 | `MODEL_UPLOAD_MAX_BYTES` | default 1 GiB: the largest ONNX file the web upload accepts |
+| `SITE_TIMEZONE` | default `Asia/Jakarta`: the IANA zone report buckets and CSV times use (`Region/City` form) |
+| `SNAPSHOT_DIR` | default `/data/snapshots`: where the engine writes event JPEGs; read-only here, served at `/media/snapshots/...` |
+| `MEDIAMTX_PLAYBACK_URL` | optional http(s) URL of MediaMTX's playback server; unset: `/media/clips/:eventId` answers `RECORDING_NOT_AVAILABLE` |
 
 The Prisma CLI reads only `DATABASE_MIGRATE_URL` (Postgres as the owner role `zoo_owner`), from
 `prisma.config.ts`. The running API never has the owner password.
+
+## Endpoints
+
+All under `/api/v1` unless noted; the roles are in `docs/fe-contract.md`. Every error has the shape
+`{statusCode, code, message, errors?}` (`src/common/errors.ts`).
+
+| Area | Endpoints |
+|---|---|
+| Health (public, `/api/health`) | `GET /health` |
+| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `PUT /auth/password` |
+| Use cases | `GET /usecases` |
+| Cameras | `GET/POST /cameras`, `GET/PATCH/DELETE /cameras/:id` |
+| Config | `GET/POST /cameras/:id/config`, `GET /cameras/:id/config/versions[/:version]`, `POST /cameras/:id/config/rollback` |
+| Live state | `GET /camera-status`, `GET /cameras/:id/status`, `GET /cameras/:id/frame` |
+| Models | `GET/POST /models`, `POST /models/rescan`, `GET/DELETE /models/:id`, `POST /models/:id/validate`, `POST /models/:id/convert` |
+| Users, tokens | `GET/POST /users`, `PATCH /users/:id`, `GET/POST /api-tokens`, `DELETE /api-tokens/:id` |
+| Reports | `GET /reports/events/stats`, `/reports/intervals/stats`, `/reports/metrics/series` |
+| Lists | `GET /events`, `GET /intervals` (cursor paged) |
+| CSV | `GET /exports/events.csv`, `intervals.csv`, `metrics.csv`, `summary.csv` (streamed, audited) |
+| System log (MANAGER+) | `GET /system-log/audit`, `/logins`, `/system-events` and their `.csv` |
+| Media (`/media`, outside `/api/v1`) | `GET /media/snapshots/<camera>/<date>/<event>.jpg`, `GET /media/clips/:eventId` |
+
+## Modules
+
+`src/<module>/`, each a Nest module:
+
+| Module | What |
+|---|---|
+| `auth`, `users`, `api-tokens` | Cookie sessions in Redis, roles, API tokens, `AccessEvents` (who ended whose session) |
+| `cameras`, `models`, `usecases` | Cameras and their versioned config, the AI model registry, the use case contracts |
+| `engine-internal`, `ingest`, `jobs` | The engine's routes, the Redis stream into Postgres (and `committed$`), the offline check |
+| `reports`, `exports`, `system-log` | Aggregates and lists, streamed CSV, audit and login history |
+| `media` | Snapshots and clips behind the session |
+| `live` | The WebSocket gateway, the status ticker, the push after each ingest commit, audit notices |
+| `audit`, `common`, `config`, `contracts`, `openapi`, `demo` | Audit trail, the error filter and codes, env, contract loading, `openapi.json`, the demo feeder |
+
+## Error codes
+
+One body shape, `{statusCode, code, message, errors?}`, from `src/common/errors.ts` (`ERROR_CODES`). Throw with
+`apiError(status, code, message, errors?)`. The codes and what the UI does for each are in `docs/fe-contract.md`
+section 4.
+
+## WebSocket
+
+socket.io at `/ws`, WebSocket transport only, session cookie only (API tokens are refused), an `Origin` whose host
+differs from `Host` is refused. Rooms: `alerts` (everyone), `managers` (MANAGER and SUPERADMIN), `status` (on
+request), `user:<id>`. Messages are in `packages/contracts/ws/` and `generated/web/index.d.ts`.
+
+- `status.snapshot` every 2 s while the `status` room has members (`live/status-broadcaster.ts`).
+- `event.created` per new event and `data.changed` at most every 5 s, after each ingest commit
+  (`ingest/ingest.service.ts` `committed$` to `live/ingest-push.ts`, `live/change-merger.ts`).
+- `audit.notice` to `managers` for a change to an `auditCamera` camera (`audit/audit.service.ts` `auditCamera$`).
+- `session.ended {reason}` then a disconnect, from `AccessEvents` and the 60 s `recheck()`.
+
+The gateway never touches ingest: every subscriber catches its own errors.
+
+## OpenAPI document
+
+`openapi.json` is generated and committed; CI fails when it is stale.
+
+```
+npm run openapi          # writes openapi.json; needs no Postgres or Redis
+npm run openapi:check    # regenerates, then fails when the committed file differs
+```
+
+Operation ids are `<controller><Method>` (`camerasList`), so the generated hooks read `useCamerasList`. The
+script builds the app without `init()`, so no lifecycle hook runs and nothing connects. Response classes live in
+`dto/*.dto.ts` files, where the `@nestjs/swagger` build plugin fills each property from its TypeScript type.
+
+## Demo commands
+
+For frontend development without a GPU (profile `demo` in `deploy/`; see `docs/fe-dev-setup.md`):
+
+```
+ZOO_DEMO=on DEMO_PASSWORD=... node dist/cli.js demo-seed        # five cameras (engine group demo), three users
+node dist/cli.js demo-feed --backfill-days 14                    # plays the engine: history, live, status, frames
+```
+
+`demo-seed` refuses unless `ZOO_DEMO=on`, so known-password users cannot appear on a real site by accident, and
+refuses a `DEMO_PASSWORD` shorter than 10 characters. It is idempotent: existing users and cameras are skipped.
+`demo-feed` reads `REDIS_URL`, `API_URL`, `ENGINE_TOKEN`, `SNAPSHOT_DIR`, `SITE_TIMEZONE` and `DEMO_SEED`
+(default 42), writes the history once per Redis volume (key `demo:backfilled`) and stops cleanly on SIGINT.
+
+## Smoke check
+
+`npm run smoke -- http://localhost:8080` checks the stack through Caddy: `/api/health` is 200, the engine's
+`/internal/*` paths are 404, and the security headers are set.
 
 ## Scripts
 

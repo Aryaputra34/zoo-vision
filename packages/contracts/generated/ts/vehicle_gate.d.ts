@@ -74,3 +74,13 @@ export interface VehicleCrossing {
   ocrConfidence: number | null;
   trackerId: number;
 }
+
+/**
+ * What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.
+ */
+export interface VehicleGateLive {
+  inCount?: number;
+  outCount?: number;
+  anprEnabled?: boolean;
+  [k: string]: unknown;
+}

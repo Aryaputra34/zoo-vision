@@ -32,6 +32,9 @@ describe('loadEnv', () => {
       JOBS: 'on',
       MODELS_DIR: '/data/models',
       MODEL_UPLOAD_MAX_BYTES: 1073741824,
+      SITE_TIMEZONE: 'Asia/Jakarta',
+      SNAPSHOT_DIR: '/data/snapshots',
+      MEDIAMTX_PLAYBACK_URL: undefined,
     });
   });
 
@@ -45,6 +48,9 @@ describe('loadEnv', () => {
       JOBS: 'off',
       MODELS_DIR: '/srv/models',
       MODEL_UPLOAD_MAX_BYTES: '2048',
+      SITE_TIMEZONE: 'Asia/Makassar',
+      SNAPSHOT_DIR: '/srv/snapshots',
+      MEDIAMTX_PLAYBACK_URL: 'http://mediamtx:9996',
     });
     expect(env).toMatchObject({
       COOKIE_SECURE: false,
@@ -54,7 +60,25 @@ describe('loadEnv', () => {
       JOBS: 'off',
       MODELS_DIR: '/srv/models',
       MODEL_UPLOAD_MAX_BYTES: 2048,
+      SITE_TIMEZONE: 'Asia/Makassar',
+      SNAPSHOT_DIR: '/srv/snapshots',
+      MEDIAMTX_PLAYBACK_URL: 'http://mediamtx:9996',
     });
+  });
+
+  it('names MEDIAMTX_PLAYBACK_URL when it is not an http(s) URL; an empty one is unset', () => {
+    expect(
+      errorOf({ ...required, MEDIAMTX_PLAYBACK_URL: 'rtsp://mediamtx:8554' }),
+    ).toMatch(/^ {2}MEDIAMTX_PLAYBACK_URL: must be an http\(s\) URL/m);
+    expect(
+      loadEnv({ ...required, MEDIAMTX_PLAYBACK_URL: '' }).MEDIAMTX_PLAYBACK_URL,
+    ).toBeUndefined();
+  });
+
+  it('names SITE_TIMEZONE when it is not an IANA time zone', () => {
+    expect(errorOf({ ...required, SITE_TIMEZONE: 'Mars/Base' })).toMatch(
+      /^ {2}SITE_TIMEZONE: must be an IANA time zone/m,
+    );
   });
 
   it('treats an empty optional variable as unset', () => {

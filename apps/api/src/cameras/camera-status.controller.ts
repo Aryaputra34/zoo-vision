@@ -6,11 +6,13 @@ import {
   Param,
   StreamableFile,
 } from '@nestjs/common';
+import { ApiOkResponse, ApiProduces } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   type CameraStatus,
   CameraStatusService,
 } from './camera-status.service';
+import { CameraOnlineDto, CameraStatusEntryDto } from './dto/camera-status.dto';
 
 export type CameraOnline = { online: boolean; status: CameraStatus | null };
 
@@ -28,6 +30,10 @@ export class CameraStatusController {
   ) {}
 
   @Get('camera-status')
+  @ApiOkResponse({
+    type: [CameraStatusEntryDto],
+    description: 'Every camera, by id',
+  })
   async list(): Promise<({ cameraId: string } & CameraOnline)[]> {
     const cameras = await this.prisma.camera.findMany({
       select: { id: true },
@@ -41,6 +47,7 @@ export class CameraStatusController {
   }
 
   @Get('cameras/:id/status')
+  @ApiOkResponse({ type: CameraOnlineDto })
   async get(@Param('id') id: string): Promise<CameraOnline> {
     await this.assertCamera(id);
     return toOnline((await this.statuses.read([id])).get(id) ?? null);
@@ -48,6 +55,11 @@ export class CameraStatusController {
 
   @Get('cameras/:id/frame')
   @Header('Cache-Control', 'no-store')
+  @ApiProduces('image/jpeg')
+  @ApiOkResponse({
+    description: "The engine's latest frame (404 until it has sent one)",
+    content: { 'image/jpeg': { schema: { type: 'string', format: 'binary' } } },
+  })
   async frame(@Param('id') id: string): Promise<StreamableFile> {
     await this.assertCamera(id);
     const jpeg = await this.statuses.frame(id);

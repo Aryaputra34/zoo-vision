@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^16.0.3",
-    "json-schema-to-typescript": "^16.0.0"
+    "json-schema-to-typescript": "^16.0.0",
+    "typescript": "^7.0.2"
   }
 }

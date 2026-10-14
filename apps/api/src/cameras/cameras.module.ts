@@ -28,6 +28,6 @@ import { UrlCipher } from './url-cipher';
       useFactory: (env: Env) => new UrlCipher(env.CAMERA_URL_KEY),
     },
   ],
-  exports: [CamerasService, ConfigNotifier, UrlCipher],
+  exports: [CamerasService, CameraStatusService, ConfigNotifier, UrlCipher],
 })
 export class CamerasModule {}

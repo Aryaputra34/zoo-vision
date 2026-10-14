@@ -1,18 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS } from '../redis/redis.module';
+import type { CameraStatusDto } from './dto/camera-status.dto';
 
 /** What the engine publishes in the hash `cam:{id}:status`, parsed. */
-export type CameraStatus = {
-  state: string;
-  fps: number;
-  lastFrameAt: number | null;
-  appliedVersion: number | null;
-  configError: string | null;
-  restarts: number;
-  live: Record<string, unknown>;
-  updatedAt: number;
-};
+export type CameraStatus = CameraStatusDto;
 
 export const statusKey = (id: string) => `cam:${id}:status`;
 export const frameKey = (id: string) => `cam:${id}:frame`;

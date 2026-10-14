@@ -1,0 +1,13 @@
+{
+  "id": "evt_00000000000000000000000000000001",
+  "time": "2026-10-14T03:15:00.123Z",
+  "cameraId": "cam_gate_entry_01",
+  "useCase": "vehicle_gate",
+  "type": "vehicle_crossing",
+  "severity": "info",
+  "data": {
+    "direction": "ENTRY",
+    "vehicleType": "car"
+  },
+  "snapshotUrl": "/media/snapshots/cam_gate_entry_01/2026-10-14/evt_00000000000000000000000000000001.jpg"
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CashierPresenceLive",
+  "description": "What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.",
+  "type": "object",
+  "properties": {
+    "state": {
+      "type": "string"
+    },
+    "clerkPresent": {
+      "type": "boolean"
+    },
+    "clerkCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "visitorCount": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}
