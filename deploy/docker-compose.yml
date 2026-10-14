@@ -76,7 +76,7 @@ services:
       MODELS_DIR: /data/models
       SNAPSHOT_DIR: /data/snapshots
       # MediaMTX's playback server (the engine profile runs it on the host network, port 9996)
-      MEDIAMTX_PLAYBACK_URL: ${ZOO_MEDIAMTX_PLAYBACK_URL:-http://host.docker.internal:9996}
+      MEDIAMTX_PLAYBACK_URL: ${ZOO_MEDIAMTX_PLAYBACK_URL-http://host.docker.internal:9996} # empty = no clips
       JOBS: "on" # offline check every 5 s; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models

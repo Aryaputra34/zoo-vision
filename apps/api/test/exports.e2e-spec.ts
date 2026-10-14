@@ -446,6 +446,41 @@ describe('GET /api/v1/exports/*.csv', () => {
     ).toBe(true);
   });
 
+  it('more events and intervals than a batch at one instant: every row exactly once, in id order', async () => {
+    await addCamera('ties', { useCase: 'horse_riding' });
+    await ownerQuery(
+      `INSERT INTO "Event" ("id", "time", "cameraId", "useCase", "type", "severity", "schemaVersion", "data")
+       SELECT 'evt_tie_' || lpad(n::text, 5, '0'), timestamptz '2026-11-20T05:00:00Z', 'ties', 'horse_riding',
+              'horse_crossing', 'info', 1, '{"direction":"DEPARTURE","trackerId":1}'::jsonb
+         FROM generate_series(1, 5003) AS n`,
+    );
+    await ownerQuery(
+      `INSERT INTO "Interval" ("id", "cameraId", "useCase", "kind", "start", "end", "schemaVersion", "data")
+       SELECT 'ses_tie_' || lpad(n::text, 5, '0'), 'ties', 'cashier_presence', 'desk_unattended',
+              timestamptz '2026-11-20T06:00:00Z', timestamptz '2026-11-20T06:05:00Z', 1, '{}'::jsonb
+         FROM generate_series(1, 5003) AS n`,
+    );
+    const range = {
+      from: '2026-11-20T00:00:00Z',
+      to: '2026-11-21T00:00:00Z',
+      cameraIds: 'ties',
+    };
+
+    for (const [path, idColumn] of [
+      ['events.csv', 1],
+      ['intervals.csv', 3],
+    ] as const) {
+      const out = await stream(path, range);
+      expect(out.complete).toBe(true);
+      const idsSeen = lines(out.text)
+        .slice(1)
+        .map((line) => line.split(',')[idColumn]);
+      expect(idsSeen).toHaveLength(5003);
+      expect(new Set(idsSeen).size).toBe(5003);
+      expect([...idsSeen].sort()).toEqual(idsSeen);
+    }
+  });
+
   it('a client that aborts after the first chunk stops the batch reads', async () => {
     const spy = jest.spyOn(prisma, '$queryRaw');
     try {

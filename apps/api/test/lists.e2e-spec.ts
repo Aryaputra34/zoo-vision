@@ -4,7 +4,7 @@ import { App } from 'supertest/types';
 import { createTestApp } from './app';
 import { asRole } from './helpers/auth';
 import { addCamera, addEvent, addInterval } from './helpers/analytics';
-import { flushRedis, resetDb } from './setup/db';
+import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
 type EventRow = {
   id: string;
@@ -442,6 +442,39 @@ describe('GET /api/v1/events and /api/v1/intervals', () => {
       data: { tableName: 'Table 1' },
       durationSec: 1200,
     });
+  });
+
+  it('pages through more rows than a page that share one instant: every row once, ids descending, none lost at a page edge', async () => {
+    await addCamera('ties', { useCase: 'horse_riding' });
+    await ownerQuery(
+      `INSERT INTO "Event" ("id", "time", "cameraId", "useCase", "type", "severity", "schemaVersion", "data")
+       SELECT 'evt_tie_' || lpad(n::text, 5, '0'), timestamptz '2026-10-14T20:00:00Z', 'ties', 'horse_riding',
+              'horse_crossing', 'info', 1, '{"direction":"DEPARTURE","trackerId":1}'::jsonb
+         FROM generate_series(1, 1203) AS n`,
+    );
+    await ownerQuery(
+      `INSERT INTO "Interval" ("id", "cameraId", "useCase", "kind", "start", "end", "schemaVersion", "data")
+       SELECT 'ses_tie_' || lpad(n::text, 5, '0'), 'ties', 'cashier_presence', 'desk_unattended',
+              timestamptz '2026-10-14T21:00:00Z', timestamptz '2026-10-14T21:05:00Z', 1, '{}'::jsonb
+         FROM generate_series(1, 1203) AS n`,
+    );
+
+    for (const list of [events, intervals] as const) {
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: Page<{ id: string }> = await list({
+          cameraIds: 'ties',
+          limit: '500',
+          ...(cursor ? { cursor } : {}),
+        });
+        seen.push(...ids(page));
+        cursor = page.nextCursor;
+      } while (cursor);
+      expect(seen).toHaveLength(1203);
+      expect(new Set(seen).size).toBe(1203);
+      expect([...seen].sort().reverse()).toEqual(seen);
+    }
   });
 
   it('a USER may list; without a session → 401', async () => {

@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { createTestApp, listenTestApp } from './app';
@@ -308,6 +308,59 @@ describe('/media', () => {
         expect(res.body).toMatchObject({ code: 'RECORDING_NOT_AVAILABLE' });
       } finally {
         await gone.close();
+      }
+    });
+
+    it('logs why playback failed, without the credentials of its URL or the recording path', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      try {
+        answer = (_req, res) => {
+          res.writeHead(500);
+          res.end('boom');
+        };
+        await get('/media/clips/evt_old').expect(404);
+
+        const gone = await createTestApp({
+          SNAPSHOT_DIR: root,
+          MEDIAMTX_PLAYBACK_URL: 'http://user:s3cret@127.0.0.1:1',
+        });
+        try {
+          await request(gone.getHttpServer())
+            .get('/media/clips/evt_old')
+            .set('Cookie', cookie)
+            .expect(404);
+        } finally {
+          await gone.close();
+        }
+
+        const lines = warn.mock.calls.map((call) => String(call[0]));
+        expect(lines).toHaveLength(2);
+        expect(lines[0]).toMatch(/^playback 127\.0\.0\.1:\d+ answered 500$/);
+        expect(lines[1]).toMatch(/^playback 127\.0\.0\.1:1 not reachable \(/);
+        for (const line of lines) {
+          expect(line).not.toContain('s3cret');
+          expect(line).not.toContain('cam_rec');
+        }
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('a 404 from playback (nothing recorded for that time) is the normal answer and is not logged', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      try {
+        answer = (_req, res) => {
+          res.writeHead(404);
+          res.end();
+        };
+        await get('/media/clips/evt_old').expect(404);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
       }
     });
 

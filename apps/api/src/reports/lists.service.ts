@@ -12,6 +12,7 @@ import {
   type IntervalListQueryDto,
 } from './dto/list.dto';
 import { parseWhere, wantsSystem } from './fields';
+import { keysetAfter } from './keyset';
 import { parseRange, splitList } from './report-query';
 import {
   EVENT_CAMERA,
@@ -95,21 +96,18 @@ export class ListsService {
     const limit = q.limit ?? DEFAULT_LIMIT;
     const after = q.cursor ? decodeCursor(q.cursor) : undefined;
     const found = await this.prisma.event.findMany({
-      where: {
-        AND: [
-          where,
-          ...(after
-            ? [
-                {
-                  OR: [
-                    { time: { lt: new Date(after.t) } },
-                    { time: new Date(after.t), id: { lt: after.id } },
-                  ],
-                },
-              ]
-            : []),
-        ],
-      },
+      where: after
+        ? {
+            AND: [
+              where,
+              keysetAfter<Prisma.EventWhereInput>(
+                'time',
+                { value: new Date(after.t), id: after.id },
+                'desc',
+              ),
+            ],
+          }
+        : where,
       orderBy: [{ time: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       include: EVENT_CAMERA,
@@ -130,21 +128,18 @@ export class ListsService {
     const limit = q.limit ?? DEFAULT_LIMIT;
     const after = q.cursor ? decodeCursor(q.cursor) : undefined;
     const found = await this.prisma.interval.findMany({
-      where: {
-        AND: [
-          where,
-          ...(after
-            ? [
-                {
-                  OR: [
-                    { start: { lt: new Date(after.t) } },
-                    { start: new Date(after.t), id: { lt: after.id } },
-                  ],
-                },
-              ]
-            : []),
-        ],
-      },
+      where: after
+        ? {
+            AND: [
+              where,
+              keysetAfter<Prisma.IntervalWhereInput>(
+                'start',
+                { value: new Date(after.t), id: after.id },
+                'desc',
+              ),
+            ],
+          }
+        : where,
       orderBy: [{ start: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       include: INTERVAL_CAMERA,

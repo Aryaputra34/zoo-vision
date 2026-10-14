@@ -9,6 +9,7 @@ import type {
 } from '../reports/dto/list.dto';
 import { EventStatsService } from '../reports/event-stats.service';
 import { IntervalStatsService } from '../reports/interval-stats.service';
+import { keysetAfter } from '../reports/keyset';
 import { ListsService } from '../reports/lists.service';
 import { MetricSeriesService } from '../reports/metric-series.service';
 import {
@@ -148,12 +149,11 @@ export class ExportsService {
           ? {
               AND: [
                 where,
-                {
-                  OR: [
-                    { time: { gt: after.time } },
-                    { time: after.time, id: { gt: after.id } },
-                  ],
-                },
+                keysetAfter<Prisma.EventWhereInput>(
+                  'time',
+                  { value: after.time, id: after.id },
+                  'asc',
+                ),
               ],
             }
           : where,
@@ -195,12 +195,11 @@ export class ExportsService {
           ? {
               AND: [
                 where,
-                {
-                  OR: [
-                    { start: { gt: after.start } },
-                    { start: after.start, id: { gt: after.id } },
-                  ],
-                },
+                keysetAfter<Prisma.IntervalWhereInput>(
+                  'start',
+                  { value: after.start, id: after.id },
+                  'asc',
+                ),
               ],
             }
           : where,

@@ -258,7 +258,7 @@ the number of minutes in the bucket whose value was at or above the threshold.
 | Pony Rides: departures and returns per hour today | `events/stats?types=horse_crossing&groupBy=data.direction&bucket=hour` |
 | Pony Rides: the 14-day table | the same with `bucket=day` |
 | Cashier: unattended minutes per hour per desk | `intervals/stats?kind=desk_unattended&groupBy=camera&bucket=hour` (divide `totalSec` by 60) |
-| Cashier: the longest wait | `events/stats?types=customer_waiting&max=waitingSec` |
+| Cashier: the longest wait | `events/stats?types=customer_waiting&max=waitingSec&bucket=day` |
 | Restaurant: the occupancy curve | `metrics/series?name=occupancy&agg=max&bucket=5m` |
 | Restaurant: busy minutes | the same with `above=<warning capacity>` instead of `agg` |
 | Vehicles: type by direction | `events/stats?types=vehicle_crossing&groupBy=data.vehicleType,data.direction&bucket=day` |
@@ -347,8 +347,9 @@ event rows. Asking for `/api/v1/media/...` is a 404.
   unknown event id is `NOT_FOUND`.
 - While the clip's end is still in the future (`time + clipAfterSec`), the answer is `Cache-Control: no-store`;
   afterwards `private, max-age=3600`.
-- The clip is generated and streamed; a `<video>` element plays it, but seeking inside it is limited until it has
-  been downloaded.
+- The clip is generated and streamed, without byte-range support: a `<video>` element plays it, but seeking inside
+  it is limited until it has been downloaded, and **Safari insists on byte ranges** and may refuse it. If Safari
+  must be supported, tell the backend developer.
 - The demo stack has no recordings: every clip is `RECORDING_NOT_AVAILABLE`. Build that state in the UI.
 
 ## 12. WebSocket types
