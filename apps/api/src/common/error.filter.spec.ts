@@ -57,6 +57,27 @@ describe('ErrorFilter', () => {
     );
   });
 
+  it('a response whose headers are out (a half-streamed file) is cut, not answered with JSON', () => {
+    const { filter, reply } = setup();
+    const sent = { headersSent: true, destroy: jest.fn() };
+    const sentHost = {
+      switchToHttp: () => ({
+        getResponse: () => sent,
+        getRequest: () => ({
+          method: 'GET',
+          url: '/api/v1/exports/events.csv',
+        }),
+      }),
+    } as unknown as ArgumentsHost;
+
+    filter.catch(new Error('connection terminated'), sentHost);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(sent.destroy).toHaveBeenCalledTimes(1);
+    // the cause still reaches the log
+    expect(String(error.mock.calls[0]?.[0])).toContain('connection terminated');
+  });
+
   it('an unknown Error → 500 INTERNAL whose body does not carry its text, and the stack is logged', () => {
     const { filter, body, status } = setup();
 

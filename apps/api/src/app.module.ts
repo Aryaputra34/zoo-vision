@@ -9,6 +9,7 @@ import { ENV, type Env } from './config/env';
 import { CamerasModule } from './cameras/cameras.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { EngineInternalModule } from './engine-internal/engine-internal.module';
+import { ExportsModule } from './exports/exports.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -41,6 +42,7 @@ export class AppModule {
         JobsModule,
         ModelsModule,
         ReportsModule,
+        ExportsModule,
         UsecasesModule,
       ],
       controllers: [HealthController],

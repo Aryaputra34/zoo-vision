@@ -15,6 +15,11 @@ import { ReportsController } from './reports.controller';
     MetricSeriesService,
     ListsService,
   ],
-  exports: [ListsService],
+  exports: [
+    ListsService,
+    EventStatsService,
+    IntervalStatsService,
+    MetricSeriesService,
+  ],
 })
 export class ReportsModule {}

@@ -2744,6 +2744,416 @@
         ]
       }
     },
+    "/api/v1/exports/events.csv": {
+      "get": {
+        "operationId": "exportsEvents",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, inclusive. Encode `+` as `%2B` in a URL.",
+            "schema": {
+              "example": "2026-10-14T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, exclusive",
+            "schema": {
+              "example": "2026-10-15T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cameraIds",
+            "required": false,
+            "in": "query",
+            "description": "Camera ids, comma separated, at most 50",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useCase",
+            "required": false,
+            "in": "query",
+            "description": "One use case id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "types",
+            "required": false,
+            "in": "query",
+            "description": "Event types, comma separated. Needed with `where`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "severity",
+            "required": false,
+            "in": "query",
+            "description": "Severities, comma separated: info, warning, critical",
+            "schema": {
+              "example": "warning,critical",
+              "type": "string"
+            }
+          },
+          {
+            "name": "where",
+            "required": false,
+            "in": "query",
+            "description": "At most two `data.<field>:<value>` equality filters, comma separated, on string or enum fields the requested types declare. A value can not contain a comma",
+            "schema": {
+              "example": "data.direction:ENTRY,data.vehicleType:bus",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A UTF-8 CSV (with a BOM), local times in the site time zone",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/intervals.csv": {
+      "get": {
+        "operationId": "exportsIntervals",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, inclusive. Encode `+` as `%2B` in a URL.",
+            "schema": {
+              "example": "2026-10-14T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, exclusive",
+            "schema": {
+              "example": "2026-10-15T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cameraIds",
+            "required": false,
+            "in": "query",
+            "description": "Camera ids, comma separated, at most 50",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useCase",
+            "required": false,
+            "in": "query",
+            "description": "One use case id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "description": "One interval kind",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A UTF-8 CSV (with a BOM), local times in the site time zone",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/metrics.csv": {
+      "get": {
+        "operationId": "exportsMetrics",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, inclusive. Encode `+` as `%2B` in a URL.",
+            "schema": {
+              "example": "2026-10-14T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, exclusive",
+            "schema": {
+              "example": "2026-10-15T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cameraIds",
+            "required": false,
+            "in": "query",
+            "description": "Camera ids, comma separated, at most 50",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useCase",
+            "required": false,
+            "in": "query",
+            "description": "One use case id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A UTF-8 CSV (with a BOM), local times in the site time zone",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/summary.csv": {
+      "get": {
+        "operationId": "exportsSummary",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, inclusive. Encode `+` as `%2B` in a URL.",
+            "schema": {
+              "example": "2026-10-14T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, exclusive",
+            "schema": {
+              "example": "2026-10-15T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cameraIds",
+            "required": false,
+            "in": "query",
+            "description": "Camera ids, comma separated, at most 50",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useCase",
+            "required": false,
+            "in": "query",
+            "description": "One use case id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A UTF-8 CSV (with a BOM), local times in the site time zone",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
     "/api/v1/usecases": {
       "get": {
         "operationId": "usecasesList",

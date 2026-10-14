@@ -41,11 +41,20 @@ export class ErrorFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const body = this.toBody(exception, host);
-    this.adapterHost.httpAdapter.reply(
-      host.switchToHttp().getResponse(),
-      body,
-      body.statusCode,
-    );
+    const res = host.switchToHttp().getResponse<{
+      headersSent?: boolean;
+      destroy?: () => void;
+    }>();
+    if (res?.headersSent) {
+      // a streamed file is already on its way: JSON can not follow it. Cut the connection, so the
+      // client sees a failed download and not a short file that looks complete.
+      this.log.warn(
+        `response already started: connection closed after ${body.statusCode} ${body.code}`,
+      );
+      res.destroy?.();
+      return;
+    }
+    this.adapterHost.httpAdapter.reply(res, body, body.statusCode);
   }
 
   private toBody(exception: unknown, host: ArgumentsHost): ApiErrorBody {
