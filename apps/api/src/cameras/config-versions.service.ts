@@ -23,6 +23,8 @@ export type SaveResult = {
   version: number;
   before: ConfigSnapshot;
   after: ConfigSnapshot;
+  /** The camera has `auditCamera` set: the change is an audit-camera change. */
+  auditCamera: boolean;
 };
 
 type SaveInput = {
@@ -194,6 +196,7 @@ export class ConfigVersionsService {
             settings: current?.settings ?? null,
           },
           after: { version, useCase, settings: input.settings },
+          auditCamera: camera.auditCamera,
         };
       });
     } catch (err) {

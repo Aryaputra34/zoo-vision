@@ -7,6 +7,8 @@ export type AuditEntry = {
   entityId?: string;
   before?: unknown;
   after?: unknown;
+  /** The camera has `auditCamera` set (before or after): flag the row and notify managers. */
+  auditCamera?: boolean;
 };
 
 export const SKIP_AUDIT_KEY = 'audit:skip';

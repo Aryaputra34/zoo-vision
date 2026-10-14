@@ -42,7 +42,7 @@ import type { SummaryQueryDto } from './dto/summary-query.dto';
 export const BATCH = 5000;
 
 export type CsvExport = {
-  kind: 'events' | 'intervals' | 'metrics' | 'summary';
+  kind: string;
   /** The `Content-Disposition` file name. */
   filename: string;
   header: string[];
@@ -133,7 +133,8 @@ export class ExportsService {
     };
   }
 
-  private filename(kind: string, range: Range): string {
+  /** `<kind>-<from date>-<to date>.csv`, the dates on the site's wall clock. */
+  filename(kind: string, range: Range): string {
     const day = (at: Date) => this.local(at).slice(0, 10);
     return `${kind}-${day(range.from)}-${day(range.to)}.csv`;
   }

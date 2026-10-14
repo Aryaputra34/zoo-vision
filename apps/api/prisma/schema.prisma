@@ -70,17 +70,19 @@ model ApiToken {
 }
 
 model AuditLog {
-  id        BigInt   @id @default(autoincrement())
-  time      DateTime @default(now()) @db.Timestamptz(3)
-  actorType String // user|token
-  actorId   String
-  actorName String
-  action    String
-  entity    String
-  entityId  String?
-  before    Json?
-  after     Json?
-  ip        String?
+  id          BigInt   @id @default(autoincrement())
+  time        DateTime @default(now()) @db.Timestamptz(3)
+  actorType   String // user|token
+  actorId     String
+  actorName   String
+  action      String
+  entity      String
+  entityId    String?
+  before      Json?
+  after       Json?
+  ip          String?
+  /// the change was to a camera with `auditCamera` set (before or after it)
+  auditCamera Boolean  @default(false)
 
   @@index([entity, entityId, time])
   @@index([time])

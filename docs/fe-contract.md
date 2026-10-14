@@ -390,7 +390,7 @@ never leave a page wrong.
 | `alerts` | everyone, joined at connect | `event.created` `{id, time, cameraId, useCase, type, severity, data, snapshotUrl}` | once per new event after an ingest commit. A commit with more than 50 new events sends none of these, only `data.changed` |
 | `alerts` | everyone | `data.changed` `{cameraIds, useCases, shapes}` | after ingest commits, **at most once every 5 s**: the first change after a quiet period at once, later ones merged into one message at the end of the window. `shapes` are `event`, `interval`, `metric` |
 | `status` | on request | `status.snapshot` `{at, cameras: {<id>: status \| null}}` | every 2 s while someone is in the room; `null` is an offline camera |
-| `managers` | MANAGER and SUPERADMIN, joined at connect | `audit.notice` | from v0.4 |
+| `managers` | MANAGER and SUPERADMIN, joined at connect | `audit.notice` `{auditId, cameraId, actorName, action, time}` | a camera with `auditCamera` set was changed (section 13) |
 | (own sockets) | the affected user | `session.ended` `{reason}` | just before the server disconnects the socket |
 
 Client to server: `socket.emit('subscribe', {rooms: ['status']}, ack)` and `unsubscribe`. Only `status` can be
@@ -418,7 +418,60 @@ The server sends it, then closes the socket. `reason`:
 
 After a `session.ended` the next REST call is a 401 except for `role_changed`.
 
-## 13. Changelog
+## 13. System log and audit cameras
+
+For MANAGER and SUPERADMIN. A USER gets 403 `FORBIDDEN` on every route here.
+
+| Route | Filters | Rows |
+|---|---|---|
+| `GET /api/v1/system-log/audit` | `from`, `to`, `actor`, `entity`, `action`, `auditCamera` | `{id, time, actorType, actorName, action, entity, entityId, before, after, ip, auditCamera}` |
+| `GET /api/v1/system-log/logins` | `from`, `to`, `username`, `result` | `{id, time, username, userId, result, ip, userAgent}` |
+| `GET /api/v1/system-log/system-events` | `from`, `to`, `types` | the event rows of section 9, always use case `system` |
+| `.../audit.csv`, `.../logins.csv`, `.../system-events.csv` | the same | CSV as in section 10; each download is itself audited |
+
+- `from` and `to` are as in section 8 (an offset is required, `to` is exclusive).
+- Newest first. `limit` is 100 by default and 500 at most. For `audit` and `logins` the `id` is a number sent as a
+  **string** (it is 64-bit) and `nextCursor` is the last id of the page: pass it back as `cursor`. System events
+  page like the event list (section 9).
+- `actor` and `username` match a part of the name, in any case. `entity`, `action` are exact (`camera`,
+  `camera.create`, `camera.update`, `camera.delete`, `camera_config.save`, `camera_config.rollback`,
+  `model.upload`, `user.update`, `api_token.create`, `export.csv`, ...).
+  `auditCamera=true` returns only the rows about audit cameras, `false` only the others. `result` is one of
+  `SUCCESS`, `WRONG_PASSWORD`, `DISABLED`, `LOCKED`, `RATE_LIMITED`, `LOGOUT`.
+- `ip` is the client's address (not the proxy's). `before` and `after` are the stored JSON; passwords, tokens and
+  stream URLs are redacted when the row is written.
+- Camera downtime is not here: `GET /intervals?useCase=system&kind=camera_offline` (section 9).
+
+### System events
+
+`engine_started`, `events_dropped`, `config_rejected` (from the engine, through the event stream) and
+`model_validation_failed`, which the **API** writes when an AI model fails validation:
+`data {modelId, name, error}`, severity `warning`, `cameraId` null. It is **not** pushed over the WebSocket: the
+System events page loads it over REST.
+
+### Audit cameras
+
+A camera with `auditCamera` set is one whose changes managers want to be told about. A change to it (camera
+fields, config save, rollback, delete; also the change that switches the flag off) writes its audit row with
+`auditCamera: true`, and the `managers` room gets one message:
+
+```json
+{ "auditId": "812", "cameraId": "cam_gate_01", "actorName": "Mira", "action": "camera_config.save",
+  "time": "2026-10-14T03:15:00.123Z" }
+```
+
+as `audit.notice` (`AuditNotice` in the types file). Show a toast; `auditId` is the `id` of the audit row. Only
+MANAGER and SUPERADMIN sockets are in `managers`: a USER never receives it.
+
+## 14. Changelog
+
+### v0.4
+
+- New: the system log (`/system-log/audit`, `/logins`, `/system-events` and their CSV), the audit camera flag on
+  audit rows, the `audit.notice` message, and the `model_validation_failed` system event written by the API
+  (section 13).
+- `AuditLog` gains `auditCamera`; new migration `audit_camera`.
+- No breaking change to v0.3.
 
 ### v0.3
 

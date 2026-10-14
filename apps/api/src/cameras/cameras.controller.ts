@@ -92,6 +92,7 @@ export class CamerasController {
         ...auditView(after, this.cameras.cipher),
         streamUrlsChanged,
       },
+      auditCamera: before.auditCamera || after.auditCamera,
     });
     return view;
   }
@@ -111,6 +112,7 @@ export class CamerasController {
       entity: 'camera',
       entityId: id,
       before: auditView(before, this.cameras.cipher),
+      auditCamera: before.auditCamera,
     });
   }
 }

@@ -63,6 +63,7 @@ export class AuditInterceptor implements NestInterceptor {
       before: redactSecrets(entry.before),
       after: redactSecrets(entry.after),
       ip: req.ip,
+      auditCamera: entry.auditCamera,
     });
   }
 }

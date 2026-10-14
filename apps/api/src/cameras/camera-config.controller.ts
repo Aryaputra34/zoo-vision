@@ -70,13 +70,18 @@ export class CameraConfigController {
     @Body() dto: SaveConfigDto,
     @Req() req: Request,
   ): Promise<{ version: number }> {
-    const { version, before, after } = await this.versions.save(actor, id, dto);
+    const { version, before, after, auditCamera } = await this.versions.save(
+      actor,
+      id,
+      dto,
+    );
     setAudit(req, {
       action: 'camera_config.save',
       entity: 'camera',
       entityId: id,
       before,
       after,
+      auditCamera,
     });
     return { version };
   }
@@ -94,17 +99,15 @@ export class CameraConfigController {
     @Body() dto: RollbackConfigDto,
     @Req() req: Request,
   ): Promise<{ version: number }> {
-    const { version, before, after } = await this.versions.rollback(
-      actor,
-      id,
-      dto,
-    );
+    const { version, before, after, auditCamera } =
+      await this.versions.rollback(actor, id, dto);
     setAudit(req, {
       action: 'camera_config.rollback',
       entity: 'camera',
       entityId: id,
       before,
       after,
+      auditCamera,
     });
     return { version };
   }
