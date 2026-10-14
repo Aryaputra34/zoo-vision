@@ -153,7 +153,10 @@ Stop it with Ctrl+C so open intervals are closed with `engine_stop`. After a cra
 cd services\engine
 # 1. Install CUDA PyTorch and ONNX Runtime GPU into .venv
 uv pip install --reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu124
-uv pip install onnxruntime-gpu
+# the CPU onnxruntime shadows the GPU one and must go; 1.22.x is the last line built for CUDA 12 (cu124 torch),
+# newer onnxruntime-gpu wants CUDA 13 and silently falls back to the CPU
+uv pip uninstall onnxruntime onnxruntime-gpu
+uv pip install "onnxruntime-gpu==1.22.0"
 
 # 2. Tell uv not to auto-revert to the CPU lockfile on run
 $env:UV_NO_SYNC = "1"
@@ -170,6 +173,10 @@ ENGINE_MODEL_JOBS=on
 ```
 
 Then run `uv run python main.py` (or `uv run --no-sync python main.py`).
+
+Check that it really uses the GPU: the log must say `Using ONNX Runtime ... with CUDAExecutionProvider` (not
+`CUDA requested but CUDAExecutionProvider not available. Using CPU`), and `nvidia-smi` shows the memory.
+`uv run` without `UV_NO_SYNC=1` re-syncs the CPU lockfile and undoes this.
 
 **A light, single-camera run** for a weak laptop: keep one camera (here the gate camera) enabled, play a video
 file through it at 1 fps, and run a small model at imgsz 640. A `FILE` source is relative to `services/engine`, and
