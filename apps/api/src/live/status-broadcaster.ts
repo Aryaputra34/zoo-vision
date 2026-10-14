@@ -11,6 +11,7 @@ import { LiveGateway } from './live.gateway';
 const TICK_MS = 2000;
 const IDS_TTL_MS = 10_000;
 const WARN_EVERY_MS = 60_000;
+const REFRESH_WAIT_MS = 1000;
 
 /**
  * While anyone is in the `status` room, sends `status.snapshot {at, cameras}` every 2 s: the
@@ -64,17 +65,39 @@ export class StatusBroadcaster implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * The camera ids, from a cache of 10 s. A refresh that does not answer within a second is not
+   * waited for: the old list is used (and the refresh is tried again in 2 s), so a slow Postgres
+   * does not stop the status that comes from Redis.
+   */
   private async cameraIds(): Promise<string[]> {
     if (this.ids && Date.now() - this.ids.at < IDS_TTL_MS) return this.ids.list;
-    try {
-      const cameras = await this.prisma.camera.findMany({
-        select: { id: true },
-        orderBy: { id: 'asc' },
+    const refresh = this.prisma.camera
+      .findMany({ select: { id: true }, orderBy: { id: 'asc' } })
+      .then((cameras) => {
+        this.ids = { at: Date.now(), list: cameras.map((c) => c.id) };
       });
-      this.ids = { at: Date.now(), list: cameras.map((c) => c.id) };
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        refresh,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, REFRESH_WAIT_MS);
+        }),
+      ]);
     } catch (err) {
       if (!this.ids) throw err; // nothing cached to fall back on
-      this.ids.at = Date.now() - IDS_TTL_MS + 2000; // try again in 2 s, send the old list meanwhile
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!this.ids) {
+      // first refresh still pending: nothing to show yet
+      refresh.catch(() => undefined);
+      throw new Error('the camera list is not available yet');
+    }
+    if (Date.now() - this.ids.at >= IDS_TTL_MS) {
+      this.ids.at = Date.now() - IDS_TTL_MS + 2000; // try again in 2 s
+      refresh.catch(() => undefined); // a late failure is not an unhandled rejection
     }
     return this.ids.list;
   }

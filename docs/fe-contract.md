@@ -381,7 +381,7 @@ never leave a page wrong.
 |---|---|---|
 | `UNAUTHENTICATED` | No session cookie, or the session has ended. API tokens are not accepted here | Go to `/login` |
 | `FORBIDDEN_ORIGIN` | The page's origin is not the socket's host (another app on the same machine) | A deployment error: show it |
-| `UNAVAILABLE` | Postgres or Redis is down while the session was checked | Socket.io retries by itself |
+| `UNAVAILABLE` | Postgres or Redis is down while the session was checked | **socket.io does not retry a refused handshake**: call `socket.connect()` again after a few seconds, with a growing delay, until it connects |
 
 ### Rooms and messages
 

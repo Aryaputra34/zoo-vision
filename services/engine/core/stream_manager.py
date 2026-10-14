@@ -29,7 +29,7 @@ FILE_FPS_MAX = 1000.0
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 # the scheme of a URL to mask, after any leading whitespace
 _MASK_SCHEME = re.compile(r"^(\s*[A-Za-z][A-Za-z0-9+.-]*://)")
-_SECRET_WORDS = r"(?:pass|pwd|token|key|auth|secret|sig|cred|session)"
+_SECRET_WORDS = r"(?:pass|pwd|pw|token|key|auth|secret|sig|cred|session)"
 # a query parameter whose name holds a secret word (access_token, api_key, apikey, X-Amz-Signature, jsessionid, ...);
 # its value runs to the next '&', so a '#' or ';' inside it is masked too
 _SECRET_PARAM = re.compile(rf"(?i)([?&;][^=&#;]*{_SECRET_WORDS}[^=&#;]*=)[^&]*")
@@ -55,7 +55,10 @@ def mask_url(url: str) -> str:
     if at >= 0:
         rest = "***" + rest[at:]
     path, question, query = rest.partition("?")
-    path = _SECRET_PATH.sub(r"\g<1>***", path)
+    in_path = _SECRET_PATH.search(path)
+    if in_path:
+        # where the credential ends can not be told (it may hold a '?'): the rest of the URL goes with it
+        return prefix + path[: in_path.end(1)] + "***"
     return prefix + _SECRET_PARAM.sub(r"\g<1>***", path + question + query)
 
 

@@ -6,7 +6,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { BaseWsExceptionFilter } from '@nestjs/websockets';
 import { isTransient } from '../prisma/transient';
 import type { ApiErrorBody, ErrorCode } from './errors';
 
@@ -41,16 +40,6 @@ export class ErrorFilter implements ExceptionFilter {
   constructor(private readonly adapterHost: HttpAdapterHost) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
-    if (host.getType() !== 'http') {
-      // a WebSocket handler threw: there is no HTTP response to write. Log it and leave the
-      // client's answer to the WebSocket default (an `exception` event).
-      this.log.error(
-        `${host.getType()} handler failed: ${errorText(exception)}`,
-        exception instanceof Error ? exception.stack : undefined,
-      );
-      new BaseWsExceptionFilter().catch(exception, host);
-      return;
-    }
     const body = this.toBody(exception, host);
     const res = host.switchToHttp().getResponse<{
       headersSent?: boolean;

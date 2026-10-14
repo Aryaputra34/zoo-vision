@@ -58,7 +58,7 @@ export class AuditService {
           time: row.time.toISOString(),
         });
       } catch {
-        // a push that fails must never fail the change that was just recorded
+        // subscribers (AuditPush) catch their own errors; RxJS rethrows a subscriber's from a timer
       }
     }
     return { id: row.id };

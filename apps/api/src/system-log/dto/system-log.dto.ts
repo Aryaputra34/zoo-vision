@@ -22,26 +22,6 @@ export class TimeRangeDto extends PickType(RangeQueryDto, [
   'to',
 ] as const) {}
 
-/** Paging by row id: the `nextCursor` of the last page is the id to continue below. */
-export class IdPageDto extends TimeRangeDto {
-  @ApiPropertyOptional({ description: 'The `nextCursor` of the previous page' })
-  @IsOptional()
-  @Matches(/^\d{1,18}$/)
-  cursor?: string;
-
-  @ApiPropertyOptional({
-    type: Number,
-    default: DEFAULT_LIMIT,
-    maximum: MAX_LIMIT,
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(MAX_LIMIT)
-  limit?: number;
-}
-
 export class AuditFilterDto extends TimeRangeDto {
   @ApiPropertyOptional({ description: 'Part of the actor name, any case' })
   @IsOptional()

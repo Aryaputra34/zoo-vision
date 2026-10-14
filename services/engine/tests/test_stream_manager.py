@@ -117,6 +117,9 @@ def _run_loop(mgr, sleeps, limit=6):
     (" rtsp://admin:pw@10.0.0.5/s", " rtsp://***@10.0.0.5/s"),
     ("	rtsp://admin:pw@10.0.0.5/s", "	rtsp://***@10.0.0.5/s"),
     ("  rtsp://10.0.0.5/live?token=abc", "  rtsp://10.0.0.5/live?token=***"),
+    # a '?' inside a path credential does not end it: the tail goes too
+    ("rtsp://h/user=admin_password=ab?cd_channel=1", "rtsp://h/user=admin_password=***"),
+    ("rtsp://h/live?pw=Secr3t&channel=1", "rtsp://h/live?pw=***&channel=1"),
     # nothing secret-named: unchanged, and a path that merely contains a key-like word without '='
     ("rtsp://10.0.0.5:554/stream_key/main", "rtsp://10.0.0.5:554/stream_key/main"),
 ])

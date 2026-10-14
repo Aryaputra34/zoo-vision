@@ -6,13 +6,16 @@ import { io, type Socket } from 'socket.io-client';
 import { ContractsService } from '../src/contracts/contracts.service';
 import { CameraStatusService } from '../src/cameras/camera-status.service';
 import { LiveGateway } from '../src/live/live.gateway';
+import { StatusBroadcaster } from '../src/live/status-broadcaster';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { ActorResolver } from '../src/auth/actor-resolver';
 import { SessionService } from '../src/auth/session.service';
 import { sha256hex } from '../src/auth/hash';
 import { REDIS } from '../src/redis/redis.module';
 import { createTestApp, listenTestApp } from './app';
 import { asRole, seedUser } from './helpers/auth';
 import { addCamera } from './helpers/analytics';
-import { flushRedis, resetDb } from './setup/db';
+import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
 type Message = { name: string; payload: unknown };
 type Ack = { ok: boolean; code?: string };
@@ -332,6 +335,56 @@ describe('WebSocket gateway at /ws', () => {
     expect(keeps.connected).toBe(true);
   });
 
+  it("recheck() ends sockets whose user was demoted or disabled behind the gateway's back", async () => {
+    const demoted = await asRole(app, 'MANAGER');
+    const disabled = await asRole(app, 'USER');
+    const fine = await asRole(app, 'MANAGER');
+    const a = await connect({ Cookie: demoted.cookie }, 'demoted');
+    const b = await connect({ Cookie: disabled.cookie }, 'disabled');
+    const c = await connect({ Cookie: fine.cookie }, 'fine');
+
+    // a change that never went through UsersService (no AccessEvents), e.g. a race at connect time
+    await ownerQuery(
+      `UPDATE "User" SET "role" = 'USER' WHERE "id" = $1`,
+      demoted.user.id,
+    );
+    await ownerQuery(
+      `UPDATE "User" SET "active" = false WHERE "id" = $1`,
+      disabled.user.id,
+    );
+    const endedA = next(a, 'session.ended');
+    const endedB = next(b, 'session.ended');
+    await gateway.recheck();
+
+    expect(await endedA).toEqual({ reason: 'role_changed' });
+    expect(await endedB).toEqual({ reason: 'disabled' });
+    await Promise.all([closed(a), closed(b)]);
+    expect(c.connected).toBe(true);
+  });
+
+  it('a handshake that could not check the session (Redis or Postgres down) is refused with UNAVAILABLE', async () => {
+    const { cookie } = await asRole(app, 'USER');
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const down = jest
+      .spyOn(app.get(ActorResolver), 'resolveWithSession')
+      .mockRejectedValueOnce(new Error('Connection is closed.'));
+    try {
+      expect(await refusal({ Cookie: cookie })).toBe('UNAVAILABLE');
+      expect(
+        (warn.mock.calls as unknown[][]).some((c) =>
+          String(c[0]).includes('Connection is closed'),
+        ),
+      ).toBe(true);
+    } finally {
+      down.mockRestore();
+      warn.mockRestore();
+    }
+    // and the same cookie connects once the dependency is back
+    expect((await connect({ Cookie: cookie })).connected).toBe(true);
+  });
+
   it('recheck() does not slide the session it checks', async () => {
     const { cookie } = await asRole(app, 'USER');
     await connect({ Cookie: cookie });
@@ -378,6 +431,35 @@ describe('WebSocket gateway at /ws', () => {
     } finally {
       read.mockRestore();
       warn.mockRestore();
+    }
+  });
+
+  it('a Postgres that does not answer does not stop the snapshots: the cached camera ids are used', async () => {
+    const { cookie } = await asRole(app, 'USER');
+    const socket = await connect({ Cookie: cookie }, 'slowpg');
+    await ack(socket, 'subscribe', { rooms: ['status'] });
+    await next(socket, 'status.snapshot', 3000); // the ids are cached now
+
+    // the cache is old, and the refresh never returns
+    const broadcaster = app.get<StatusBroadcaster>(
+      StatusBroadcaster,
+    ) as unknown as {
+      ids: { at: number; list: string[] } | null;
+    };
+    expect(broadcaster.ids).not.toBeNull();
+    broadcaster.ids!.at = 0;
+    const hang = jest
+      .spyOn(app.get(PrismaService).camera, 'findMany')
+      .mockImplementation(() => new Promise(() => undefined) as never);
+    try {
+      const snapshot = await next<{ cameras: object }>(
+        socket,
+        'status.snapshot',
+        5000,
+      );
+      expect(Object.keys(snapshot.cameras)).toHaveLength(3);
+    } finally {
+      hang.mockRestore();
     }
   });
 

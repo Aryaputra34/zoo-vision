@@ -94,7 +94,8 @@ export class IngestService {
 
   /**
    * Emitted after the XACK of every applied transaction that changed a data row (a batch, or one
-   * entry of a one-by-one retry). Never emitted for a failed transaction.
+   * entry of a one-by-one retry). Never emitted for a failed transaction. A subscriber must catch
+   * its own errors (see `publish`).
    */
   readonly committed$ = new Subject<IngestCommit>();
 
@@ -198,7 +199,10 @@ export class IngestService {
     }
   }
 
-  /** A subscriber that throws must not be able to hurt ingest. */
+  /**
+   * Subscribers must catch their own errors: RxJS rethrows one from a timer, outside this try.
+   * The catch only covers a synchronous failure of `next` itself.
+   */
   private publish(changes: Changes): void {
     const commit = changes.commit();
     if (!commit) return;

@@ -13,6 +13,7 @@ import type { Subscription } from 'rxjs';
 import { type AccessEnded, AccessEvents } from '../auth/access-events';
 import { ActorResolver } from '../auth/actor-resolver';
 import { SessionService } from '../auth/session.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { ContractsService } from '../contracts/contracts.service';
 import { authorizeHandshake, type SocketUser } from './handshake';
 
@@ -41,12 +42,14 @@ export class LiveGateway
   private ended?: Subscription;
   private timer?: NodeJS.Timeout;
   private recheckWarnedAt = 0;
+  private rechecking = false;
 
   constructor(
     private readonly resolver: ActorResolver,
     private readonly sessions: SessionService,
     private readonly access: AccessEvents,
     private readonly contracts: ContractsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   afterInit(server: Server): void {
@@ -59,7 +62,8 @@ export class LiveGateway
           next();
         },
         (err: unknown) => {
-          // Redis or Postgres is down: refuse, the client reconnects by itself
+          // Redis or Postgres is down: refuse. socket.io does NOT retry a refused handshake: the
+          // client must call socket.connect() again (docs/fe-contract.md, section 12)
           this.log.warn(`handshake failed: ${errorText(err)}`);
           next(new Error('UNAVAILABLE'));
         },
@@ -125,28 +129,50 @@ export class LiveGateway
   }
 
   /**
-   * Ends the sockets whose session no longer exists (its 12 idle hours or 7 days ran out). Runs
-   * every 60 s. A Redis error leaves the sockets alone: a blip must not log everybody out.
+   * Every 60 s: ends the sockets whose session no longer exists (its 12 idle hours or 7 days ran
+   * out), and the sockets whose user was disabled or got another role without an access event
+   * reaching them (a change racing a connect, or a revoke that failed after the commit). A Redis or
+   * Postgres error leaves the sockets alone: a blip must not log everybody out.
    */
   async recheck(): Promise<void> {
-    const sockets = await this.server.fetchSockets();
-    const live = new Map<string, boolean>();
-    for (const socket of sockets) {
-      const { sessionHash } = socket.data as SocketUser;
-      let alive = live.get(sessionHash);
-      if (alive === undefined) {
-        try {
+    if (this.rechecking) return;
+    this.rechecking = true;
+    try {
+      const sockets = await this.server.fetchSockets();
+      const users = await this.prisma.user.findMany({
+        where: {
+          id: {
+            in: [...new Set(sockets.map((s) => (s.data as SocketUser).userId))],
+          },
+        },
+        select: { id: true, role: true, active: true },
+      });
+      const byId = new Map(users.map((u) => [u.id, u]));
+      const live = new Map<string, boolean>();
+      for (const socket of sockets) {
+        const { sessionHash, userId, role } = socket.data as SocketUser;
+        let alive = live.get(sessionHash);
+        if (alive === undefined) {
           alive = await this.sessions.isLive(sessionHash);
-        } catch (err) {
-          this.warnRecheck(err);
-          continue;
+          live.set(sessionHash, alive);
         }
-        live.set(sessionHash, alive);
+        const user = byId.get(userId);
+        const reason = !alive
+          ? 'expired'
+          : !user || !user.active
+            ? 'disabled'
+            : user.role !== role
+              ? 'role_changed'
+              : null;
+        if (reason) {
+          socket.emit('session.ended', { reason });
+          socket.disconnect(true);
+        }
       }
-      if (!alive) {
-        socket.emit('session.ended', { reason: 'expired' });
-        socket.disconnect(true);
-      }
+    } catch (err) {
+      this.warnRecheck(err);
+    } finally {
+      this.rechecking = false;
     }
   }
 

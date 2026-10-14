@@ -243,6 +243,7 @@ export class SystemLogService {
     return {
       ...this.exports.events({ ...q, useCase: 'system' }),
       kind: 'system-events',
+      filename: this.exports.filename('system-events', parseRange(q)),
     };
   }
 

@@ -439,6 +439,9 @@ describe('system log, audit cameras and model_validation_failed', () => {
         r.on('end', () => done(null, text));
       })
       .expect(200);
+    expect(res.headers['content-disposition']).toMatch(
+      /^attachment; filename="system-events-\d{4}-\d\d-\d\d-\d{4}-\d\d-\d\d\.csv"$/,
+    );
     const text = res.body as string;
     expect(text).toContain('model_validation_failed');
     expect(text.split('\r\n')[0]).toContain('data.modelId');
