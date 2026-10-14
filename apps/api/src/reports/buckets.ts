@@ -13,9 +13,10 @@ export const MAX_RANGE_MS: Record<Bucket, number> = {
   day: 400 * DAY_MS,
 };
 
-const BIN_INTERVAL: Record<'5m' | '15m', string> = {
+const STEP: Record<Exclude<Bucket, 'day'>, string> = {
   '5m': '5 minutes',
   '15m': '15 minutes',
+  hour: '1 hour',
 };
 
 /**
@@ -33,13 +34,38 @@ export function bucketStart(
   tz: string,
   column: Prisma.Sql,
 ): Prisma.Sql {
-  const local = Prisma.sql`(${column} AT TIME ZONE ${tz}::text)`;
+  const local = Prisma.sql`((${column}) AT TIME ZONE ${tz}::text)`;
   switch (bucket) {
     case 'day':
       return Prisma.sql`(date_trunc('day', ${local}) AT TIME ZONE ${tz}::text)`;
     case 'hour':
-      return Prisma.sql`(${column} - (${local} - date_trunc('hour', ${local})))`;
+      return Prisma.sql`((${column}) - (${local} - date_trunc('hour', ${local})))`;
     default:
-      return Prisma.sql`(${column} - (${local} - date_bin(${Prisma.raw(`INTERVAL '${BIN_INTERVAL[bucket]}'`)}, ${local}, TIMESTAMP '2000-01-01')))`;
+      return Prisma.sql`((${column}) - (${local} - date_bin(${Prisma.raw(`INTERVAL '${STEP[bucket]}'`)}, ${local}, TIMESTAMP '2000-01-01')))`;
   }
+}
+
+/**
+ * SQL rows `("bstart", "bend")`, one per bucket from the one holding `first` to the one holding
+ * `last` (both timestamptz expressions, `first <= last`). A day bucket ends at the next local
+ * midnight, so it is 23 or 25 hours long across a DST change.
+ */
+export function bucketsBetween(
+  bucket: Bucket,
+  tz: string,
+  first: Prisma.Sql,
+  last: Prisma.Sql,
+): Prisma.Sql {
+  if (bucket === 'day') {
+    return Prisma.sql`
+      SELECT (d AT TIME ZONE ${tz}::text) AS "bstart",
+             ((d + INTERVAL '1 day') AT TIME ZONE ${tz}::text) AS "bend"
+        FROM generate_series(date_trunc('day', (${first}) AT TIME ZONE ${tz}::text),
+                             date_trunc('day', (${last}) AT TIME ZONE ${tz}::text),
+                             INTERVAL '1 day') AS d`;
+  }
+  const step = Prisma.raw(`INTERVAL '${STEP[bucket]}'`);
+  return Prisma.sql`
+    SELECT s AS "bstart", s + ${step} AS "bend"
+      FROM generate_series(${bucketStart(bucket, tz, first)}, ${bucketStart(bucket, tz, last)}, ${step}) AS s`;
 }

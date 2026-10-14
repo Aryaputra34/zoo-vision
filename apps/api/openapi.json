@@ -2234,6 +2234,258 @@
         ]
       }
     },
+    "/api/v1/reports/intervals/stats": {
+      "get": {
+        "operationId": "reportsIntervalStats",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, inclusive. Encode `+` as `%2B` in a URL.",
+            "schema": {
+              "example": "2026-10-14T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, exclusive",
+            "schema": {
+              "example": "2026-10-15T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cameraIds",
+            "required": false,
+            "in": "query",
+            "description": "Camera ids, comma separated, at most 50",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useCase",
+            "required": false,
+            "in": "query",
+            "description": "One use case id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Bucket"
+            }
+          },
+          {
+            "name": "kind",
+            "required": true,
+            "in": "query",
+            "description": "The interval kind",
+            "schema": {
+              "example": "desk_unattended",
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupBy",
+            "required": false,
+            "in": "query",
+            "description": "`camera`, or `subject` (a table id; rows then carry `cameraId` too, because an id is only unique within its camera)",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "camera",
+                "subject"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntervalStatsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/metrics/series": {
+      "get": {
+        "operationId": "reportsMetricSeries",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, inclusive. Encode `+` as `%2B` in a URL.",
+            "schema": {
+              "example": "2026-10-14T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, exclusive",
+            "schema": {
+              "example": "2026-10-15T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cameraIds",
+            "required": false,
+            "in": "query",
+            "description": "Camera ids, comma separated, at most 50",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useCase",
+            "required": false,
+            "in": "query",
+            "description": "One use case id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Bucket"
+            }
+          },
+          {
+            "name": "name",
+            "required": true,
+            "in": "query",
+            "description": "The metric name",
+            "schema": {
+              "example": "occupancy",
+              "type": "string"
+            }
+          },
+          {
+            "name": "agg",
+            "required": false,
+            "in": "query",
+            "description": "The aggregate per bucket. Give this or `above`, not both",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "avg",
+                "max",
+                "min"
+              ]
+            }
+          },
+          {
+            "name": "above",
+            "required": false,
+            "in": "query",
+            "description": "Instead of an aggregate: the minutes per bucket with a value at or above this",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricSeriesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/api/v1/usecases": {
       "get": {
         "operationId": "usecasesList",
@@ -3536,6 +3788,116 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EventStatsRowDto"
+            }
+          }
+        },
+        "required": [
+          "bucket",
+          "rows"
+        ]
+      },
+      "IntervalStatsRowDto": {
+        "type": "object",
+        "properties": {
+          "bucketStart": {
+            "type": "string",
+            "description": "UTC, the start of the bucket in the site time zone"
+          },
+          "cameraId": {
+            "type": "string",
+            "description": "With groupBy camera or subject"
+          },
+          "subjectId": {
+            "type": "string",
+            "nullable": true,
+            "description": "With groupBy subject; null for intervals without a subject"
+          },
+          "count": {
+            "type": "number",
+            "description": "Intervals that start in the bucket"
+          },
+          "totalSec": {
+            "type": "number",
+            "description": "Seconds inside the bucket and the range: an interval crossing an edge is split. An open interval counts up to now, or `to` if earlier"
+          },
+          "avgSec": {
+            "type": "number",
+            "nullable": true,
+            "description": "Mean whole duration of the intervals that start in the bucket; null when none does"
+          },
+          "maxSec": {
+            "type": "number",
+            "nullable": true,
+            "description": "Longest whole duration of those; null when none starts here"
+          }
+        },
+        "required": [
+          "bucketStart",
+          "count",
+          "totalSec",
+          "avgSec",
+          "maxSec"
+        ]
+      },
+      "IntervalStatsDto": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bucket"
+              }
+            ]
+          },
+          "rows": {
+            "description": "Non-empty buckets only, ordered by bucketStart, then camera, then subject",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntervalStatsRowDto"
+            }
+          }
+        },
+        "required": [
+          "bucket",
+          "rows"
+        ]
+      },
+      "MetricSeriesRowDto": {
+        "type": "object",
+        "properties": {
+          "bucketStart": {
+            "type": "string",
+            "description": "UTC, the start of the bucket in the site time zone"
+          },
+          "value": {
+            "type": "number",
+            "description": "The aggregate, or with `above` the number of minutes"
+          },
+          "cameraId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucketStart",
+          "value",
+          "cameraId"
+        ]
+      },
+      "MetricSeriesDto": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bucket"
+              }
+            ]
+          },
+          "rows": {
+            "description": "Buckets with a value only, ordered by bucketStart, then camera",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesRowDto"
             }
           }
         },

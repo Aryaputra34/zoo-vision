@@ -7,7 +7,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { bucketStart } from './buckets';
 import type { EventStatsDto, EventStatsQueryDto } from './dto/event-stats.dto';
 import { allowedDataField } from './fields';
-import { assertRange, parseRange, splitList } from './report-query';
+import {
+  assertRange,
+  parseRange,
+  scopeFilters,
+  splitList,
+} from './report-query';
 
 /** At most this many `data.<field>` items in `groupBy`. */
 const MAX_DATA_GROUPS = 2;
@@ -98,10 +103,7 @@ export class EventStatsService {
       Prisma.sql`e."time" >= ${range.from.toISOString()}::timestamptz`,
       Prisma.sql`e."time" < ${range.to.toISOString()}::timestamptz`,
     ];
-    if (range.cameraIds) {
-      where.push(Prisma.sql`e."cameraId" IN (${Prisma.join(range.cameraIds)})`);
-    }
-    if (range.useCase) where.push(Prisma.sql`e."useCase" = ${range.useCase}`);
+    where.push(...scopeFilters('e', range));
     if (types) where.push(Prisma.sql`e."type" IN (${Prisma.join(types)})`);
     if (!wantsSystem) where.push(Prisma.sql`e."useCase" <> 'system'`);
 

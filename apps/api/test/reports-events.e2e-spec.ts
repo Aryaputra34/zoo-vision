@@ -387,14 +387,15 @@ describe('GET /api/v1/reports/events/stats', () => {
       code: 'RANGE_TOO_LONG',
     });
 
-    for (const query of [
+    const invalid: Record<string, string>[] = [
       { from: DAY.to, to: DAY.from, bucket: 'hour' },
       { from: DAY.from, to: DAY.from, bucket: 'hour' },
       { from: '2026-10-14T00:00:00', to: DAY.to, bucket: 'hour' }, // no offset
       { ...DAY, bucket: 'week' },
       { ...DAY },
       { from: DAY.from, bucket: 'hour' },
-    ]) {
+    ];
+    for (const query of invalid) {
       const res = await get(query).expect(400);
       expect([query, (res.body as { code: string }).code]).toEqual([
         query,

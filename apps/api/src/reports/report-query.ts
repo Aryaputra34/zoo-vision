@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
 import { apiError } from '../common/errors';
+import { Prisma } from '../generated/prisma/client';
 import { type Bucket, MAX_RANGE_MS } from './buckets';
 
 /** An ISO 8601 instant that carries its offset (`Z` or `+07:00`): a date alone is ambiguous. */
@@ -95,6 +96,22 @@ export function parseRange(q: RangeQueryDto): Range {
     cameraIds: splitList(q.cameraIds, '/cameraIds'),
     useCase: q.useCase || undefined,
   };
+}
+
+/** The camera and use case conditions of a range, for a table aliased `alias` (the time condition is the caller's). */
+export function scopeFilters(
+  alias: 'e' | 'i' | 'm',
+  range: Pick<Range, 'cameraIds' | 'useCase'>,
+): Prisma.Sql[] {
+  const col = (name: string) => Prisma.raw(`${alias}."${name}"`);
+  const out: Prisma.Sql[] = [];
+  if (range.cameraIds) {
+    out.push(
+      Prisma.sql`${col('cameraId')} IN (${Prisma.join(range.cameraIds)})`,
+    );
+  }
+  if (range.useCase) out.push(Prisma.sql`${col('useCase')} = ${range.useCase}`);
+  return out;
 }
 
 /** 400 RANGE_TOO_LONG when `to - from` exceeds what the bucket size allows. */
