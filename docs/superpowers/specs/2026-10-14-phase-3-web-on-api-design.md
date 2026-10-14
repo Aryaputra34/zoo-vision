@@ -144,14 +144,16 @@ Phase 4. `bucket` is `5m`, `15m`, `hour` or `day`.
 
 | Endpoint | Parameters | Returns, per bucket and group |
 |---|---|---|
-| `GET /reports/events/stats` | `types`, `bucket`, `groupBy` (`camera` and/or one `data.<field>`), optional `max=<data field>` | `count`, and `max` when asked |
+| `GET /reports/events/stats` | `types`, `bucket`, `groupBy` (any of `camera`, `type`, `severity`, and up to two `data.<field>`), optional `max=<data field>` | `count`, and `max` when asked; `group` holds one value per `groupBy` item |
 | `GET /reports/intervals/stats` | `kind`, `bucket`, `groupBy` (`camera` or `subject`) | `count`, `totalSec`, `avgSec`, `maxSec` |
 | `GET /reports/metrics/series` | `name`, `bucket`, `agg` (`avg`, `max`, `min`) or `above=<number>` | the aggregate, or the number of minutes at or above the threshold |
-| `GET /events` | `types`, `severity`, `cursor`, `limit` | newest first; each row has `snapshotUrl` (null without a snapshot) and `clipUrl` (null when the camera has no `recordingPath` or recording is off; the clip itself can still be gone, see Media) |
+| `GET /events` | `types`, `severity`, `where` (up to two `data.<field>:<value>` equality filters on declared fields), `cursor`, `limit` | newest first; each row has `snapshotUrl` (null without a snapshot) and `clipUrl` (null when the camera has no `recordingPath` or recording is off; the clip itself can still be gone, see Media) |
 | `GET /intervals` | `kind`, `cursor`, `limit` | newest first |
 
 - `groupBy` accepts only `data` fields the use case's event schema declares as a string or enum; `max` only
   fields declared as numbers. Anything else is a 400 (`FIELD_NOT_ALLOWED`). Field names never reach SQL as text.
+  Two `data` fields cover the Vehicles page's type × direction table; `severity` covers the Overview's alert
+  counts.
 - An interval that crosses a bucket edge is split between the buckets. An open interval counts up to now (or
   up to `to`, if earlier).
 - Range limits: `5m` up to 2 days, `15m` up to 7 days, `hour` up to 31 days, `day` up to 400 days. Lists:
@@ -351,7 +353,7 @@ backend URL and no secret: it only ever calls its own origin.
 ```
 src/contract/         pulled at a tag: openapi.json, the web types, CONTRACT_VERSION
 src/api/generated/    orval output (typed functions + TanStack Query hooks), committed
-src/api/http.ts       axios instance, base /api/v1; errors → ApiError {statusCode, code, message, errors}; 401 → /login
+src/api/http.ts       axios instance (same origin; generated paths carry /api/v1); errors → ApiError {statusCode, code, message, errors}; 401 → /login
 src/live/useLive.ts   socket.io connection, rooms, data.changed → refetch, "live data paused"
 src/usecases/<id>/    custom report pages, one folder per use case (parent spec section 3)
 ```
