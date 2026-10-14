@@ -7,11 +7,23 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
+import {
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { setAudit } from '../audit/audit-context';
 import type { Actor } from '../auth/actor';
 import { CurrentActor, MinRole } from '../auth/decorators';
+import { ApiErrorBody } from '../common/errors';
 import { ConfigVersionsService } from './config-versions.service';
+import {
+  ConfigVersionDetailDto,
+  ConfigVersionDto,
+  ConfigVersionSummaryDto,
+  SavedConfigDto,
+} from './dto/config-version.dto';
 import { RollbackConfigDto, SaveConfigDto } from './dto/save-config.dto';
 
 @Controller('cameras/:id/config')
@@ -20,18 +32,24 @@ export class CameraConfigController {
 
   /** Any role. */
   @Get()
+  @ApiOkResponse({ type: ConfigVersionDto })
   active(@Param('id') id: string) {
     return this.versions.active(id);
   }
 
   @MinRole('MANAGER')
   @Get('versions')
+  @ApiOkResponse({
+    type: [ConfigVersionSummaryDto],
+    description: 'Newest first',
+  })
   list(@Param('id') id: string) {
     return this.versions.list(id);
   }
 
   @MinRole('MANAGER')
   @Get('versions/:version')
+  @ApiOkResponse({ type: ConfigVersionDetailDto })
   get(
     @Param('id') id: string,
     @Param('version', ParseIntPipe) version: number,
@@ -41,6 +59,11 @@ export class CameraConfigController {
 
   @MinRole('MANAGER')
   @Post()
+  @ApiCreatedResponse({ type: SavedConfigDto })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'baseVersion is not the active version (STALE_VERSION)',
+  })
   async save(
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
@@ -60,6 +83,11 @@ export class CameraConfigController {
 
   @MinRole('MANAGER')
   @Post('rollback')
+  @ApiCreatedResponse({ type: SavedConfigDto })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'baseVersion is not the active version (STALE_VERSION)',
+  })
   async rollback(
     @CurrentActor() actor: Actor,
     @Param('id') id: string,

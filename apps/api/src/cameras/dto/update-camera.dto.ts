@@ -12,7 +12,7 @@ export class UpdateCameraDto extends CameraFieldsDto {
   @MaxLength(100)
   name?: string;
 
-  @ApiPropertyOptional({ enum: SourceType })
+  @ApiPropertyOptional({ enum: SourceType, enumName: 'SourceType' })
   @Optional()
   @IsEnum(SourceType)
   sourceType?: SourceType;

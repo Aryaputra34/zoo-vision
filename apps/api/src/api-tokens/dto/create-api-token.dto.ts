@@ -9,7 +9,7 @@ export class CreateApiTokenDto {
   @MaxLength(100)
   name!: string;
 
-  @ApiProperty({ enum: Role })
+  @ApiProperty({ enum: Role, enumName: 'Role' })
   @IsEnum(Role)
   role!: Role;
 }

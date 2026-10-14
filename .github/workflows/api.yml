@@ -22,6 +22,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      # fails when the committed openapi.json is stale
+      - run: npm run openapi:check
       - run: npm test
       # Testcontainers uses the runner's Docker
       - run: npm run test:e2e

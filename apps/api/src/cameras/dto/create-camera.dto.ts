@@ -27,7 +27,7 @@ export class CreateCameraDto extends CameraFieldsDto {
   @IsString()
   useCase!: string;
 
-  @ApiProperty({ enum: SourceType })
+  @ApiProperty({ enum: SourceType, enumName: 'SourceType' })
   @IsEnum(SourceType)
   sourceType!: SourceType;
 

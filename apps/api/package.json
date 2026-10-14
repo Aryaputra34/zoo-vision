@@ -21,6 +21,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "cli": "node dist/cli.js",
+    "openapi": "nest build && node dist/openapi/write-openapi.js",
+    "openapi:check": "npm run openapi && git diff --exit-code openapi.json",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand"
   },
   "dependencies": {

@@ -29,7 +29,7 @@ export class RecordingDto {
   @IsBoolean()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ enum: StreamChoice })
+  @ApiPropertyOptional({ enum: StreamChoice, enumName: 'StreamChoice' })
   @Optional()
   @IsEnum(StreamChoice)
   stream?: StreamChoice;
@@ -109,6 +109,7 @@ export class CameraFieldsDto {
 
   @ApiPropertyOptional({
     enum: StreamChoice,
+    enumName: 'StreamChoice',
     description:
       'Stream the engine decodes. SUB falls back to the main URL without a sub URL. SUPERADMIN only.',
   })

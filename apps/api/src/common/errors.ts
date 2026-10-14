@@ -1,40 +1,47 @@
 import { HttpException } from '@nestjs/common';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { ValidationError } from 'class-validator';
 
 /** Stable, machine-readable error codes: the frontend switches on these (docs/fe-contract.md). */
-export type ErrorCode =
-  | 'BAD_REQUEST'
-  | 'VALIDATION_FAILED'
-  | 'SETTINGS_INVALID'
-  | 'FIELD_NOT_ALLOWED'
-  | 'RANGE_TOO_LONG'
-  | 'UNAUTHENTICATED'
-  | 'FORBIDDEN'
-  | 'ROLE_REQUIRED'
-  | 'FORBIDDEN_ORIGIN'
-  | 'NOT_FOUND'
-  | 'RECORDING_NOT_AVAILABLE'
-  | 'CONFLICT'
-  | 'STALE_VERSION'
-  | 'USERNAME_TAKEN'
-  | 'LAST_SUPERADMIN'
-  | 'CAMERA_HAS_DATA'
-  | 'MODEL_IN_USE'
-  | 'ACCOUNT_LOCKED'
-  | 'TOO_LARGE'
-  | 'RATE_LIMITED'
-  | 'UNAVAILABLE'
-  | 'INTERNAL';
+export const ERROR_CODES = [
+  'BAD_REQUEST',
+  'VALIDATION_FAILED',
+  'SETTINGS_INVALID',
+  'FIELD_NOT_ALLOWED',
+  'RANGE_TOO_LONG',
+  'UNAUTHENTICATED',
+  'FORBIDDEN',
+  'ROLE_REQUIRED',
+  'FORBIDDEN_ORIGIN',
+  'NOT_FOUND',
+  'RECORDING_NOT_AVAILABLE',
+  'CONFLICT',
+  'STALE_VERSION',
+  'USERNAME_TAKEN',
+  'LAST_SUPERADMIN',
+  'CAMERA_HAS_DATA',
+  'MODEL_IN_USE',
+  'ACCOUNT_LOCKED',
+  'TOO_LARGE',
+  'RATE_LIMITED',
+  'UNAVAILABLE',
+  'INTERNAL',
+] as const;
+export type ErrorCode = (typeof ERROR_CODES)[number];
 
-/** `path` is a JSON pointer into the request body (or the settings), e.g. "/clerk_zone/0". */
-export type FieldError = { path: string; message: string };
+/** One problem with one field. `path` is a JSON pointer into the request body (or the settings). */
+export class FieldError {
+  @ApiProperty({ example: '/clerk_zone/0' }) path!: string;
+  @ApiProperty() message!: string;
+}
 
-export type ApiErrorBody = {
-  statusCode: number;
-  code: ErrorCode;
-  message: string;
-  errors?: FieldError[];
-};
+/** The body of every error response. */
+export class ApiErrorBody {
+  @ApiProperty() statusCode!: number;
+  @ApiProperty({ enum: ERROR_CODES, enumName: 'ErrorCode' }) code!: ErrorCode;
+  @ApiProperty() message!: string;
+  @ApiPropertyOptional({ type: [FieldError] }) errors?: FieldError[];
+}
 
 /** An HttpException whose body is already the API's error shape; ErrorFilter sends it as is. */
 export function apiError(

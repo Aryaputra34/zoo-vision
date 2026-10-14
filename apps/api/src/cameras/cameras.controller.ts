@@ -9,13 +9,20 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import {
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { setAudit } from '../audit/audit-context';
 import type { Actor } from '../auth/actor';
 import { CurrentActor, MinRole } from '../auth/decorators';
+import { ApiErrorBody } from '../common/errors';
 import { auditView, CamerasService } from './cameras.service';
 import type { CameraView } from './camera-view';
+import { CameraViewDto } from './dto/camera-view.dto';
 import { CreateCameraDto } from './dto/create-camera.dto';
 import { UpdateCameraDto } from './dto/update-camera.dto';
 
@@ -25,12 +32,13 @@ export class CamerasController {
 
   /** Any role. What each role sees of a camera is decided by toCameraView. */
   @Get()
-  @ApiOkResponse({ description: 'CameraView[], sorted by id' })
+  @ApiOkResponse({ type: [CameraViewDto], description: 'Sorted by id' })
   list(@CurrentActor() actor: Actor): Promise<CameraView[]> {
     return this.cameras.list(actor);
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: CameraViewDto })
   get(
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
@@ -40,7 +48,14 @@ export class CamerasController {
 
   @MinRole('SUPERADMIN')
   @Post()
-  @ApiCreatedResponse({ description: 'The SUPERADMIN CameraView' })
+  @ApiCreatedResponse({
+    type: CameraViewDto,
+    description: 'The SUPERADMIN view, stream URLs included',
+  })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'The camera id exists already',
+  })
   async create(
     @CurrentActor() actor: Actor,
     @Body() dto: CreateCameraDto,
@@ -59,6 +74,7 @@ export class CamerasController {
   /** MANAGER may change name, area and enabled; any other changed field needs SUPERADMIN. */
   @MinRole('MANAGER')
   @Patch(':id')
+  @ApiOkResponse({ type: CameraViewDto })
   async update(
     @CurrentActor() actor: Actor,
     @Param('id') id: string,
@@ -83,6 +99,11 @@ export class CamerasController {
   @MinRole('SUPERADMIN')
   @Delete(':id')
   @HttpCode(204)
+  @ApiNoContentResponse()
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'The camera has analytics data (CAMERA_HAS_DATA)',
+  })
   async remove(@Param('id') id: string, @Req() req: Request): Promise<void> {
     const before = await this.cameras.remove(id);
     setAudit(req, {

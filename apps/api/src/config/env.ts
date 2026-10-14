@@ -10,7 +10,8 @@ export type Env = Readonly<{
   /** Shared secret of the Python engine for /internal/engine/* (Authorization: Bearer). */
   ENGINE_TOKEN: string;
   COOKIE_SECURE: boolean;
-  SWAGGER: 'public' | 'off';
+  /** `superadmin`: the docs answer 404 unless a SUPERADMIN session or API token asks. */
+  SWAGGER: 'public' | 'superadmin' | 'off';
   PORT: number;
   /** Whether the Redis stream consumer runs in this process. */
   INGEST: 'on' | 'off';
@@ -113,7 +114,12 @@ export function loadEnv(source: Source = process.env): Env {
     COOKIE_SECURE:
       read('COOKIE_SECURE', oneOf('true', 'false'), 'true or false', 'true') ===
       'true',
-    SWAGGER: read('SWAGGER', oneOf('public', 'off'), 'public or off', 'off'),
+    SWAGGER: read(
+      'SWAGGER',
+      oneOf('public', 'superadmin', 'off'),
+      'public, superadmin or off',
+      'off',
+    ),
     PORT: read('PORT', port, 'a port number (1-65535)', 3001),
     INGEST: read('INGEST', oneOf('on', 'off'), 'on or off', 'on'),
     JOBS: read('JOBS', oneOf('on', 'off'), 'on or off', 'on'),

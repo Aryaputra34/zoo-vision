@@ -4,7 +4,7 @@ import { Role } from '../../generated/prisma/enums';
 export class ApiTokenDto {
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;
-  @ApiProperty({ enum: Role }) role!: Role;
+  @ApiProperty({ enum: Role, enumName: 'Role' }) role!: Role;
   @ApiProperty() prefix!: string;
   @ApiProperty({ description: 'Username of the creator' }) createdBy!: string;
   @ApiProperty() createdAt!: Date;
@@ -16,7 +16,7 @@ export class ApiTokenDto {
 export class CreatedApiTokenDto {
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;
-  @ApiProperty({ enum: Role }) role!: Role;
+  @ApiProperty({ enum: Role, enumName: 'Role' }) role!: Role;
   @ApiProperty() prefix!: string;
   @ApiProperty() createdAt!: Date;
   @ApiProperty({ description: 'Shown only in this response' }) token!: string;

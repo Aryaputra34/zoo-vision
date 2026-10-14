@@ -8,11 +8,16 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import {
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { setAudit } from '../audit/audit-context';
 import type { Actor } from '../auth/actor';
 import { CurrentActor, MinRole } from '../auth/decorators';
+import { ApiErrorBody } from '../common/errors';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserDto } from './dto/user.dto';
@@ -31,6 +36,10 @@ export class UsersController {
 
   @Post()
   @ApiCreatedResponse({ type: UserDto })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'The username is taken (USERNAME_TAKEN)',
+  })
   async create(
     @CurrentActor() actor: Actor,
     @Body() dto: CreateUserDto,
@@ -48,6 +57,11 @@ export class UsersController {
 
   @Patch(':id')
   @ApiOkResponse({ type: UserDto })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'The last active superadmin cannot be removed (LAST_SUPERADMIN)',
+  })
   async update(
     @CurrentActor() actor: Actor,
     @Param('id', new ParseUUIDPipe()) id: string,
