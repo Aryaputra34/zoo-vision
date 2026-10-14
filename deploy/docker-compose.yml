@@ -1,12 +1,20 @@
-# Zoo Vision on one park server. Run from this folder: docker compose up -d
-# On a laptop without an NVIDIA GPU, name the services: docker compose up -d --build postgres redis api-migrate api
+# Zoo Vision on one park server. Run from this folder.
+# Which services start is set by COMPOSE_PROFILES in .env (see .env.example):
+#   always       postgres, redis, api-migrate, api, caddy
+#   engine       mediamtx, zoo-ai-engine (needs an NVIDIA GPU)
+#   web          the dashboard (Next.js), built from ${ZOO_WEB_DIR}
+#   demo         demo-seed and demo-feed: fake cameras, users and history, no GPU needed (Phase 3 demo feeder)
+# A park server sets COMPOSE_PROFILES=engine,web. A laptop without a GPU leaves it empty or uses demo.
+# Never run a bare `docker compose up` on a laptop: name the services or set COMPOSE_PROFILES on purpose.
 # Host data lives in ${ZOO_DATA_DIR} (default ./data): recordings, snapshots, models, logs. See README.md.
 # The API and the engine share ${ZOO_DATA_DIR}/models. The engine has no config files: it reads its cameras
 # from the API (API_URL, ENGINE_TOKEN) and reloads them live. Secrets come from .env.
+# Container names are not fixed, so two stacks can share a server: COMPOSE_PROJECT_NAME prefixes them.
+name: zoo-vision
+
 services:
   postgres:
     image: postgres:17.11-alpine
-    container_name: zoo_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: zoo_owner
@@ -24,7 +32,6 @@ services:
 
   redis:
     image: redis:7.4.11-alpine
-    container_name: zoo_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
     ports:
@@ -57,21 +64,24 @@ services:
 
   api:
     image: zoo-vision-api:${ZOO_VERSION:-dev}
-    container_name: zoo_api
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://zoo_api:${ZOO_API_DB_PASSWORD}@postgres:5432/zoo_vision
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CAMERA_URL_KEY: ${CAMERA_URL_KEY:?set CAMERA_URL_KEY in .env}
       ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
-      COOKIE_SECURE: "false" # no TLS until Caddy in Phase 3
-      SWAGGER: public
+      COOKIE_SECURE: ${ZOO_COOKIE_SECURE:-true} # false only for plain http on a dev machine
+      SWAGGER: ${ZOO_SWAGGER:-off} # off | superadmin | public
       MODELS_DIR: /data/models
       JOBS: "on" # offline check every 5 s; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models
     ports:
-      - "127.0.0.1:3001:3001"
+      # The loopback port is for the engine running from source and for debugging; Caddy reaches
+      # the API on the compose network.
+      - "127.0.0.1:${ZOO_API_PORT:-3001}:3001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       api-migrate:
         condition: service_completed_successfully
@@ -84,11 +94,50 @@ services:
       retries: 10
       start_period: 15s
 
+  # The only service with public ports: /api, /media and /ws go to the API, /internal/* is a 404,
+  # everything else goes to the dashboard. Inside the container Caddy listens on the same port numbers as
+  # the host, so its http -> https redirect and the URLs it builds carry the right port.
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - "${ZOO_HTTP_PORT:-80}:${ZOO_HTTP_PORT:-80}"
+      - "${ZOO_HTTPS_PORT:-443}:${ZOO_HTTPS_PORT:-443}"
+    environment:
+      ZOO_HTTP_PORT: ${ZOO_HTTP_PORT:-80}
+      ZOO_HTTPS_PORT: ${ZOO_HTTPS_PORT:-443}
+      ZOO_SITE_ADDRESS: ${ZOO_SITE_ADDRESS:-localhost}
+      ZOO_CADDY_MODE: ${ZOO_CADDY_MODE:-internal-tls} # dev | internal-tls | custom-tls
+      ZOO_WEB_UPSTREAM: ${ZOO_WEB_UPSTREAM:-web:3000} # in development: host.docker.internal:3000
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - ${ZOO_DATA_DIR:-./data}/certs:/certs:ro # custom-tls: cert.pem and key.pem
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # The dashboard, built from a local checkout of the frontend (publishing images is Phase 5).
+  web:
+    profiles: ["web"]
+    build: ${ZOO_WEB_DIR:-../../zoo-vision-fe}
+    image: zoo-vision-web:${ZOO_VERSION:-dev}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   # Pulls every camera once, records it (mediamtx.yml), re-serves RTSP to the AI engine
   # and serves event clips to the dashboard on :9996.
   mediamtx:
+    profiles: ["engine"]
     image: bluenviron/mediamtx:1.21.1
-    container_name: zoo_mediamtx
     restart: unless-stopped
     network_mode: "host"
     environment:
@@ -98,9 +147,9 @@ services:
       - ${ZOO_DATA_DIR:-./data}/recordings:/recordings
 
   zoo-ai-engine:
+    profiles: ["engine"]
     build: ../services/engine
     image: zoo-vision-engine:${ZOO_VERSION:-dev}
-    container_name: zoo_vision_service
     restart: unless-stopped
     network_mode: "host" # Host networking for lowest latency RTSP & REST calls
     depends_on:
@@ -121,7 +170,7 @@ services:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:${ZOO_REDIS_PORT:-6379}/0
       - ENGINE_GROUP=default
-      - API_URL=http://127.0.0.1:3001 # host networking: the API is published on the loopback
+      - API_URL=http://127.0.0.1:${ZOO_API_PORT:-3001} # host networking: the API is published on the loopback
       - ENGINE_TOKEN=${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
       - DEVICE=cuda:0
       - ZOO_MODELS_DIR=/app/models
@@ -130,3 +179,5 @@ services:
 volumes:
   pgdata:
   redisdata:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,6 @@
+# A park server without a certificate of its own: Caddy's internal CA signs one for ZOO_SITE_ADDRESS.
+# Install its root certificate once on the park PCs (see deploy/README.md).
+{$ZOO_SITE_ADDRESS:localhost} {
+	tls internal
+	import zoo_routes
+}

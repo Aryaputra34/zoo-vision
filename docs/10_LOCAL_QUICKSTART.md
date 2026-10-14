@@ -76,10 +76,24 @@ needs the same `ENGINE_TOKEN`). If port 6379 is already used by another Redis, a
 `ZOO_REDIS_PORT` (for example `6380`); the engine below must use the same port.
 
 ```powershell
-docker compose up -d --build postgres redis api-migrate api
-docker compose ps                                  # api-migrate exited 0; postgres, redis and api healthy
+docker compose up -d --build postgres redis api-migrate api caddy
+docker compose ps                                  # api-migrate exited 0; postgres, redis, api healthy; caddy up
 curl.exe -s http://127.0.0.1:3001/api/health       # {"status":"ok",...}
 ```
+
+**Caddy.** `caddy` is the one front door: `/api`, `/media` and `/ws` go to the API, everything else to the
+dashboard. On this laptop Apache holds ports 80 and 443, so add these to `deploy\.env`:
+
+```
+ZOO_HTTP_PORT=8080
+ZOO_CADDY_MODE=dev
+ZOO_COOKIE_SECURE=false
+ZOO_WEB_UPSTREAM=host.docker.internal:3000
+ZOO_SWAGGER=public
+```
+
+`http://localhost:8080/` then answers 502 until the dashboard runs (`npm run dev` on port 3000). Check the front
+door with `cd apps\api; npm run smoke -- http://localhost:8080`.
 
 **First superadmin and API token**
 
@@ -225,7 +239,7 @@ See [08_TESTING_GUIDE.md](08_TESTING_GUIDE.md) for every option and a command pe
 | :--- | :--- | :--- |
 | 1 | `zoo-vision` | `.\mediamtx.exe deploy\mediamtx.yml` |
 | 2 | `zoo-vision\services\engine` | `uv run python main.py` (add `--preview` for OpenCV windows), with the environment from the Backend section |
-| 3 | `zoo-vision-fe` | `npm run dev`, then open http://localhost:3000 |
+| 3 | `zoo-vision-fe` | `npm run dev`, then open http://localhost:3000 (once the dashboard is on the API, open it through Caddy at http://localhost:8080 instead: the API's cookie and the WebSocket only work there) |
 
 Start them in this order. The MediaMTX terminal shows each camera path coming online; the engine logs
 `Started N camera worker(s).`

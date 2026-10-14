@@ -1,0 +1,4 @@
+# Development: plain http on ZOO_HTTP_PORT, no certificate. Use with ZOO_COOKIE_SECURE=false.
+http://:{$ZOO_HTTP_PORT:80} {
+	import zoo_routes
+}

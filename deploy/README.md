@@ -8,9 +8,71 @@ command from this folder.
 | `postgres` | Postgres 17. Creates the `zoo_api` role on first start (`postgres/init`). No host port |
 | `redis` | Redis 7.4 with a password and AOF persistence. Published on `127.0.0.1:${ZOO_REDIS_PORT:-6379}` for the host-networked engine |
 | `api-migrate` | One-shot: `prisma migrate deploy` as `zoo_owner`, then exits |
-| `api` | The NestJS API on `127.0.0.1:3001` (Swagger at `/api/docs`). Serves the engine its cameras and runs the offline check |
-| `mediamtx` | Pulls each camera once, records it, re-serves RTSP to the engine, serves event clips on :9996 |
-| `zoo-ai-engine` | The Python engine (`services/engine`), image `zoo-vision-engine:${ZOO_VERSION}`. Configured by environment only; gets its cameras from the API and reloads them live |
+| `api` | The NestJS API on `127.0.0.1:${ZOO_API_PORT}` (Swagger at `/api/docs`, see `ZOO_SWAGGER`). Serves the engine its cameras and runs the offline check |
+| `caddy` | The only service with public ports. `/api`, `/media` and `/ws` go to the API, `/internal/*` is a 404, everything else goes to the dashboard |
+| `web` | Profile `web`: the dashboard (Next.js), built from the frontend checkout `ZOO_WEB_DIR` |
+| `mediamtx` | Profile `engine`: pulls each camera once, records it, re-serves RTSP to the engine, serves event clips on :9996 |
+| `zoo-ai-engine` | Profile `engine`: the Python engine (`services/engine`), image `zoo-vision-engine:${ZOO_VERSION}`. Configured by environment only; gets its cameras from the API and reloads them live |
+
+Container names are not fixed: Compose prefixes them with the project name (`zoo-vision` by default, or
+`COMPOSE_PROJECT_NAME` in `.env`), so two stacks can share a server. Use `docker compose exec api ...` rather than
+`docker exec <name>`.
+
+## Ports
+
+Every host port is a variable in `.env`. Change one when the default is taken.
+
+| Variable | Default | What |
+|---|---|---|
+| `ZOO_HTTP_PORT` | 80 | Caddy, http. The dashboard is opened here. Caddy listens on the same number inside the container |
+| `ZOO_HTTPS_PORT` | 443 | Caddy, https |
+| `ZOO_API_PORT` | 3001 | The API, on `127.0.0.1` only: for the engine run from source and for debugging |
+| `ZOO_REDIS_PORT` | 6379 | Redis, on `127.0.0.1` only (the host-networked engine reaches it here) |
+| `ZOO_PG_PORT` | 5433 | Postgres admin access, only with `docker-compose.override.yml` |
+| `ZOO_WEB_UPSTREAM` | `web:3000` | Where Caddy sends the dashboard's paths. In development: `host.docker.internal:3000` (`next dev` on the host) |
+
+MediaMTX and the engine use host networking, so their ports are changed in their own settings.
+
+## Profiles
+
+`COMPOSE_PROFILES` in `.env` decides which optional services start. `postgres`, `redis`, `api-migrate`, `api` and
+`caddy` always run.
+
+| Profile | Adds | Use |
+|---|---|---|
+| `engine` | `mediamtx`, `zoo-ai-engine` | A park server (needs the NVIDIA GPU) |
+| `web` | `web` | The dashboard in a container |
+| `demo` | `demo-seed`, `demo-feed` | Fake cameras, users and history, no GPU (frontend development) |
+
+A park server sets `COMPOSE_PROFILES=engine,web`. A laptop leaves it unset and names the services it wants.
+
+## Caddy modes
+
+`ZOO_CADDY_MODE` picks the site file in `caddy/sites/`:
+
+| Mode | Certificate | Use |
+|---|---|---|
+| `dev` | none, plain http on `ZOO_HTTP_PORT` | Development. Set `ZOO_COOKIE_SECURE=false` |
+| `internal-tls` (default) | Caddy's own CA signs one for `ZOO_SITE_ADDRESS` | A park server without a certificate |
+| `custom-tls` | `${ZOO_DATA_DIR}/certs/cert.pem` and `key.pem` | The customer's certificate |
+
+The API sets `COOKIE_SECURE=true` by default (`ZOO_COOKIE_SECURE`), so the login cookie needs https outside `dev`.
+
+### Trusting the internal CA on park PCs
+
+With `internal-tls` browsers warn until the CA's root certificate is installed once on each PC:
+
+```bash
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .
+```
+
+Copy `root.crt` to the PC and add it to the trusted root certificate authorities (Windows: double-click, Install
+Certificate, Local Machine, Trusted Root Certification Authorities).
+
+## Checking the front door
+
+From `apps/api`: `npm run smoke -- http://localhost:8080` (use your `ZOO_HTTP_PORT`). It checks `/api/health`
+through Caddy, that `/internal/engine/*` is a 404 and that the security headers are set.
 
 ## First run
 

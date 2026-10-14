@@ -1,0 +1,27 @@
+# The one front door. Run mode is chosen by ZOO_CADDY_MODE (dev | internal-tls | custom-tls), which
+# imports one file from sites/. Inside the container Caddy listens on the same port numbers as the host.
+{
+	http_port {$ZOO_HTTP_PORT:80}
+	https_port {$ZOO_HTTPS_PORT:443}
+	admin off
+}
+
+(zoo_routes) {
+	@backend path /api/* /media/* /ws /ws/*
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# `route` keeps the order below: the engine's routes are never reachable from outside
+	route {
+		respond /internal/* 404
+		reverse_proxy @backend api:3001
+		reverse_proxy {$ZOO_WEB_UPSTREAM:web:3000}
+	}
+}
+
+import sites/{$ZOO_CADDY_MODE:internal-tls}.caddy
