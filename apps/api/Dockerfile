@@ -36,6 +36,8 @@ COPY --from=build /app/packages/contracts packages/contracts
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/node_modules apps/api/node_modules
 COPY --from=build /app/apps/api/prisma apps/api/prisma
+# the demo feeder's stills (the demo-seed and demo-feed commands)
+COPY --from=build /app/apps/api/demo apps/api/demo
 COPY --from=build /app/apps/api/prisma.config.ts /app/apps/api/package.json apps/api/
 WORKDIR /app/apps/api
 USER node

@@ -120,6 +120,27 @@ services:
       api:
         condition: service_healthy
 
+  # One-shot, profile demo: creates the demo cameras (engine group `demo`) and users. Refuses unless
+  # ZOO_DEMO=on, so known-password users cannot appear on a real site by accident.
+  demo-seed:
+    profiles: ["demo"]
+    image: zoo-vision-api:${ZOO_VERSION:-dev}
+    command: ["node", "dist/cli.js", "demo-seed"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://zoo_api:${ZOO_API_DB_PASSWORD}@postgres:5432/zoo_vision
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CAMERA_URL_KEY: ${CAMERA_URL_KEY:?set CAMERA_URL_KEY in .env}
+      ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
+      MODELS_DIR: /data/models
+      ZOO_DEMO: ${ZOO_DEMO:-off}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+    volumes:
+      - ${ZOO_DATA_DIR:-./data}/models:/data/models
+    depends_on:
+      api:
+        condition: service_healthy
+
   # The dashboard, built from a local checkout of the frontend (publishing images is Phase 5).
   web:
     profiles: ["web"]
