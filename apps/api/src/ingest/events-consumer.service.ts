@@ -58,8 +58,12 @@ export class EventsConsumer implements OnApplicationBootstrap, OnModuleDestroy {
 
   onApplicationBootstrap(): void {
     if (this.env.INGEST !== 'on') return;
-    // XREADGROUP BLOCK holds its connection, so the reader gets its own.
-    const reader = this.redis.duplicate();
+    // XREADGROUP BLOCK holds its connection, so the reader gets its own. It must not inherit the
+    // shared client's timeouts: a 5 s command timeout would cut every idle BLOCK read.
+    const reader = this.redis.duplicate({
+      maxRetriesPerRequest: null,
+      commandTimeout: undefined,
+    });
     reader.on('error', (err: Error) =>
       this.logger.warn(`stream reader: ${err.message}`),
     );

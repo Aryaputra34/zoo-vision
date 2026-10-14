@@ -63,6 +63,15 @@ export class ErrorFilter implements ExceptionFilter {
       };
     }
 
+    if (isRedisUnavailable(exception)) {
+      this.log.error(`redis unavailable: ${errorText(exception)}`);
+      return {
+        statusCode: 503,
+        code: 'UNAVAILABLE',
+        message: 'Service temporarily unavailable',
+      };
+    }
+
     const status = httpErrorStatus(exception);
     if (status !== null) {
       return {
@@ -89,11 +98,11 @@ function fromHttpException(exception: HttpException): ApiErrorBody {
   if (typeof response === 'object' && response !== null) {
     const r = response as Partial<ApiErrorBody> & { message?: unknown };
     if (typeof r.code === 'string') {
+      // as is, extra optional fields included (the health check keeps its per-dependency map)
       return {
+        ...(r as ApiErrorBody),
         statusCode,
-        code: r.code,
         message: firstMessage(r.message) ?? exception.message,
-        ...(r.errors ? { errors: r.errors } : {}),
       };
     }
     return plain(statusCode, firstMessage(r.message) ?? exception.message);
@@ -113,6 +122,16 @@ function firstMessage(message: unknown): string | undefined {
   if (Array.isArray(message) && typeof message[0] === 'string')
     return message[0];
   return undefined;
+}
+
+/** ioredis gave up on a command: retries exhausted, no answer in time, or the connection is gone. */
+function isRedisUnavailable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === 'MaxRetriesPerRequestError' ||
+    err.message === 'Command timed out' ||
+    /^Connection is closed\.?$/.test(err.message)
+  );
 }
 
 /** The 4xx status of an http-errors style error (body-parser, Express), else null. */

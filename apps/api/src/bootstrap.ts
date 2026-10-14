@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import type { Express } from 'express';
 import { validationException } from './common/errors';
 import { ENV, type Env } from './config/env';
 
@@ -17,6 +18,9 @@ import { ENV, type Env } from './config/env';
 export function configureApp(app: INestApplication): void {
   const env = app.get<Env>(ENV);
 
+  // Exactly one proxy (Caddy) sits in front: req.ip is the client's address from X-Forwarded-For,
+  // so the login throttle, the lockout log and LoginLog see the client, not the proxy.
+  (app.getHttpAdapter().getInstance() as Express).set('trust proxy', 1);
   app.use(cookieParser());
   // /internal/engine/* is the Python engine's, outside the `api` prefix (and URI versioning)
   app.setGlobalPrefix('api', {

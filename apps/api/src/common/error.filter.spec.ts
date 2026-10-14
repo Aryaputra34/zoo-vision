@@ -132,6 +132,33 @@ describe('ErrorFilter', () => {
     expect(body().code).toBe(expected);
   });
 
+  it.each([
+    [
+      'MaxRetriesPerRequestError',
+      'Reached the max retries per request limit (which is 2).',
+    ],
+    ['Error', 'Command timed out'],
+    ['Error', 'Connection is closed.'],
+  ])(
+    'an ioredis %s "%s" → 503 UNAVAILABLE, logged, without its text in the body',
+    (name, text) => {
+      const { filter, body, status } = setup();
+      const err = Object.assign(new Error(text), { name });
+
+      filter.catch(err, host);
+
+      expect(status()).toBe(503);
+      expect(body()).toEqual({
+        statusCode: 503,
+        code: 'UNAVAILABLE',
+        message: 'Service temporarily unavailable',
+      });
+      expect(String(error.mock.calls[0]?.[0])).toBe(
+        `redis unavailable: ${text}`,
+      );
+    },
+  );
+
   it('a body-parser error (status 400, text from the parser) → 400 BAD_REQUEST without the parser text', () => {
     const { filter, body, status } = setup();
     const err = Object.assign(new SyntaxError('Unexpected token } in JSON'), {

@@ -89,6 +89,25 @@ describe('ingest: the events stream into Postgres', () => {
     expect(await count('DeadEvent')).toBe(0);
   });
 
+  it('the consumer stays connected through 7 idle seconds, then ingests a new entry', async () => {
+    const error = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    await start();
+    // longer than the shared client's 5 s commandTimeout: the BLOCK read must not be cut by it
+    await new Promise((resolve) => setTimeout(resolve, 7_000));
+    const msg = eventMsg();
+    await xadd(msg);
+    await drained();
+    const failures = error.mock.calls.map(([m]) => String(m));
+    error.mockRestore();
+
+    expect(failures.filter((m) => m.startsWith('ingest failed'))).toEqual([]);
+    expect(await ownerQuery(`SELECT "id" FROM "Event"`)).toEqual([
+      { id: msg.id },
+    ]);
+  }, 30_000);
+
   it('processBatch twice with the same entries leaves one Event, one Interval and the metric value unchanged', async () => {
     const app = await start();
     const ingest = app.get(IngestService);
