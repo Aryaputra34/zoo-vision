@@ -1,12 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { apiError } from '../common/errors';
 import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { bucketStart } from './buckets';
 import type { EventStatsDto, EventStatsQueryDto } from './dto/event-stats.dto';
-import { allowedDataField } from './fields';
+import { allowedDataField, notAllowed, wantsSystem } from './fields';
 import {
   assertRange,
   parseRange,
@@ -24,10 +23,6 @@ const COLUMN_GROUPS: Record<string, Prisma.Sql> = {
   type: Prisma.sql`e."type"`,
   severity: Prisma.sql`e."severity"::text`,
 };
-
-function notAllowed(path: string, message: string) {
-  return apiError(400, 'FIELD_NOT_ALLOWED', message, [{ path, message }]);
-}
 
 /** `data->>field` with the field name as a bound parameter, never as SQL text. */
 const dataText = (field: string) => Prisma.sql`e."data"->>(${field}::text)`;
@@ -92,12 +87,7 @@ export class EventStatsService {
     }
 
     // system events (engine_started, ...) are not park data: only when asked for by name
-    const systemTypes = Object.keys(
-      registry.useCases.get('system')?.events ?? {},
-    );
-    const wantsSystem =
-      range.useCase === 'system' ||
-      !!types?.some((t) => systemTypes.includes(t));
+    const withSystem = wantsSystem(registry, range.useCase, types, 'events');
 
     const where: Prisma.Sql[] = [
       Prisma.sql`e."time" >= ${range.from.toISOString()}::timestamptz`,
@@ -105,7 +95,7 @@ export class EventStatsService {
     ];
     where.push(...scopeFilters('e', range));
     if (types) where.push(Prisma.sql`e."type" IN (${Prisma.join(types)})`);
-    if (!wantsSystem) where.push(Prisma.sql`e."useCase" <> 'system'`);
+    if (!withSystem) where.push(Prisma.sql`e."useCase" <> 'system'`);
 
     const columns: Prisma.Sql[] = [
       Prisma.sql`${bucketStart(q.bucket, this.env.SITE_TIMEZONE, Prisma.sql`e."time"`)} AS "bucketStart"`,
