@@ -160,7 +160,7 @@ describe('cameras', () => {
     expect((await create()).status).toBe(409);
   });
 
-  it('MANAGER PATCH {name} → 200; {targetFps: 12} → 403 with fields ["targetFps"]; {name, targetFps: <unchanged>} → 200', async () => {
+  it('MANAGER PATCH {name} → 200; {targetFps: 12} → 403 ROLE_REQUIRED at /targetFps; {name, targetFps: <unchanged>} → 200', async () => {
     await create();
     const { cookie } = await asRole(app, 'MANAGER');
     const patch = (b: object, id = 'cam_test_01') =>
@@ -171,7 +171,10 @@ describe('cameras', () => {
     expect(ok.body).not.toHaveProperty('mainStreamUrl');
 
     const denied = await patch({ targetFps: 12 }).expect(403);
-    expect((denied.body as { fields: string[] }).fields).toEqual(['targetFps']);
+    expect(denied.body).toMatchObject({
+      code: 'ROLE_REQUIRED',
+      errors: [{ path: '/targetFps', message: 'needs SUPERADMIN' }],
+    });
     const row = await prisma.camera.findUniqueOrThrow({
       where: { id: 'cam_test_01' },
     });
@@ -186,13 +189,15 @@ describe('cameras', () => {
       { subStreamUrl: null },
     ]) {
       const r = await patch(b).expect(403);
-      expect((r.body as { fields: string[] }).fields).toEqual(Object.keys(b));
+      expect(
+        (r.body as { errors: { path: string }[] }).errors.map((e) => e.path),
+      ).toEqual(Object.keys(b).map((k) => `/${k}`));
     }
     await patch({ id: 'x' }).expect(400);
     await patch({ name: 'x' }, 'nope_cam').expect(404);
   });
 
-  it('MANAGER PATCH {inferenceStream: "SUB"} → 403 with fields ["inferenceStream"]; SUPERADMIN → 200 and cfg:changed is published', async () => {
+  it('MANAGER PATCH {inferenceStream: "SUB"} → 403 ROLE_REQUIRED at /inferenceStream; SUPERADMIN → 200 and cfg:changed is published', async () => {
     await create();
     const sub = new Redis(process.env.REDIS_URL as string);
     const messages: string[] = [];
@@ -205,9 +210,11 @@ describe('cameras', () => {
         .set('Cookie', mgr.cookie)
         .send({ inferenceStream: 'SUB' })
         .expect(403);
-      expect((denied.body as { fields: string[] }).fields).toEqual([
-        'inferenceStream',
-      ]);
+      expect(
+        (denied.body as { errors: { path: string }[] }).errors.map(
+          (e) => e.path,
+        ),
+      ).toEqual(['/inferenceStream']);
 
       const admin = await asRole(app, 'SUPERADMIN');
       const res = await http()

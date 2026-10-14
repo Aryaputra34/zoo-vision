@@ -1,11 +1,11 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { Actor } from '../auth/actor';
+import { apiError, needsSuperadmin } from '../common/errors';
 import { ContractsService } from '../contracts/contracts.service';
 import type { Camera, Prisma } from '../generated/prisma/client';
 import type { SourceType } from '../generated/prisma/enums';
@@ -80,10 +80,12 @@ export class CamerasService {
     this.checkStreamUrl(dto.sourceType, dto.mainStreamUrl);
     const result = validator.validateSettings(dto.useCase, dto.settings);
     if (!result.ok) {
-      throw new BadRequestException({
-        message: 'Settings are invalid',
-        errors: result.errors,
-      });
+      throw apiError(
+        400,
+        'SETTINGS_INVALID',
+        'Settings are invalid',
+        result.errors,
+      );
     }
     await this.models.assertSelectable(
       (dto.settings as { model_id?: string }).model_id,
@@ -266,13 +268,10 @@ export class CamerasService {
         (f) => dto[f] !== undefined,
       );
       if (urlFields.length > 0) {
-        throw new ForbiddenException({
-          message: 'Changing these fields needs the SUPERADMIN role',
-          fields: [
-            ...changed.filter((f) => !MANAGER_FIELDS.has(f)),
-            ...urlFields,
-          ],
-        });
+        throw needsSuperadmin(
+          'Changing these fields needs the SUPERADMIN role',
+          [...changed.filter((f) => !MANAGER_FIELDS.has(f)), ...urlFields],
+        );
       }
     }
 
@@ -300,10 +299,10 @@ export class CamerasService {
 
     const restricted = changed.filter((f) => !MANAGER_FIELDS.has(f));
     if (restricted.length > 0 && actor.role !== 'SUPERADMIN') {
-      throw new ForbiddenException({
-        message: 'Changing these fields needs the SUPERADMIN role',
-        fields: restricted,
-      });
+      throw needsSuperadmin(
+        'Changing these fields needs the SUPERADMIN role',
+        restricted,
+      );
     }
 
     // The scheme check needs the plaintext URL only when the URL or the source type changes.
@@ -338,7 +337,9 @@ export class CamerasService {
       this.prisma.metric.count({ where: { cameraId: id } }),
     ]);
     if (events + intervals + metrics > 0) {
-      throw new ConflictException(
+      throw apiError(
+        409,
+        'CAMERA_HAS_DATA',
         'Camera has analytics data; disable it instead',
       );
     }
@@ -346,7 +347,9 @@ export class CamerasService {
       await this.prisma.camera.delete({ where: { id } });
     } catch (err) {
       if (code(err) === 'P2003') {
-        throw new ConflictException(
+        throw apiError(
+          409,
+          'CAMERA_HAS_DATA',
           'Camera has analytics data; disable it instead',
         );
       }

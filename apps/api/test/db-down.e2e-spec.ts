@@ -39,7 +39,8 @@ describe('Postgres down', () => {
 
     expect(res.body).toEqual({
       statusCode: 503,
-      message: 'Service unavailable',
+      code: 'UNAVAILABLE',
+      message: 'Service temporarily unavailable',
     });
     expect(logged[0]).toMatch(/^database unavailable \(P1001\): /);
   });

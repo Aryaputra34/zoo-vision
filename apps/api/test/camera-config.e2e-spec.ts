@@ -141,15 +141,16 @@ describe('camera config versions', () => {
     expect(await versionCount()).toBe(2);
   });
 
-  it('MANAGER changing model_name → 403 fields ["/model_name"]; SUPERADMIN → 201', async () => {
+  it('MANAGER changing model_name → 403 ROLE_REQUIRED at /model_name; SUPERADMIN → 201', async () => {
     const changed = { ...settings, model_name: 'yolo11m.pt' };
     const res = await save(manager, {
       baseVersion: 1,
       settings: changed,
     }).expect(403);
     expect(res.body).toMatchObject({
+      code: 'ROLE_REQUIRED',
       message: 'Only a superadmin can change: /model_name',
-      fields: ['/model_name'],
+      errors: [{ path: '/model_name', message: 'needs SUPERADMIN' }],
     });
     await save(superadmin, { baseVersion: 1, settings: changed }).expect(201);
   });

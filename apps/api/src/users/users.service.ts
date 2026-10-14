@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,6 +6,7 @@ import {
 import type { Actor } from '../auth/actor';
 import { hashPassword } from '../auth/password';
 import { SessionService } from '../auth/session.service';
+import { apiError } from '../common/errors';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateUserDto } from './dto/create-user.dto';
@@ -50,7 +50,7 @@ export class UsersService {
       return UserDto.from(user);
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') {
-        throw new ConflictException('Username already exists');
+        throw apiError(409, 'USERNAME_TAKEN', 'Username already exists');
       }
       throw err;
     }
@@ -88,7 +88,9 @@ export class UsersService {
         const locked = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM "User" WHERE role = 'SUPERADMIN' AND active = true FOR UPDATE`;
         if (locked.length <= 1) {
-          throw new ConflictException(
+          throw apiError(
+            409,
+            'LAST_SUPERADMIN',
             'Cannot remove the last active superadmin',
           );
         }

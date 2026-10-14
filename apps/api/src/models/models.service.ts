@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type Redis from 'ioredis';
 import type { Actor } from '../auth/actor';
+import { apiError } from '../common/errors';
 import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
 import type { AiModel, Prisma } from '../generated/prisma/client';
@@ -356,10 +357,9 @@ export class ModelsService implements OnApplicationBootstrap {
       const message = row
         ? `The model is ${row.status}, not READY`
         : 'No such model';
-      throw new BadRequestException({
-        message: 'Settings are invalid',
-        errors: [{ path: '/model_id', message }],
-      });
+      throw apiError(400, 'SETTINGS_INVALID', 'Settings are invalid', [
+        { path: '/model_id', message },
+      ]);
     }
   }
 
@@ -546,7 +546,9 @@ export class ModelsService implements OnApplicationBootstrap {
     const row = await this.getRow(id);
     const using = await this.camerasUsing(row);
     if (using.length > 0) {
-      throw new ConflictException(
+      throw apiError(
+        409,
+        'MODEL_IN_USE',
         `The model is used by camera ${using.join(', ')}`,
       );
     }
