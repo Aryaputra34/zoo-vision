@@ -21,6 +21,8 @@ export type Env = Readonly<{
   MODELS_DIR: string;
   /** Largest accepted model upload, in bytes. */
   MODEL_UPLOAD_MAX_BYTES: number;
+  /** IANA zone the reports bucket by and the CSV exports write local times in (until SiteSettings). */
+  SITE_TIMEZONE: string;
 }>;
 
 export class EnvError extends Error {
@@ -69,6 +71,19 @@ const positiveInt: Check<number> = (value) => {
 };
 
 const text: Check<string> = (value) => value;
+
+// Region/City names only: Intl also takes "+07:00", which Postgres reads with the sign flipped
+const timeZone: Check<string> = (value) => {
+  if (value !== 'UTC' && !/^[A-Za-z]+\/[A-Za-z0-9_+\-/]+$/.test(value)) {
+    return undefined;
+  }
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value });
+    return value;
+  } catch {
+    return undefined;
+  }
+};
 
 /**
  * Validates the environment. Throws one {@link EnvError} naming every bad variable (never its
@@ -129,6 +144,12 @@ export function loadEnv(source: Source = process.env): Env {
       positiveInt,
       'a positive number of bytes',
       1073741824,
+    ),
+    SITE_TIMEZONE: read(
+      'SITE_TIMEZONE',
+      timeZone,
+      'an IANA time zone such as Asia/Jakarta',
+      'Asia/Jakarta',
     ),
   };
 

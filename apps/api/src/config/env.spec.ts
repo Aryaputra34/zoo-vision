@@ -32,6 +32,7 @@ describe('loadEnv', () => {
       JOBS: 'on',
       MODELS_DIR: '/data/models',
       MODEL_UPLOAD_MAX_BYTES: 1073741824,
+      SITE_TIMEZONE: 'Asia/Jakarta',
     });
   });
 
@@ -45,6 +46,7 @@ describe('loadEnv', () => {
       JOBS: 'off',
       MODELS_DIR: '/srv/models',
       MODEL_UPLOAD_MAX_BYTES: '2048',
+      SITE_TIMEZONE: 'Asia/Makassar',
     });
     expect(env).toMatchObject({
       COOKIE_SECURE: false,
@@ -54,7 +56,14 @@ describe('loadEnv', () => {
       JOBS: 'off',
       MODELS_DIR: '/srv/models',
       MODEL_UPLOAD_MAX_BYTES: 2048,
+      SITE_TIMEZONE: 'Asia/Makassar',
     });
+  });
+
+  it('names SITE_TIMEZONE when it is not an IANA time zone', () => {
+    expect(errorOf({ ...required, SITE_TIMEZONE: 'Mars/Base' })).toMatch(
+      /^ {2}SITE_TIMEZONE: must be an IANA time zone/m,
+    );
   });
 
   it('treats an empty optional variable as unset', () => {

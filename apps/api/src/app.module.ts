@@ -15,6 +15,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { ModelsModule } from './models/models.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { ReportsModule } from './reports/reports.module';
 import { UsecasesModule } from './usecases/usecases.module';
 import { UsersModule } from './users/users.module';
 
@@ -39,6 +40,7 @@ export class AppModule {
         IngestModule,
         JobsModule,
         ModelsModule,
+        ReportsModule,
         UsecasesModule,
       ],
       controllers: [HealthController],

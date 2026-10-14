@@ -72,6 +72,7 @@ services:
       ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
       COOKIE_SECURE: ${ZOO_COOKIE_SECURE:-true} # false only for plain http on a dev machine
       SWAGGER: ${ZOO_SWAGGER:-off} # off | superadmin | public
+      SITE_TIMEZONE: ${ZOO_SITE_TIMEZONE:-Asia/Jakarta} # reports and CSV times; an IANA name
       MODELS_DIR: /data/models
       JOBS: "on" # offline check every 5 s; "off" on a second API replica
     volumes:

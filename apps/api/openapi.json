@@ -2107,6 +2107,133 @@
         ]
       }
     },
+    "/api/v1/reports/events/stats": {
+      "get": {
+        "operationId": "reportsEventStats",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, inclusive. Encode `+` as `%2B` in a URL.",
+            "schema": {
+              "example": "2026-10-14T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "ISO 8601 with an offset, exclusive",
+            "schema": {
+              "example": "2026-10-15T00:00:00+07:00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cameraIds",
+            "required": false,
+            "in": "query",
+            "description": "Camera ids, comma separated, at most 50",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useCase",
+            "required": false,
+            "in": "query",
+            "description": "One use case id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Bucket"
+            }
+          },
+          {
+            "name": "types",
+            "required": false,
+            "in": "query",
+            "description": "Event types, comma separated. Needed with `data.<field>` and `max`",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupBy",
+            "required": false,
+            "in": "query",
+            "description": "Comma separated: `camera`, `type`, `severity` and at most two `data.<field>` that a requested type declares as a string or enum",
+            "schema": {
+              "example": "camera,data.direction",
+              "type": "string"
+            }
+          },
+          {
+            "name": "max",
+            "required": false,
+            "in": "query",
+            "description": "A `data` field a requested type declares as a number: its largest value per bucket",
+            "schema": {
+              "example": "waitingSec",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventStatsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/api/v1/usecases": {
       "get": {
         "operationId": "usecasesList",
@@ -3353,6 +3480,68 @@
         "required": [
           "source",
           "target"
+        ]
+      },
+      "Bucket": {
+        "type": "string",
+        "enum": [
+          "5m",
+          "15m",
+          "hour",
+          "day"
+        ]
+      },
+      "EventStatsRowDto": {
+        "type": "object",
+        "properties": {
+          "bucketStart": {
+            "type": "string",
+            "description": "UTC, the start of the bucket in the site time zone"
+          },
+          "group": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "nullable": true
+            },
+            "description": "One key per `groupBy` item, spelled as requested (`camera`, `data.direction`); null where the event has no value. `{}` without `groupBy`."
+          },
+          "max": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only with `max`"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "bucketStart",
+          "group",
+          "count"
+        ]
+      },
+      "EventStatsDto": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bucket"
+              }
+            ]
+          },
+          "rows": {
+            "description": "Non-empty buckets only, ordered by bucketStart and then the group values",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventStatsRowDto"
+            }
+          }
+        },
+        "required": [
+          "bucket",
+          "rows"
         ]
       },
       "UseCaseEventDto": {
