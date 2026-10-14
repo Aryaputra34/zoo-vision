@@ -107,7 +107,7 @@ into the request body (or, for settings problems, into the settings: `/model_id`
 | `UNAVAILABLE` | 503 | Postgres or Redis is down or too slow | Show "backend unavailable" and retry |
 | `INTERNAL` | 500 | A bug; the body never carries details | Show a generic error |
 
-Defined but not thrown yet: `FORBIDDEN_ORIGIN` (the WebSocket, v0.3).
+`FORBIDDEN_ORIGIN` is a WebSocket `connect_error` message, not an HTTP body (section 12).
 
 ## 5. Use cases and the zone editor
 
@@ -154,9 +154,10 @@ The API enforces it on save (`ROLE_REQUIRED`).
 with the camera's active version; a mismatch is 409 `STALE_VERSION`: offer to reload, never overwrite silently.
 
 **Saved, then Applied.** A save only stores the version and tells the engine. The engine reports back the version
-it runs, as `appliedVersion`, or says why it refused, as `configError`. Until the WebSocket arrives in v0.3, poll
-`GET /api/v1/cameras/:id/status` (every second or two, for up to a minute) until `status.appliedVersion` equals
-the saved `version` (Applied) or `status.configError` is set (Rejected, show the text).
+it runs, as `appliedVersion`, or says why it refused, as `configError`. From v0.3 the `status` room of the
+WebSocket (section 12) delivers both every 2 s: Applied when `appliedVersion` equals the saved `version`,
+Rejected when `configError` is set. Without the socket, poll `GET /api/v1/cameras/:id/status` (every second or
+two, for up to a minute) for the same two fields.
 
 ## 7. Camera status and frames
 
@@ -352,14 +353,80 @@ event rows. Asking for `/api/v1/media/...` is a 404.
   must be supported, tell the backend developer.
 - The demo stack has no recordings: every clip is `RECORDING_NOT_AVAILABLE`. Build that state in the UI.
 
-## 12. WebSocket types
+## 12. WebSocket
 
-The message types are already in `generated/web/index.d.ts`: `EventCreated`, `DataChanged`, `StatusSnapshot`,
-`CameraStatus`, `AuditNotice`, `SessionEnded`, `Subscribe`, `Unsubscribe`, and the socket.io event maps
-`ServerToClientEvents` and `ClientToServerEvents`. The gateway itself arrives in v0.3, so build against the
-types and poll as described in section 6 until then.
+One socket.io connection per tab, to `/ws` on your own origin. The cookie goes with it; there is no token and
+no URL to configure.
+
+```ts
+import { io, Socket } from 'socket.io-client';
+import type { ServerToClientEvents, ClientToServerEvents } from '@/contract/web';
+
+const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io({
+  path: '/ws',
+  transports: ['websocket'],
+});
+```
+
+`ServerToClientEvents` and `ClientToServerEvents` are in `generated/web/index.d.ts`, with every message type
+(`EventCreated`, `DataChanged`, `StatusSnapshot`, `AuditNotice`, `SessionEnded`, `Subscribe`, `Unsubscribe`).
+
+**The rule:** the socket only says "something changed" or carries small live values. REST stays the source of
+truth. There is no replay: after **every** connect or reconnect, refetch what the page shows. A missed message can
+never leave a page wrong.
+
+### Connecting
+
+| Refused with (`connect_error.message`) | Meaning | What the UI does |
+|---|---|---|
+| `UNAUTHENTICATED` | No session cookie, or the session has ended. API tokens are not accepted here | Go to `/login` |
+| `FORBIDDEN_ORIGIN` | The page's origin is not the socket's host (another app on the same machine) | A deployment error: show it |
+| `UNAVAILABLE` | Postgres or Redis is down while the session was checked | Socket.io retries by itself |
+
+### Rooms and messages
+
+| Room | Who | Message | When |
+|---|---|---|---|
+| `alerts` | everyone, joined at connect | `event.created` `{id, time, cameraId, useCase, type, severity, data, snapshotUrl}` | once per new event after an ingest commit. A commit with more than 50 new events sends none of these, only `data.changed` |
+| `alerts` | everyone | `data.changed` `{cameraIds, useCases, shapes}` | after ingest commits, **at most once every 5 s**: the first change after a quiet period at once, later ones merged into one message at the end of the window. `shapes` are `event`, `interval`, `metric` |
+| `status` | on request | `status.snapshot` `{at, cameras: {<id>: status \| null}}` | every 2 s while someone is in the room; `null` is an offline camera |
+| `managers` | MANAGER and SUPERADMIN, joined at connect | `audit.notice` | from v0.4 |
+| (own sockets) | the affected user | `session.ended` `{reason}` | just before the server disconnects the socket |
+
+Client to server: `socket.emit('subscribe', {rooms: ['status']}, ack)` and `unsubscribe`. Only `status` can be
+named; the ack is `{ok: true}` or `{ok: false, code: 'VALIDATION_FAILED'}`. Subscribe again after a reconnect.
+
+- `event.created` is for alerts (a toast, the bell). Do not build tables from it: refetch on `data.changed`.
+  `data.changed` says which `cameraIds`, `useCases` and `shapes` changed so a page can ignore the rest.
+- `status.snapshot` carries what `GET /cameras/:id/status` returns for every camera, so the Live tiles and
+  **Saved → Applied** need no polling: a save is Applied when `appliedVersion` equals the saved `version`, Rejected
+  when `configError` is set.
+- If no `status.snapshot` arrives for 10 s while subscribed, show "live data paused" (Redis is down or the API is
+  restarting).
+
+### `session.ended`
+
+The server sends it, then closes the socket. `reason`:
+
+| Reason | Why | What the UI does |
+|---|---|---|
+| `logout` | The user logged out (in this tab or another with the same session) | Go to `/login` |
+| `revoked` | The password was changed elsewhere, or an admin reset it | Go to `/login` |
+| `disabled` | The account was disabled | Go to `/login` |
+| `expired` | The session ran out (12 h idle, 7 days at most); checked every 60 s | Go to `/login` |
+| `role_changed` | The role changed. **The session is still valid** | Refetch `/auth/me`, reconnect: the rooms follow the new role |
+
+After a `session.ended` the next REST call is a 401 except for `role_changed`.
 
 ## 13. Changelog
+
+### v0.3
+
+- New: the WebSocket at `/ws` (section 12): rooms `alerts`, `status` and `managers`, the messages
+  `event.created`, `data.changed`, `status.snapshot` and `session.ended`, session-cookie auth, an Origin check.
+  `data.changed` is limited to one message per 5 s.
+- New environment variables: none. New dependency of the API: `socket.io`.
+- No breaking change to v0.2.
 
 ### v0.2
 

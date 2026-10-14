@@ -7,6 +7,7 @@ import type {
   MetricMessage,
 } from '@zoo-vision/contracts';
 import type Redis from 'ioredis';
+import { Subject } from 'rxjs';
 import { ContractsService } from '../contracts/contracts.service';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,11 +25,48 @@ const MAX_ATTEMPTS = 5;
 export type StreamEntry = { id: string; msg: string | undefined };
 
 type Tx = Prisma.TransactionClient;
+type Applied = { dead: DeadLetter[]; changes: Changes };
 type DeadLetter = { streamId: string; payload: string; reason: string };
 /** An entry after parsing and validation: a message to apply, or why it is dead. */
 type Parsed =
   | { entry: StreamEntry; message: Message }
   | { entry: StreamEntry; reason: string };
+
+export type IngestShape = 'event' | 'interval' | 'metric';
+
+/** What one committed transaction wrote, for the push to the dashboard (nothing it already had). */
+export type IngestCommit = {
+  /** Only the events this commit inserted: a redelivered one is not here. */
+  events: EventMessage[];
+  cameraIds: string[];
+  useCases: string[];
+  shapes: IngestShape[];
+};
+
+/** Collects what a transaction really changed: a conflicting insert or a repeated close is nothing. */
+class Changes {
+  readonly events: EventMessage[] = [];
+  private readonly cameras = new Set<string>();
+  private readonly useCases = new Set<string>();
+  private readonly shapes = new Set<IngestShape>();
+
+  wrote(shape: IngestShape, m: Message): void {
+    this.shapes.add(shape);
+    if (m.cameraId !== null) this.cameras.add(m.cameraId);
+    this.useCases.add(m.useCase);
+  }
+
+  /** The commit to announce, or null when the transaction changed no data row. */
+  commit(): IngestCommit | null {
+    if (this.shapes.size === 0) return null;
+    return {
+      events: this.events,
+      cameraIds: [...this.cameras].sort(),
+      useCases: [...this.useCases].sort(),
+      shapes: [...this.shapes].sort(),
+    };
+  }
+}
 
 export const errorMessage = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
@@ -54,6 +92,12 @@ const cameraOf = (item: Parsed) =>
 export class IngestService {
   private readonly logger = new Logger(IngestService.name);
 
+  /**
+   * Emitted after the XACK of every applied transaction that changed a data row (a batch, or one
+   * entry of a one-by-one retry). Never emitted for a failed transaction.
+   */
+  readonly committed$ = new Subject<IngestCommit>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly contracts: ContractsService,
@@ -71,15 +115,18 @@ export class IngestService {
   async processBatch(entries: StreamEntry[]): Promise<boolean> {
     if (entries.length === 0) return false;
     const parsed = entries.map((entry) => this.parse(entry));
-    let dead: DeadLetter[];
+    let applied: Applied;
     try {
-      dead = await this.apply(parsed);
+      applied = await this.apply(parsed);
     } catch (err) {
       await this.rethrowUnlessEntryFault(err);
       return this.oneByOne(parsed);
     }
-    await this.ack(entries.map((e) => e.id));
-    this.warnDead(dead);
+    await this.ackThenPublish(
+      entries.map((e) => e.id),
+      applied.changes,
+    );
+    this.warnDead(applied.dead);
     return false;
   }
 
@@ -96,9 +143,9 @@ export class IngestService {
       const waits =
         held.has(null) || (camera === null ? held.size > 0 : held.has(camera));
       if (waits) continue;
-      let dead: DeadLetter[];
+      let applied: Applied;
       try {
-        dead = await this.apply([item]);
+        applied = await this.apply([item]);
       } catch (err) {
         // a transient error, or the database gone since the probe, is never the entry's fault
         await this.rethrowUnlessEntryFault(err);
@@ -108,8 +155,8 @@ export class IngestService {
         }
         continue;
       }
-      await this.ack([item.entry.id]);
-      this.warnDead(dead);
+      await this.ackThenPublish([item.entry.id], applied.changes);
+      this.warnDead(applied.dead);
     }
     return pending;
   }
@@ -138,6 +185,30 @@ export class IngestService {
     }
   }
 
+  /**
+   * XACKs, then announces what the transaction wrote. The announcement also goes out when the
+   * XACK fails: the rows are committed, the redelivery will insert nothing and so never announce
+   * them, and a browser must be told.
+   */
+  private async ackThenPublish(ids: string[], changes: Changes): Promise<void> {
+    try {
+      await this.ack(ids);
+    } finally {
+      this.publish(changes);
+    }
+  }
+
+  /** A subscriber that throws must not be able to hurt ingest. */
+  private publish(changes: Changes): void {
+    const commit = changes.commit();
+    if (!commit) return;
+    try {
+      this.committed$.next(commit);
+    } catch (err) {
+      this.logger.warn(`push after commit failed: ${errorMessage(err)}`);
+    }
+  }
+
   private async ack(ids: string[]): Promise<void> {
     await this.redis.xack(STREAM, GROUP, ...ids);
     await this.redis.hdel(FAILURES, ...ids);
@@ -149,22 +220,26 @@ export class IngestService {
     }
   }
 
-  /** One transaction for all of `parsed`, in stream order. Returns the dead letters it wrote. */
-  private apply(parsed: Parsed[]): Promise<DeadLetter[]> {
+  /**
+   * One transaction for all of `parsed`, in stream order. Returns the dead letters it wrote and
+   * what it changed (meaningful once the transaction has committed, i.e. when this returns).
+   */
+  private apply(parsed: Parsed[]): Promise<Applied> {
     return this.prisma.$transaction(async (tx) => {
       const cameras = await this.knownCameras(tx, parsed);
       const dead: DeadLetter[] = [];
+      const changes = new Changes();
       for (const item of parsed) {
         const reason =
           'reason' in item
             ? item.reason
-            : await this.applyMessage(tx, item.message, cameras);
+            : await this.applyMessage(tx, item.message, cameras, changes);
         if (reason === undefined) continue;
         const letter = deadLetter(item.entry, reason);
         await tx.deadEvent.create({ data: letter });
         dead.push(letter);
       }
-      return dead;
+      return { dead, changes };
     });
   }
 
@@ -202,19 +277,20 @@ export class IngestService {
     tx: Tx,
     message: Message,
     cameras: Set<string>,
+    changes: Changes,
   ): Promise<string | undefined> {
     if (message.cameraId !== null && !cameras.has(message.cameraId)) {
       return `unknown camera ${message.cameraId}`;
     }
     switch (message.message) {
       case 'event':
-        return this.applyEvent(tx, message);
+        return this.applyEvent(tx, message, changes);
       case 'interval_open':
-        return this.applyOpen(tx, message);
+        return this.applyOpen(tx, message, changes);
       case 'interval_close':
-        return this.applyClose(tx, message);
+        return this.applyClose(tx, message, changes);
       case 'metric':
-        return this.applyMetric(tx, message);
+        return this.applyMetric(tx, message, changes);
       default: {
         // the envelope admits only the four kinds above; a new one must not be acked unwritten
         const unsupported: never = message;
@@ -223,7 +299,11 @@ export class IngestService {
     }
   }
 
-  private async applyEvent(tx: Tx, m: EventMessage): Promise<undefined> {
+  private async applyEvent(
+    tx: Tx,
+    m: EventMessage,
+    changes: Changes,
+  ): Promise<undefined> {
     const inserted = await tx.$executeRaw`
       INSERT INTO "Event" ("id", "time", "cameraId", "useCase", "type", "severity",
                            "configVersion", "schemaVersion", "snapshotPath", "data")
@@ -231,6 +311,10 @@ export class IngestService {
               ${m.severity}::"Severity", ${m.configVersion}::int, ${m.schemaVersion}::int,
               ${m.snapshotPath}, ${JSON.stringify(m.data)}::jsonb)
       ON CONFLICT ("id") DO NOTHING`;
+    if (inserted === 1) {
+      changes.events.push(m);
+      changes.wrote('event', m);
+    }
     // Closes the previous boot's intervals. Only a first delivery does it (a redelivered
     // engine_started must not close what the restarted engine opened since), and only intervals
     // that started before the restart (a late one, e.g. retried per entry, must not either).
@@ -240,36 +324,46 @@ export class IngestService {
       m.type === 'engine_started'
     ) {
       const { engineGroup } = m.data as { engineGroup: string };
-      await tx.$executeRaw`
+      const restarted = await tx.$executeRaw`
         UPDATE "Interval" SET "end" = ${m.time}::timestamptz, "endReason" = 'engine_restart'
          WHERE "end" IS NULL AND "useCase" <> 'system'
            AND "start" <= ${m.time}::timestamptz
            AND "cameraId" IN (SELECT "id" FROM "Camera" WHERE "engineGroup" = ${engineGroup})`;
+      if (restarted > 0) changes.wrote('interval', m);
     }
     return undefined;
   }
 
-  private async applyOpen(tx: Tx, m: IntervalOpenMessage): Promise<undefined> {
-    await tx.$executeRaw`
+  private async applyOpen(
+    tx: Tx,
+    m: IntervalOpenMessage,
+    changes: Changes,
+  ): Promise<undefined> {
+    const opened = await tx.$executeRaw`
       INSERT INTO "Interval" ("id", "cameraId", "useCase", "kind", "subjectId", "start",
                               "configVersion", "schemaVersion", "data")
       VALUES (${m.sessionId}, ${m.cameraId}, ${m.useCase}, ${m.kind}, ${m.subjectId},
               ${m.time}::timestamptz, ${m.configVersion}::int, ${m.schemaVersion}::int,
               ${JSON.stringify(m.data)}::jsonb)
       ON CONFLICT ("id") DO NOTHING`;
+    if (opened === 1) changes.wrote('interval', m);
     return undefined;
   }
 
   private async applyClose(
     tx: Tx,
     m: IntervalCloseMessage,
+    changes: Changes,
   ): Promise<string | undefined> {
     const closed = await tx.$executeRaw`
       UPDATE "Interval"
          SET "end" = ${m.time}::timestamptz, "endReason" = ${m.endReason},
              "data" = "data" || ${JSON.stringify(m.data)}::jsonb
        WHERE "id" = ${m.sessionId} AND "end" IS NULL`;
-    if (closed > 0) return undefined;
+    if (closed > 0) {
+      changes.wrote('interval', m);
+      return undefined;
+    }
     const existing = await tx.$queryRaw<unknown[]>`
       SELECT 1 FROM "Interval" WHERE "id" = ${m.sessionId}`;
     // already closed (a redelivery, or engine_restart got there first): nothing to do
@@ -278,12 +372,17 @@ export class IngestService {
       : `close for unknown interval ${m.sessionId}`;
   }
 
-  private async applyMetric(tx: Tx, m: MetricMessage): Promise<undefined> {
+  private async applyMetric(
+    tx: Tx,
+    m: MetricMessage,
+    changes: Changes,
+  ): Promise<undefined> {
     await tx.$executeRaw`
       INSERT INTO "Metric" ("cameraId", "useCase", "name", "minute", "value")
       VALUES (${m.cameraId}, ${m.useCase}, ${m.name}, ${m.time}::timestamptz,
               ${m.value}::double precision)
       ON CONFLICT ("cameraId", "name", "minute") DO UPDATE SET "value" = EXCLUDED."value"`;
+    changes.wrote('metric', m);
     return undefined;
   }
 }
