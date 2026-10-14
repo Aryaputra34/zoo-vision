@@ -74,9 +74,13 @@ services:
       SWAGGER: ${ZOO_SWAGGER:-off} # off | superadmin | public
       SITE_TIMEZONE: ${ZOO_SITE_TIMEZONE:-Asia/Jakarta} # reports and CSV times; an IANA name
       MODELS_DIR: /data/models
+      SNAPSHOT_DIR: /data/snapshots
+      # MediaMTX's playback server (the engine profile runs it on the host network, port 9996)
+      MEDIAMTX_PLAYBACK_URL: ${ZOO_MEDIAMTX_PLAYBACK_URL:-http://host.docker.internal:9996}
       JOBS: "on" # offline check every 5 s; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models
+      - ${ZOO_DATA_DIR:-./data}/snapshots:/data/snapshots:ro # written by the engine or the demo feed
     ports:
       # The loopback port is for the engine running from source and for debugging; Caddy reaches
       # the API on the compose network.

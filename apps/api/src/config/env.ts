@@ -23,6 +23,10 @@ export type Env = Readonly<{
   MODEL_UPLOAD_MAX_BYTES: number;
   /** IANA zone the reports bucket by and the CSV exports write local times in (until SiteSettings). */
   SITE_TIMEZONE: string;
+  /** The folder the engine writes event JPEGs to, as `<camera>/<date>/<event>.jpg` (read-only here). */
+  SNAPSHOT_DIR: string;
+  /** MediaMTX's playback server, e.g. http://host.docker.internal:9996; unset: clips are unavailable. */
+  MEDIAMTX_PLAYBACK_URL: string | undefined;
 }>;
 
 export class EnvError extends Error {
@@ -151,6 +155,15 @@ export function loadEnv(source: Source = process.env): Env {
       'an IANA time zone such as Asia/Jakarta',
       'Asia/Jakarta',
     ),
+    SNAPSHOT_DIR: read(
+      'SNAPSHOT_DIR',
+      text,
+      'a folder path',
+      '/data/snapshots',
+    ),
+    MEDIAMTX_PLAYBACK_URL: source.MEDIAMTX_PLAYBACK_URL
+      ? read('MEDIAMTX_PLAYBACK_URL', url('http:', 'https:'), 'an http(s) URL')
+      : undefined,
   };
 
   if (problems.length > 0) {

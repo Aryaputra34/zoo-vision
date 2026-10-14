@@ -15,12 +15,15 @@ import { createOpenApiDocument } from './openapi/swagger';
 
 /**
  * The URL layout, shared with the `openapi` script: routes live under /api/v1/... (health is
- * version-neutral at /api/health); /internal/engine/* is the Python engine's, outside the `api`
- * prefix and URI versioning.
+ * version-neutral at /api/health); /internal/engine/* is the Python engine's and /media/* the
+ * snapshots and clips, both outside the `api` prefix and URI versioning.
  */
 export function configureRoutes(app: INestApplication): void {
   app.setGlobalPrefix('api', {
-    exclude: [{ path: 'internal/{*path}', method: RequestMethod.ALL }],
+    exclude: [
+      { path: 'internal/{*path}', method: RequestMethod.ALL },
+      { path: 'media/{*path}', method: RequestMethod.ALL },
+    ],
   });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 }
