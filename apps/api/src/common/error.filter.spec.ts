@@ -12,6 +12,7 @@ import { ErrorFilter } from './error.filter';
 describe('ErrorFilter', () => {
   const res = {};
   const host = {
+    getType: () => 'http',
     switchToHttp: () => ({
       getResponse: () => res,
       getRequest: () => ({ method: 'GET', url: '/api/v1/x' }),
@@ -61,6 +62,7 @@ describe('ErrorFilter', () => {
     const { filter, reply } = setup();
     const sent = { headersSent: true, destroy: jest.fn() };
     const sentHost = {
+      getType: () => 'http',
       switchToHttp: () => ({
         getResponse: () => sent,
         getRequest: () => ({
@@ -76,6 +78,31 @@ describe('ErrorFilter', () => {
     expect(sent.destroy).toHaveBeenCalledTimes(1);
     // the cause still reaches the log
     expect(String(error.mock.calls[0]?.[0])).toContain('connection terminated');
+  });
+
+  it('an error in a WebSocket handler is logged and left to the WebSocket filter, not answered as HTTP', () => {
+    const { filter, reply } = setup();
+    const emit = jest.fn();
+    const client = { emit };
+    const wsHost = {
+      getType: () => 'ws',
+      switchToHttp: () => ({
+        getResponse: () => client,
+        getRequest: () => ({}),
+      }),
+      switchToWs: () => ({
+        getClient: () => client,
+        getData: () => ({}),
+        getPattern: () => 'subscribe',
+      }),
+      getArgs: () => [client, {}],
+      getArgByIndex: (i: number) => [client, {}][i],
+    } as unknown as ArgumentsHost;
+
+    filter.catch(new Error('join failed'), wsHost);
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(String(error.mock.calls[0]?.[0])).toContain('join failed');
   });
 
   it('an unknown Error → 500 INTERNAL whose body does not carry its text, and the stack is logged', () => {

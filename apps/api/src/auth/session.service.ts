@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS } from '../redis/redis.module';
+import { AccessEvents } from './access-events';
 import { sha256hex } from './hash';
 import { SESSION_IDLE_MS, SESSION_MAX_MS, sessionTtlMs } from './session-ttl';
 
@@ -11,7 +12,10 @@ const userKey = (userId: string) => `usess:${userId}`;
 /** Cookie sessions in Redis. Only the SHA-256 of a token is ever stored. */
 @Injectable()
 export class SessionService {
-  constructor(@Inject(REDIS) private readonly redis: Redis) {}
+  constructor(
+    @Inject(REDIS) private readonly redis: Redis,
+    private readonly access: AccessEvents,
+  ) {}
 
   /** Starts a session and returns the raw token (32 random bytes, base64url). */
   async create(
@@ -57,25 +61,47 @@ export class SessionService {
     return { userId };
   }
 
+  /**
+   * Whether the session still exists and is within its 7 days. Unlike {@link resolve} it does
+   * not slide the expiry: the gateway's 60 s recheck must not keep a session alive.
+   */
+  async isLive(hash: string): Promise<boolean> {
+    const raw = await this.redis.get(sessKey(hash));
+    if (!raw) return false;
+    const { createdAt } = JSON.parse(raw) as { createdAt: number };
+    return sessionTtlMs(createdAt, Date.now()) > 0;
+  }
+
   async destroy(token: string): Promise<void> {
     const hash = sha256hex(token);
     const raw = await this.redis.get(sessKey(hash));
     if (!raw) return;
-    await this.remove(hash, (JSON.parse(raw) as { userId: string }).userId);
+    const userId = (JSON.parse(raw) as { userId: string }).userId;
+    await this.remove(hash, userId);
+    this.access.ended$.next({ userId, sessionHash: hash, reason: 'logout' });
   }
 
-  /** Ends all of a user's sessions, except the one for `exceptToken`. */
-  async revokeAllForUser(userId: string, exceptToken?: string): Promise<void> {
+  /**
+   * Ends all of a user's sessions, except the one for `exceptToken`, and tells the gateway so
+   * their sockets close. `reason` is what those sockets are told ('disabled' for a disabled user).
+   */
+  async revokeAllForUser(
+    userId: string,
+    exceptToken?: string,
+    reason: 'revoked' | 'disabled' = 'revoked',
+  ): Promise<void> {
     const keep = exceptToken ? sha256hex(exceptToken) : undefined;
     const hashes = (await this.redis.smembers(userKey(userId))).filter(
       (h) => h !== keep,
     );
-    if (hashes.length === 0) return;
-    await this.redis
-      .multi()
-      .del(...hashes.map(sessKey))
-      .srem(userKey(userId), ...hashes)
-      .exec();
+    if (hashes.length > 0) {
+      await this.redis
+        .multi()
+        .del(...hashes.map(sessKey))
+        .srem(userKey(userId), ...hashes)
+        .exec();
+    }
+    this.access.ended$.next({ userId, keepSessionHash: keep, reason });
   }
 
   private async remove(hash: string, userId: string): Promise<void> {

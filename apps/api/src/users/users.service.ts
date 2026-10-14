@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AccessEvents } from '../auth/access-events';
 import type { Actor } from '../auth/actor';
 import { hashPassword } from '../auth/password';
 import { SessionService } from '../auth/session.service';
@@ -20,6 +21,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessions: SessionService,
+    private readonly access: AccessEvents,
   ) {}
 
   /** A manager sees USER and MANAGER accounts; a superadmin sees everyone. */
@@ -109,7 +111,16 @@ export class UsersService {
     });
 
     if (dto.active === false || passwordHash) {
-      await this.sessions.revokeAllForUser(id);
+      // the sockets of a disabled user are told "disabled"; after a password reset, "revoked"
+      await this.sessions.revokeAllForUser(
+        id,
+        undefined,
+        dto.active === false ? 'disabled' : 'revoked',
+      );
+    }
+    if (before.role !== after.role) {
+      // the session stays valid: the client reconnects and lands in the rooms of its new role
+      this.access.ended$.next({ userId: id, reason: 'role_changed' });
     }
     return { before: UserDto.from(before), after: UserDto.from(after) };
   }

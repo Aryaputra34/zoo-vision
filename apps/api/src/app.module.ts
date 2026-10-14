@@ -13,6 +13,7 @@ import { ExportsModule } from './exports/exports.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
 import { JobsModule } from './jobs/jobs.module';
+import { LiveModule } from './live/live.module';
 import { MediaModule } from './media/media.module';
 import { ModelsModule } from './models/models.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -41,6 +42,7 @@ export class AppModule {
         EngineInternalModule,
         IngestModule,
         JobsModule,
+        LiveModule,
         MediaModule,
         ModelsModule,
         ReportsModule,

@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { PassportModule } from '@nestjs/passport';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ApiTokensModule } from '../api-tokens/api-tokens.module';
+import { AccessEvents } from './access-events';
 import { ActorResolver } from './actor-resolver';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
@@ -25,6 +26,7 @@ import { SessionService } from './session.service';
   ],
   controllers: [AuthController],
   providers: [
+    AccessEvents,
     ActorResolver,
     AuthService,
     SessionService,
@@ -37,6 +39,6 @@ import { SessionService } from './session.service';
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [ActorResolver, SessionService, LockoutService],
+  exports: [AccessEvents, ActorResolver, SessionService, LockoutService],
 })
 export class AuthModule {}
