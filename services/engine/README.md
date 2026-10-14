@@ -103,6 +103,16 @@ To add a use case:
 2. Create `usecases/<id>/pipeline.py` with the pipeline class.
 3. Add tests under `tests/`.
 
+## The `live` contract
+
+What a pipeline puts in `cam:{id}:status` under `live` (the counters the Live page shows) is typed per use case:
+`packages/contracts/usecases/<id>/live.schema.json`. Every field is optional and extra fields are allowed, so a
+pipeline can add one without breaking the dashboard; to give the dashboard a new field, add it to the schema and
+run `npm run generate` there.
+
+`tests/test_live_contract.py` runs each pipeline on the detections its other tests use and validates the payload
+of `get_dict()` against its schema, so a renamed or mistyped field fails here, not on the dashboard.
+
 ## Test and lint
 
 ```bash

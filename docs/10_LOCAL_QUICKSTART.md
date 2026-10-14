@@ -11,7 +11,7 @@ every phase; the full operator manual comes in Phase 5.
 | Part | Repo / folder | Port | Talks to |
 | :--- | :--- | :--- | :--- |
 | MediaMTX | `zoo-vision` root, config `deploy/mediamtx.yml` | 8554 RTSP, 9996 clips | FFmpeg loops in, engine and dashboard out |
-| Engine | `zoo-vision/services/engine` | 8000 (preview, snapshots) | fetches its cameras from the API and applies changes live; reads RTSP from MediaMTX; sends events to the API's Redis stream (the dashboard gets none until Phase 3) |
+| Engine | `zoo-vision/services/engine` | 8000 (preview, snapshots) | fetches its cameras from the API and applies changes live; reads RTSP from MediaMTX; sends events to the API's Redis stream, which the API stores and pushes to the dashboard over the WebSocket (Phase 3) |
 | Dashboard | `zoo-vision-fe` | 3000 | shows the engine's live preview; receives no events until Phase 3; proxies the engine API and MediaMTX clips |
 
 ## One-time setup
@@ -220,6 +220,51 @@ docker compose exec redis sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warnin
 
 Stop the stack with `docker compose stop api redis postgres`, start it again with `docker compose start postgres redis api`.
 Data stays in the `pgdata` and `redisdata` volumes; `docker compose down -v` deletes it.
+
+## Phase 3: behind Caddy on port 8080, with the demo stack next to the real engine
+
+From Phase 3 the browser talks to one address, Caddy, which sends `/api`, `/media` and `/ws` to the API and
+everything else to the dashboard. On this laptop Apache holds ports 80 and 443, so use 8080.
+
+`deploy\.env` (next to the secrets from the Backend section):
+
+```
+ZOO_HTTP_PORT=8080
+ZOO_CADDY_MODE=dev
+ZOO_COOKIE_SECURE=false
+ZOO_WEB_UPSTREAM=host.docker.internal:3000     # `npm run dev` of zoo-vision-fe on this machine
+ZOO_SWAGGER=superadmin                         # /api/docs for a superadmin login or a superadmin API token
+ZOO_DEMO=on                                    # only if you want the demo cameras and users
+DEMO_PASSWORD=<at least 10 characters>
+```
+
+```powershell
+cd deploy
+docker compose --profile demo up -d --build postgres redis api-migrate api caddy demo-seed demo-feed
+cd ..\apps\api
+npm run smoke -- http://localhost:8080          # with $env:DEMO_PASSWORD set it also checks the WebSocket
+```
+
+Open http://localhost:8080 (never :3000). `demo-user`, `demo-manager` and `demo-superadmin` log in with
+`DEMO_PASSWORD`; the five `demo_*` cameras are in engine group `demo`.
+
+**The real engine next to it** (group `default`, from source on the GPU):
+
+```powershell
+cd services\engine
+$env:ENGINE_GROUP = "default"
+$env:DEVICE = "cuda:0"
+$env:API_URL = "http://127.0.0.1:3001"          # the API's loopback port, ZOO_API_PORT
+$env:ENGINE_TOKEN = "<the ENGINE_TOKEN of deploy\.env>"
+$env:REDIS_URL = "redis://:<REDIS_PASSWORD>@127.0.0.1:6379/0"   # or your ZOO_REDIS_PORT
+$env:SNAPSHOT_DIR = "..\..\deploy\data\snapshots"            # the folder the API serves /media/snapshots from
+$env:ZOO_MODELS_DIR = "..\..\deploy\data\models"
+uv run python main.py
+```
+
+Add its cameras through `POST /api/v1/cameras` (sourceType `FILE` with a path for a video file, engine group
+`default`). Two cameras with the same model share one loaded instance, so GPU memory does not double; keep to 2 or
+3 cameras on the 4 GB card.
 
 ## Check that it works (no cameras needed)
 

@@ -49,6 +49,49 @@ Every host port is a variable in `.env`. Change one when the default is taken.
 
 MediaMTX and the engine use host networking, so their ports are changed in their own settings.
 
+## Variables added in Phase 3
+
+Set in `.env` (see `.env.example`); Compose passes them to the API as the variable named in the last column.
+
+| Variable | Default | API variable | What |
+|---|---|---|---|
+| `COMPOSE_PROFILES` | none | | Which optional services start (see Profiles) |
+| `ZOO_HTTP_PORT`, `ZOO_HTTPS_PORT`, `ZOO_API_PORT`, `ZOO_REDIS_PORT`, `ZOO_BIND_ADDR` | see Ports | | Host ports and the bind address |
+| `ZOO_CADDY_MODE`, `ZOO_SITE_ADDRESS`, `ZOO_WEB_UPSTREAM`, `ZOO_WEB_DIR` | `internal-tls`, `localhost`, `web:3000`, `../../zoo-vision-fe` | | Caddy and the dashboard |
+| `ZOO_COOKIE_SECURE` | `true` | `COOKIE_SECURE` | `false` only for plain http in development |
+| `ZOO_SWAGGER` | `off` | `SWAGGER` | `off`, `superadmin` or `public` (development only) |
+| `ZOO_SITE_TIMEZONE` | `Asia/Jakarta` | `SITE_TIMEZONE` | The IANA zone reports bucket by and CSV files write local times in. Zones that shift their clocks at midnight or by 30 minutes are not supported |
+| `ZOO_MEDIAMTX_PLAYBACK_URL` | `http://host.docker.internal:9996` | `MEDIAMTX_PLAYBACK_URL` | Where the API asks MediaMTX for event clips. Set but empty: clips answer `RECORDING_NOT_AVAILABLE`. The API logs a warning when playback is unreachable |
+| `ZOO_DEMO`, `DEMO_PASSWORD` | off | | Only for the demo profile (below) |
+| | | `SNAPSHOT_DIR` | Fixed to `/data/snapshots` (`$ZOO_DATA_DIR/snapshots`, mounted read-only) |
+
+`INGEST` and `JOBS` (API) are unchanged and stay on in the one API container.
+
+Two things in the API need no variable: the WebSocket at `/ws` (Caddy forwards the upgrade) and the `audit_camera`
+migration, which `api-migrate` applies on the next `docker compose up -d --build api-migrate api`.
+
+## The demo stack
+
+The profile `demo` plays the engine's part for five demo cameras (one per use case, engine group `demo`) so the
+frontend can be built without a GPU or a camera. It needs `ZOO_DEMO=on` and `DEMO_PASSWORD` (at least 10
+characters) in `.env`; `.env.demo.example` is a complete file for it.
+
+```bash
+docker compose --profile demo up -d --build postgres redis api-migrate api caddy demo-seed demo-feed
+```
+
+- `demo-seed` creates the five cameras and the users `demo-superadmin`, `demo-manager` and `demo-user` (all with
+  `DEMO_PASSWORD`), once. It refuses to run without `ZOO_DEMO=on`.
+- `demo-feed` writes 14 days of history into the `events` stream once per Redis volume (its events have no
+  snapshots), then live events, intervals and metrics, `cam:<id>:status` every 5 s and a still in `cam:<id>:frame`
+  every 2 s; one camera goes silent for 2 minutes every 10 minutes. It follows `cfg:changed` and reports the new
+  `appliedVersion`, so Saved to Applied works. Live demo events get snapshots in `$ZOO_DATA_DIR/snapshots`
+  (about 80 MB a day, never pruned).
+- The users have a **public password**: keep `ZOO_BIND_ADDR=127.0.0.1` on a machine that other people can reach.
+  The demo cameras and users stay in the database they were created in (`down -v` removes them).
+- It runs next to a real engine: the engine group is `default`, the demo's is `demo`, so neither runs the
+  other's cameras.
+
 ## Profiles
 
 `COMPOSE_PROFILES` in `.env` decides which optional services start. `postgres`, `redis`, `api-migrate`, `api` and
@@ -88,7 +131,9 @@ Certificate, Local Machine, Trusted Root Certification Authorities).
 ## Checking the front door
 
 From `apps/api`: `npm run smoke -- http://localhost:8080` (use your `ZOO_HTTP_PORT`). It checks `/api/health`
-through Caddy, that `/internal/engine/*` is a 404 and that the security headers are set.
+through Caddy, that `/internal/engine/*` is a 404 and that the security headers are set. With
+`DEMO_PASSWORD` set (the demo stack) it also logs in as `demo-user`, opens the WebSocket at `/ws` through Caddy,
+subscribes to `status` and waits for a `status.snapshot`.
 
 ## First run
 

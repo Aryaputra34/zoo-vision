@@ -31,6 +31,9 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `JOBS` | `on` (default) or `off`: whether this process runs background jobs (the camera offline check, every 5 s) |
 | `MODELS_DIR` | default `/data/models`: the AI models folder (`inbox/`, `registry/`, built-ins in the root), shared with the engine |
 | `MODEL_UPLOAD_MAX_BYTES` | default 1 GiB: the largest ONNX file the web upload accepts |
+| `SITE_TIMEZONE` | default `Asia/Jakarta`: the IANA zone report buckets and CSV times use (`Region/City` form) |
+| `SNAPSHOT_DIR` | default `/data/snapshots`: where the engine writes event JPEGs; read-only here, served at `/media/snapshots/...` |
+| `MEDIAMTX_PLAYBACK_URL` | optional http(s) URL of MediaMTX's playback server; unset: `/media/clips/:eventId` answers `RECORDING_NOT_AVAILABLE` |
 
 The Prisma CLI reads only `DATABASE_MIGRATE_URL` (Postgres as the owner role `zoo_owner`), from
 `prisma.config.ts`. The running API never has the owner password.
@@ -50,6 +53,45 @@ All under `/api/v1` unless noted; the roles are in `docs/fe-contract.md`. Every 
 | Live state | `GET /camera-status`, `GET /cameras/:id/status`, `GET /cameras/:id/frame` |
 | Models | `GET/POST /models`, `POST /models/rescan`, `GET/DELETE /models/:id`, `POST /models/:id/validate`, `POST /models/:id/convert` |
 | Users, tokens | `GET/POST /users`, `PATCH /users/:id`, `GET/POST /api-tokens`, `DELETE /api-tokens/:id` |
+| Reports | `GET /reports/events/stats`, `/reports/intervals/stats`, `/reports/metrics/series` |
+| Lists | `GET /events`, `GET /intervals` (cursor paged) |
+| CSV | `GET /exports/events.csv`, `intervals.csv`, `metrics.csv`, `summary.csv` (streamed, audited) |
+| System log (MANAGER+) | `GET /system-log/audit`, `/logins`, `/system-events` and their `.csv` |
+| Media (`/media`, outside `/api/v1`) | `GET /media/snapshots/<camera>/<date>/<event>.jpg`, `GET /media/clips/:eventId` |
+
+## Modules
+
+`src/<module>/`, each a Nest module:
+
+| Module | What |
+|---|---|
+| `auth`, `users`, `api-tokens` | Cookie sessions in Redis, roles, API tokens, `AccessEvents` (who ended whose session) |
+| `cameras`, `models`, `usecases` | Cameras and their versioned config, the AI model registry, the use case contracts |
+| `engine-internal`, `ingest`, `jobs` | The engine's routes, the Redis stream into Postgres (and `committed$`), the offline check |
+| `reports`, `exports`, `system-log` | Aggregates and lists, streamed CSV, audit and login history |
+| `media` | Snapshots and clips behind the session |
+| `live` | The WebSocket gateway, the status ticker, the push after each ingest commit, audit notices |
+| `audit`, `common`, `config`, `contracts`, `openapi`, `demo` | Audit trail, the error filter and codes, env, contract loading, `openapi.json`, the demo feeder |
+
+## Error codes
+
+One body shape, `{statusCode, code, message, errors?}`, from `src/common/errors.ts` (`ERROR_CODES`). Throw with
+`apiError(status, code, message, errors?)`. The codes and what the UI does for each are in `docs/fe-contract.md`
+section 4.
+
+## WebSocket
+
+socket.io at `/ws`, WebSocket transport only, session cookie only (API tokens are refused), an `Origin` whose host
+differs from `Host` is refused. Rooms: `alerts` (everyone), `managers` (MANAGER and SUPERADMIN), `status` (on
+request), `user:<id>`. Messages are in `packages/contracts/ws/` and `generated/web/index.d.ts`.
+
+- `status.snapshot` every 2 s while the `status` room has members (`live/status-broadcaster.ts`).
+- `event.created` per new event and `data.changed` at most every 5 s, after each ingest commit
+  (`ingest/ingest.service.ts` `committed$` to `live/ingest-push.ts`, `live/change-merger.ts`).
+- `audit.notice` to `managers` for a change to an `auditCamera` camera (`audit/audit.service.ts` `auditCamera$`).
+- `session.ended {reason}` then a disconnect, from `AccessEvents` and the 60 s `recheck()`.
+
+The gateway never touches ingest: every subscriber catches its own errors.
 
 ## OpenAPI document
 
