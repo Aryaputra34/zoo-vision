@@ -437,6 +437,8 @@ export type DemoState = {
   lastNow: number | null;
   planDate: string | null;
   items: Timed[];
+  /** The next plan item not yet due (the plan is in time order). */
+  cursor: number;
   /** Session id -> the interval_open message, until its close is emitted. */
   open: Map<string, Message>;
   counters: {
@@ -457,6 +459,7 @@ export function newDemoState(): DemoState {
     lastNow: null,
     planDate: null,
     items: [],
+    cursor: 0,
     open: new Map(),
     counters: { in: 0, out: 0, departures: 0, returns: 0, sessions: new Map() },
     metrics: new Map(),
@@ -499,10 +502,53 @@ function track(state: DemoState, msg: Message): void {
   }
 }
 
+/** A gap between two calls longer than this means the feed was not running (a laptop that slept). */
+const DOWNTIME_MS = 60_000;
+
+/** The message as the camera is configured when it is sent, not when the day's plan was drawn. */
+const stamp = (msg: Message, camera: EngineCamera): Message => ({
+  ...msg,
+  schemaVersion: camera.schemaVersion,
+  configVersion: camera.version,
+});
+
+/**
+ * Closes every interval this feed has sent and not closed, at `atMs` (never before its open), and
+ * forgets them. `engine_stop` is a camera or the feed stopping; `config_change` is the camera leaving
+ * the engine group.
+ */
+export function closeOpen(
+  state: DemoState,
+  camera: EngineCamera,
+  atMs: number,
+  reason: 'engine_stop' | 'config_change',
+): Message[] {
+  const closes = [...state.open.values()].map((open) => ({
+    message: 'interval_close',
+    cameraId: camera.id,
+    useCase: camera.useCase,
+    schemaVersion: camera.schemaVersion,
+    configVersion: camera.version,
+    time: iso(Math.max(atMs, new Date(open.time as string).getTime())),
+    sessionId: open.sessionId,
+    kind: open.kind,
+    endReason: reason,
+    data: {},
+  }));
+  state.open.clear();
+  state.deskOpen = false;
+  return closes;
+}
+
 /**
  * What is due now: the messages of today's plan with time in (the previous call, now]. The first
  * call only starts the clock, so nothing from before the feed started is emitted. A new local day
  * draws a new plan from `rng`.
+ *
+ * What it returns is consistent with what it returned before: an interval is closed only if its open
+ * was sent, and an interval left open when the camera stops (`silent`: the demo's outage; a gap
+ * between calls: the feed was not running; a new day) is closed with `engine_stop` at the last
+ * tick the camera was alive. While `silent` nothing else is sent.
  */
 export function liveMessages(
   camera: EngineCamera,
@@ -510,20 +556,64 @@ export function liveMessages(
   state: DemoState,
   rng: Rng,
   tz: string,
+  silent = false,
 ): Message[] {
   const nowMs = now.getTime();
-  const date = localDate(nowMs, tz);
   const last = state.lastNow ?? nowMs;
+  const out: Message[] = [];
+  const down = nowMs - last > DOWNTIME_MS;
+  const date = localDate(nowMs, tz);
+
+  if (down || state.planDate !== date) {
+    out.push(...closeOpen(state, camera, last, 'engine_stop'));
+  }
   if (state.planDate !== date) {
     state.planDate = date;
     state.items = planDay(camera, localDayStart(nowMs, tz), rng);
+    state.cursor = 0;
     state.counters = newDemoState().counters;
     state.metrics = new Map();
   }
-  const due = state.items.filter((i) => i.t > last && i.t <= nowMs);
   state.lastNow = nowMs;
-  for (const { msg } of due) track(state, msg);
-  return due.map(({ msg }) => msg);
+
+  // skip what is not due: before the previous tick, or the whole gap when the feed was not running
+  const from = down ? nowMs : last;
+  while (
+    state.cursor < state.items.length &&
+    state.items[state.cursor].t <= from
+  ) {
+    state.cursor += 1;
+  }
+
+  if (silent) {
+    out.push(...closeOpen(state, camera, last, 'engine_stop'));
+    while (
+      state.cursor < state.items.length &&
+      state.items[state.cursor].t <= nowMs
+    ) {
+      state.cursor += 1;
+    }
+    return out;
+  }
+
+  while (
+    state.cursor < state.items.length &&
+    state.items[state.cursor].t <= nowMs
+  ) {
+    const { msg } = state.items[state.cursor];
+    state.cursor += 1;
+    // its open fell in a silence, or before the feed started: a close with no open is not sent
+    if (
+      msg.message === 'interval_close' &&
+      !state.open.has(msg.sessionId as string)
+    ) {
+      continue;
+    }
+    const sent = stamp(msg, camera);
+    track(state, sent);
+    out.push(sent);
+  }
+  return out;
 }
 
 /** The `live` values of the camera's use case, from what the live feed has emitted so far. */

@@ -25,7 +25,9 @@ Then work on the dashboard with `npm run dev` and hot reload.
    cp .env.demo.example .env
    ```
 
-   Every secret in it is fixed and public. It is for your machine only, never for a real site.
+   Every secret in it is fixed and public. It is for your machine only, never for a real site. Caddy is
+   published on `127.0.0.1` (`ZOO_BIND_ADDR`), so other machines on your network cannot log in with the demo
+   passwords; set it to `0.0.0.0` only to show the demo to a colleague.
 
 3. Start the backend:
 

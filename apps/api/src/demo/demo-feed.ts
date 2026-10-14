@@ -8,6 +8,7 @@ import Redis from 'ioredis';
 import type { EngineCamera } from '../engine-internal/engine-cameras.service';
 import { DEMO_GROUP } from './demo-cameras';
 import {
+  closeOpen,
   type DemoState,
   historyMessages,
   liveMessages,
@@ -30,7 +31,58 @@ export type DemoFeedOptions = {
   seed: number;
   tz: string;
   signal: AbortSignal;
+  /**
+   * Every `everyMs` the next camera (by id) sends nothing for `forMs`: offline intervals and the
+   * offline UI get exercised. Default 10 min / 2 min; `false` switches it off (tests).
+   */
+  silence?: false | { everyMs: number; forMs: number };
+  /** How often the camera list is fetched again without a notice (default 30 s). */
+  resyncEveryMs?: number;
 };
+
+const DEFAULT_SILENCE = { everyMs: 10 * 60_000, forMs: 2 * 60_000 };
+const DEFAULT_RESYNC_MS = 30_000;
+
+/** Whether camera `index` of `count` (ordered by id) is silent at `nowMs`. */
+export function isSilent(
+  index: number,
+  count: number,
+  nowMs: number,
+  silence: false | { everyMs: number; forMs: number },
+): boolean {
+  if (silence === false || count === 0) return false;
+  const slot = Math.floor(nowMs / silence.everyMs);
+  return (
+    slot % count === index && nowMs - slot * silence.everyMs < silence.forMs
+  );
+}
+
+/**
+ * Wraps an async function so that a call made while it runs makes it run once more afterwards, and
+ * several such calls make one more run: a notice that arrives mid-refresh is never lost.
+ */
+export function coalescing(fn: () => Promise<void>): () => void {
+  let running = false;
+  let again = false;
+  const run = async (): Promise<void> => {
+    running = true;
+    try {
+      do {
+        again = false;
+        await fn();
+      } while (again);
+    } finally {
+      running = false;
+    }
+  };
+  return () => {
+    if (running) {
+      again = true;
+      return;
+    }
+    void run();
+  };
+}
 
 const STREAM = 'events';
 const STREAM_MAXLEN = 1_000_000;
@@ -40,9 +92,6 @@ const STATUS_EVERY_MS = 5_000;
 const STATUS_TTL_MS = 15_000;
 const FRAME_EVERY_MS = 2_000;
 const FRAME_TTL_MS = 10_000;
-/** Every 10 minutes the next camera (by id) goes silent for 2 minutes: offline intervals and UI. */
-const SILENCE_EVERY_MS = 10 * 60_000;
-const SILENCE_FOR_MS = 2 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const BACKFILL_BATCH = 1_000;
 
@@ -71,8 +120,8 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
   const states = new Map<string, DemoState>();
   const liveRngs = new Map<string, Rng>();
   const frames = new Map<string, Buffer | null>();
+  const silence = opts.silence === undefined ? DEFAULT_SILENCE : opts.silence;
   let cameras: EngineCamera[] = [];
-  let refreshing: Promise<void> | null = null;
   let stopped = false;
 
   const frameOf = async (useCase: string): Promise<Buffer | null> => {
@@ -141,19 +190,13 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
     }
   }
 
-  const isSilent = (index: number, nowMs: number): boolean => {
-    const slot = Math.floor(nowMs / SILENCE_EVERY_MS);
-    return (
-      cameras.length > 0 &&
-      slot % cameras.length === index &&
-      nowMs - slot * SILENCE_EVERY_MS < SILENCE_FOR_MS
-    );
-  };
+  const silentAt = (index: number, nowMs: number): boolean =>
+    isSilent(index, cameras.length, nowMs, silence);
 
   async function publishStatus(now: Date): Promise<void> {
     const pipeline = redis.pipeline();
     cameras.forEach((camera, i) => {
-      if (isSilent(i, now.getTime())) return;
+      if (silentAt(i, now.getTime())) return;
       const state = states.get(camera.id) ?? newDemoState();
       pipeline.hset(
         statusKey(camera.id),
@@ -166,7 +209,7 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
 
   async function publishFrames(now: Date): Promise<void> {
     for (const [i, camera] of cameras.entries()) {
-      if (isSilent(i, now.getTime())) continue;
+      if (silentAt(i, now.getTime())) continue;
       const jpeg = await frameOf(camera.useCase);
       if (jpeg) await redis.set(frameKey(camera.id), jpeg, 'PX', FRAME_TTL_MS);
     }
@@ -191,7 +234,21 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
     }
   }
 
-  const adopt = (found: EngineCamera[]) => {
+  /**
+   * Takes the camera list the API just gave. A camera that left the group (disabled or deleted)
+   * has its open intervals closed with `config_change` and its status removed, like the engine.
+   */
+  async function adopt(found: EngineCamera[]): Promise<void> {
+    const gone = cameras.filter((c) => !found.some((f) => f.id === c.id));
+    const closes: Message[] = [];
+    for (const camera of gone) {
+      const state = states.get(camera.id);
+      if (state) {
+        closes.push(...closeOpen(state, camera, Date.now(), 'config_change'));
+      }
+      states.delete(camera.id);
+      liveRngs.delete(camera.id);
+    }
     cameras = [...found].sort((a, b) => (a.id < b.id ? -1 : 1));
     for (const camera of cameras) {
       if (!states.has(camera.id)) states.set(camera.id, newDemoState());
@@ -202,32 +259,38 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
         );
       }
     }
-  };
+    if (gone.length > 0) {
+      await send(closes);
+      await redis.del(...gone.map((c) => statusKey(c.id)));
+    }
+  }
 
-  /** cfg:changed: fetch the cameras again so appliedVersion follows the save at once. */
-  const refresh = (): void => {
-    if (refreshing || stopped) return;
-    refreshing = (async () => {
+  /**
+   * cfg:changed, a reconnect and a timer all end here: fetch the cameras again so appliedVersion and
+   * configVersion follow the save. A notice that arrives mid-refresh runs it once more.
+   */
+  const refresh = coalescing(async () => {
+    try {
       const found = await fetchCameras();
       if (found && !stopped) {
-        adopt(found);
+        await adopt(found);
         await publishStatus(new Date());
       }
-    })()
-      .catch((err: Error) => log.warn(`refresh failed: ${err.message}`))
-      .finally(() => {
-        refreshing = null;
-      });
-  };
+    } catch (err) {
+      log.warn(`refresh failed: ${(err as Error).message}`);
+    }
+  });
 
   try {
     const found = await waitForCameras();
     if (opts.signal.aborted) return;
-    adopt(found);
+    await adopt(found);
     log.log(`playing the engine for ${cameras.length} demo cameras`);
 
     await subscriber.subscribe('cfg:changed');
     subscriber.on('message', refresh);
+    // a re-subscribe after a Redis restart may have missed notices: fetch again, as the engine does
+    subscriber.on('ready', refresh);
 
     await send([
       {
@@ -268,6 +331,8 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
 
     let lastStatus = Date.now();
     let lastFrame = 0;
+    let lastResync = Date.now();
+    const resyncEveryMs = opts.resyncEveryMs ?? DEFAULT_RESYNC_MS;
     while (!opts.signal.aborted) {
       const now = new Date();
       const nowMs = now.getTime();
@@ -275,9 +340,15 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
       for (const [i, camera] of cameras.entries()) {
         const state = states.get(camera.id) ?? newDemoState();
         const rng = liveRngs.get(camera.id) ?? Math.random;
-        // the clock runs while a camera is silent; what it would have sent is lost, as when an engine is down
-        const due = liveMessages(camera, now, state, rng, opts.tz);
-        if (isSilent(i, nowMs)) continue;
+        // while silent the camera sends nothing, but its open intervals end (engine_stop)
+        const due = liveMessages(
+          camera,
+          now,
+          state,
+          rng,
+          opts.tz,
+          silentAt(i, nowMs),
+        );
         for (const msg of due) await attachSnapshot(camera, msg);
         out.push(...due);
       }
@@ -290,6 +361,10 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
         await publishFrames(now);
         lastFrame = nowMs;
       }
+      if (nowMs - lastResync >= resyncEveryMs) {
+        refresh();
+        lastResync = nowMs;
+      }
       await sleep(1_000 - (Date.now() % 1_000), undefined, {
         signal: opts.signal,
       }).catch(() => undefined);
@@ -300,24 +375,11 @@ export async function runDemoFeed(opts: DemoFeedOptions): Promise<void> {
     stopped = true;
     // like the engine on a clean stop: close what is open, and let the cameras read as offline
     try {
-      const now = new Date();
+      const now = Date.now();
       const closes: Message[] = [];
-      for (const state of states.values()) {
-        for (const open of state.open.values()) {
-          closes.push({
-            message: 'interval_close',
-            cameraId: open.cameraId,
-            useCase: open.useCase,
-            schemaVersion: open.schemaVersion,
-            configVersion: open.configVersion,
-            time: now.toISOString(),
-            sessionId: open.sessionId,
-            kind: open.kind,
-            endReason: 'engine_stop',
-            data: {},
-          });
-        }
-        state.open.clear();
+      for (const camera of cameras) {
+        const state = states.get(camera.id);
+        if (state) closes.push(...closeOpen(state, camera, now, 'engine_stop'));
       }
       if (redis.status === 'ready') {
         await send(closes);

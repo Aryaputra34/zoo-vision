@@ -18,12 +18,28 @@ Container names are not fixed: Compose prefixes them with the project name (`zoo
 `COMPOSE_PROJECT_NAME` in `.env`), so two stacks can share a server. Use `docker compose exec api ...` rather than
 `docker exec <name>`.
 
+## Upgrading a stack from before Phase 3
+
+Phase 3 sets the Compose project name to `zoo-vision` (it was the folder name, `deploy`) and removes the fixed
+container names. On the first `docker compose up` after pulling:
+
+- **The new project has empty volumes** (`zoo-vision_pgdata`, `zoo-vision_redisdata`). The old data is not deleted:
+  it stays in `deploy_pgdata` and `deploy_redisdata`. To keep using it, add `COMPOSE_PROJECT_NAME=deploy` to
+  `.env` before you start. To move to the new name instead, take a backup first (see below) and restore it into
+  the new stack.
+- **The old containers (`zoo_api`, `zoo_postgres`, ...) keep their ports.** Run `docker compose stop` with the
+  old file (or `docker stop zoo_api zoo_redis zoo_postgres`) before the first start, or the API's loopback port
+  is taken.
+- Caddy is new and is the only service on the public ports; set `ZOO_HTTP_PORT` and the Caddy variables in `.env`
+  (see Ports and Caddy modes).
+
 ## Ports
 
 Every host port is a variable in `.env`. Change one when the default is taken.
 
 | Variable | Default | What |
 |---|---|---|
+| `ZOO_BIND_ADDR` | `0.0.0.0` | The host address Caddy's ports are published on. `127.0.0.1` keeps a development stack (public demo logins) off the LAN |
 | `ZOO_HTTP_PORT` | 80 | Caddy, http. The dashboard is opened here. Caddy listens on the same number inside the container |
 | `ZOO_HTTPS_PORT` | 443 | Caddy, https |
 | `ZOO_API_PORT` | 3001 | The API, on `127.0.0.1` only: for the engine run from source and for debugging |

@@ -2,6 +2,7 @@ import { createValidator, loadRegistry } from '@zoo-vision/contracts';
 import type { EngineCamera } from '../engine-internal/engine-cameras.service';
 import { DEMO_CAMERAS } from './demo-cameras';
 import {
+  type DemoState,
   historyMessages,
   liveMessages,
   liveStatusFields,
@@ -219,5 +220,198 @@ describe('demo generators', () => {
       expect(validator.validateLive(c.useCase, live)).toEqual({ ok: true });
       expect(Object.keys(live as object).length).toBeGreaterThan(0);
     }
+  });
+
+  describe('what the live feed has sent stays consistent', () => {
+    const at = (iso: string) => new Date(iso).getTime();
+    type Sent = { tick: number; msg: Message };
+
+    /** Calls liveMessages every 5 s from `from` to `to` (inclusive), like the feed's loop. */
+    function drive(
+      c: EngineCamera,
+      state: DemoState,
+      rng: () => number,
+      from: number,
+      to: number,
+      sent: Sent[],
+      opts: {
+        silent?: [number, number][];
+        cameraAt?: (ms: number) => EngineCamera;
+      } = {},
+    ): void {
+      for (let t = from; t <= to; t += 5_000) {
+        const silent = (opts.silent ?? []).some(([a, b]) => t >= a && t < b);
+        const camera = opts.cameraAt?.(t) ?? c;
+        for (const msg of liveMessages(
+          camera,
+          new Date(t),
+          state,
+          rng,
+          TZ,
+          silent,
+        )) {
+          sent.push({ tick: t, msg });
+        }
+      }
+    }
+
+    /** Closes whose open was never sent before them. */
+    const orphanCloses = (sent: Sent[]): string[] => {
+      const opened = new Set<string>();
+      const bad: string[] = [];
+      for (const { msg } of sent) {
+        if (msg.message === 'interval_open') {
+          opened.add(msg.sessionId as string);
+        }
+        if (
+          msg.message === 'interval_close' &&
+          !opened.has(msg.sessionId as string)
+        ) {
+          bad.push(msg.sessionId as string);
+        }
+      }
+      return bad;
+    };
+    /** Opens that were sent and never closed. */
+    const leftOpen = (sent: Sent[]): string[] => {
+      const open = new Set<string>();
+      for (const { msg } of sent) {
+        if (msg.message === 'interval_open') open.add(msg.sessionId as string);
+        if (msg.message === 'interval_close') {
+          open.delete(msg.sessionId as string);
+        }
+      }
+      return [...open];
+    };
+    const withIntervals = ['restaurant_table', 'cashier_presence'];
+
+    it('started at midday: no interval_close for an open that was never sent', () => {
+      for (const useCase of withIntervals) {
+        const c = camera(useCase);
+        const sent: Sent[] = [];
+        drive(
+          c,
+          newDemoState(),
+          mulberry32(5),
+          at('2026-10-14T12:00:00+07:00'),
+          at('2026-10-14T14:00:00+07:00'),
+          sent,
+        );
+        expect({ useCase, orphans: orphanCloses(sent) }).toEqual({
+          useCase,
+          orphans: [],
+        });
+      }
+    });
+
+    it('a silence ends the open intervals (engine_stop) at its start and drops what falls inside it', () => {
+      const c = camera('restaurant_table');
+      const sent: Sent[] = [];
+      const silence: [number, number][] = [
+        [at('2026-10-14T12:30:00+07:00'), at('2026-10-14T12:33:00+07:00')],
+        [at('2026-10-14T13:10:00+07:00'), at('2026-10-14T13:12:00+07:00')],
+      ];
+      drive(
+        c,
+        newDemoState(),
+        mulberry32(5),
+        at('2026-10-14T12:00:00+07:00'),
+        at('2026-10-14T14:00:00+07:00'),
+        sent,
+        { silent: silence },
+      );
+
+      expect(orphanCloses(sent)).toEqual([]);
+      const stops = sent.filter(({ msg }) => msg.endReason === 'engine_stop');
+      expect(stops.length).toBeGreaterThan(0);
+      for (const { tick, msg } of stops) {
+        // sent in the first silent tick, stamped at the last tick the camera was alive
+        expect(silence.some(([a]) => tick === a)).toBe(true);
+        expect(new Date(msg.time as string).getTime()).toBeLessThan(tick);
+      }
+      // nothing at all is sent while it is silent, apart from those closes
+      const inside = sent.filter(({ tick }) =>
+        silence.some(([a, b]) => tick >= a && tick < b),
+      );
+      expect(inside.every(({ msg }) => msg.endReason === 'engine_stop')).toBe(
+        true,
+      );
+    });
+
+    it('a new local day closes what the old plan left open, at the last tick the camera was alive', () => {
+      const c = camera('restaurant_table');
+      const state = newDemoState();
+      const rng = mulberry32(5);
+      const sent: Sent[] = [];
+      const lastAlive = at('2026-10-14T12:00:00+07:00');
+      drive(c, state, rng, at('2026-10-14T09:00:00+07:00'), lastAlive, sent);
+      expect(state.open.size).toBeGreaterThan(0);
+
+      // the laptop slept overnight
+      drive(
+        c,
+        state,
+        rng,
+        at('2026-10-15T09:00:00+07:00'),
+        at('2026-10-15T17:30:00+07:00'),
+        sent,
+      );
+
+      const stops = sent.filter(({ msg }) => msg.endReason === 'engine_stop');
+      expect(stops.length).toBeGreaterThan(0);
+      expect(
+        stops.every(
+          ({ msg }) => new Date(msg.time as string).getTime() === lastAlive,
+        ),
+      ).toBe(true);
+      expect(orphanCloses(sent)).toEqual([]);
+      expect(leftOpen(sent)).toEqual([]);
+      expect(state.open.size).toBe(0);
+    });
+
+    it('a whole opening day leaves nothing open at 17:00, for every use case', () => {
+      for (const c of cameras) {
+        const sent: Sent[] = [];
+        drive(
+          c,
+          newDemoState(),
+          mulberry32(9),
+          at('2026-10-14T07:59:00+07:00'),
+          at('2026-10-14T17:05:00+07:00'),
+          sent,
+        );
+        expect({ id: c.id, orphans: orphanCloses(sent) }).toEqual({
+          id: c.id,
+          orphans: [],
+        });
+        expect({ id: c.id, open: leftOpen(sent) }).toEqual({
+          id: c.id,
+          open: [],
+        });
+      }
+    });
+
+    it('configVersion and schemaVersion follow the camera as it is when a message is sent', () => {
+      const c = camera('vehicle_gate');
+      const switchAt = at('2026-10-14T10:00:00+07:00');
+      const v2: EngineCamera = { ...c, version: 2, schemaVersion: 1 };
+      const sent: Sent[] = [];
+      drive(
+        c,
+        newDemoState(),
+        mulberry32(5),
+        at('2026-10-14T09:00:00+07:00'),
+        at('2026-10-14T11:00:00+07:00'),
+        sent,
+        { cameraAt: (t) => (t >= switchAt ? v2 : c) },
+      );
+
+      const before = sent.filter(({ tick }) => tick < switchAt);
+      const after = sent.filter(({ tick }) => tick >= switchAt);
+      expect(before.length).toBeGreaterThan(0);
+      expect(after.length).toBeGreaterThan(0);
+      expect(before.every(({ msg }) => msg.configVersion === 1)).toBe(true);
+      expect(after.every(({ msg }) => msg.configVersion === 2)).toBe(true);
+    });
   });
 });

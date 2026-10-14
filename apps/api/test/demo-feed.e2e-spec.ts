@@ -11,7 +11,10 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp, listenTestApp, TEST_ENGINE_TOKEN } from './app';
 import { asRole } from './helpers/auth';
 import { count } from './helpers/ingest';
-import { flushRedis, resetDb } from './setup/db';
+import { flushRedis, ownerQuery, resetDb } from './setup/db';
+
+// each test may wait for the feed (the 30 s default is shorter than its own waits)
+jest.setTimeout(60_000);
 
 const PASSWORD = 'demo-password-123';
 const FRAMES = join(__dirname, '..', 'demo', 'frames');
@@ -56,7 +59,9 @@ describe('demo feed', () => {
     await rm(snapshots, { recursive: true, force: true });
   });
 
-  const start = (over: { backfillDays?: number } = {}) => {
+  const start = (
+    over: { backfillDays?: number; resyncEveryMs?: number } = {},
+  ) => {
     const controller = new AbortController();
     const done = runDemoFeed({
       redisUrl: process.env.REDIS_URL as string,
@@ -68,6 +73,8 @@ describe('demo feed', () => {
       seed: 42,
       tz: 'Asia/Jakarta',
       signal: controller.signal,
+      // the clock decides who is silent: the tests must not depend on it
+      silence: false,
       ...over,
     });
     const run = {
@@ -116,6 +123,8 @@ describe('demo feed', () => {
 
     // a second backfill would add thousands; the restart adds engine_started and a few live messages
     expect((await redis.xlen('events')) - before).toBeLessThan(50);
+    // every close had its open: the feed never sent an interval it could not account for
+    expect(await count('DeadEvent')).toBe(0);
   }, 120_000);
 
   it('cam:demo_vehicle_gate:status has appliedVersion = activeVersion, and cam:demo_vehicle_gate:frame exists', async () => {
@@ -174,6 +183,35 @@ describe('demo feed', () => {
         '2',
       'appliedVersion 2',
       3_000,
+    );
+  });
+
+  it('a config change whose cfg:changed notice was lost is found by the periodic resync', async () => {
+    start({ resyncEveryMs: 500 });
+    await until(async () => {
+      const hash = await redis.hgetall('cam:demo_cashier_presence:status');
+      return hash.appliedVersion === '1' ? hash : null;
+    }, 'the first status');
+
+    // version 2 appears in the database with no notice published, as when a notice is lost
+    await ownerQuery(
+      `INSERT INTO "CameraConfigVersion"
+         ("cameraId", "version", "useCase", "settings", "schemaVersion", "authorType", "authorId", "authorName", "createdAt")
+       SELECT "cameraId", 2, "useCase", "settings", "schemaVersion", "authorType", "authorId", "authorName", now()
+       FROM "CameraConfigVersion" WHERE "cameraId" = 'demo_cashier_presence' AND "version" = 1`,
+    );
+    await ownerQuery(
+      `UPDATE "Camera" SET "activeVersion" = 2 WHERE "id" = 'demo_cashier_presence'`,
+    );
+
+    await until(
+      async () =>
+        (await redis.hget(
+          'cam:demo_cashier_presence:status',
+          'appliedVersion',
+        )) === '2',
+      'appliedVersion 2 without a notice',
+      5_000,
     );
   });
 });

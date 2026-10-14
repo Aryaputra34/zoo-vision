@@ -50,7 +50,8 @@ The browser talks to one address, served by Caddy:
 
 The cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`. A session slides 12 hours from the last request and ends
 7 days after login at the latest. Usernames are case-insensitive. Login is limited to 10 requests a minute per
-address, and five wrong passwords lock the account for 15 minutes (`ACCOUNT_LOCKED`).
+address. Five wrong passwords within 15 minutes lock the account until 15 minutes after the first of them
+(`ACCOUNT_LOCKED`; the lock does not extend while it is refusing).
 
 Three fixed roles, `SUPERADMIN` > `MANAGER` > `USER`:
 
@@ -60,7 +61,7 @@ Three fixed roles, `SUPERADMIN` > `MANAGER` > `USER`:
 | Camera zones, thresholds, enable or disable a camera, config versions and rollback | | yes | yes |
 | Users (not superadmins), models list | | yes | yes |
 | Camera source URLs, model, tracker tuning, `engineGroup`, use case, `auditCamera`, recording settings | | | yes |
-| Create or delete a camera; superadmin accounts; API tokens; model upload, rescan, convert, delete | | | yes |
+| Create or delete a camera; superadmin accounts; API tokens; model upload, rescan, validate, convert, delete | | | yes |
 
 **401** means there is no session (or it ended): go to `/login`. **403** means the role is too low: show the
 `message`, and for `ROLE_REQUIRED` mark the fields named in `errors`. Hiding menu items is a convenience; the
@@ -123,7 +124,7 @@ Defined but not thrown yet: `FIELD_NOT_ALLOWED` and `RANGE_TOO_LONG` (reports, v
 | Value | Shape | Value in the settings |
 |---|---|---|
 | `polygon` | A closed area | An array of `[x, y]` points, at least 3 |
-| `line` | A tripwire | Two `[x, y]` points |
+| `line` | A tripwire | An object `{start: [x, y], end: [x, y]}`. It sits inside its group's object, beside other fields (the horse tripwire also has `enabled`) |
 | `polygon-list` | A list of items, each with its own `polygon` | An array of objects with `id`, `name` and a `polygon` (the restaurant tables) |
 
 Coordinates are fractions of the frame, **0 to 1**, origin top left. The UI generates the `id` of a new zone or
@@ -161,7 +162,7 @@ the saved `version` (Applied) or `status.configError` is set (Rejected, show the
 - `GET /api/v1/cameras/:id/status`: `{online, status}`. `online` is false and `status` null when the engine has
   not reported in the last 15 seconds.
 - `GET /api/v1/cameras/:id/frame`: the engine's latest JPEG (`image/jpeg`, `Cache-Control: no-store`). 404 until the
-  first frame. Poll it every 2 seconds for a "live" still.
+  first frame, and again when the engine has sent none for 10 seconds. Poll it every 2 seconds for a "live" still.
 
 `status` is `{state, fps, lastFrameAt, appliedVersion, configError, restarts, live, updatedAt}`; times are epoch
 **milliseconds**. `live` holds the use case's current values and is typed per use case in the types file
