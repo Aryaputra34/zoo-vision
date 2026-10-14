@@ -1,12 +1,10 @@
 import { INestApplication, Logger } from '@nestjs/common';
-import Redis from 'ioredis';
 import { App } from 'supertest/types';
 import { io, type Socket } from 'socket.io-client';
 import { ContractsService } from '../src/contracts/contracts.service';
 import { IngestService, type StreamEntry } from '../src/ingest/ingest.service';
 import { LiveGateway } from '../src/live/live.gateway';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { REDIS } from '../src/redis/redis.module';
 import { createTestApp, listenTestApp } from './app';
 import { asRole } from './helpers/auth';
 import {
@@ -18,6 +16,10 @@ import {
   xadd,
 } from './helpers/messages';
 import { count, seedCamera, waitFor } from './helpers/ingest';
+
+/** waitFor for a plain condition. */
+const until = (cond: () => boolean, what: string) =>
+  waitFor(() => Promise.resolve(cond()), what);
 import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
 type Received = { name: string; payload: Record<string, unknown>; at: number };
@@ -25,7 +27,6 @@ type Received = { name: string; payload: Record<string, unknown>; at: number };
 describe('post-commit push: event.created and data.changed', () => {
   let app: INestApplication<App>;
   let base: string;
-  let redis: Redis;
   let ingest: IngestService;
   let gateway: LiveGateway;
   let socket: Socket;
@@ -48,7 +49,6 @@ describe('post-commit push: event.created and data.changed', () => {
     // need it but the first test goes through it
     app = await createTestApp({ INGEST: 'on' });
     base = await listenTestApp(app);
-    redis = app.get<Redis>(REDIS);
     ingest = app.get(IngestService);
     gateway = app.get(LiveGateway);
     warn = jest
@@ -86,8 +86,7 @@ describe('post-commit push: event.created and data.changed', () => {
 
   it('an XADDed event → event.created with snapshotUrl, and the row already exists when it arrives', async () => {
     const seenAtEmit: Promise<number>[] = [];
-    const real = gateway.toAlerts.bind(gateway);
-    const spy = jest
+    const spy: jest.SpyInstance = jest
       .spyOn(gateway, 'toAlerts')
       .mockImplementation((name, payload) => {
         if (name === 'event.created') {
@@ -96,10 +95,10 @@ describe('post-commit push: event.created and data.changed', () => {
             ownerQuery(
               `SELECT count(*)::int AS n FROM "Event" WHERE "id" = $1`,
               (payload as { id: string }).id,
-            ).then((rows) => (rows as { n: number }[])[0].n),
+            ).then((rows) => Number((rows as { n: number }[])[0].n)),
           );
         }
-        real(name, payload);
+        gateway.server.to('alerts').emit(name, payload);
       });
     try {
       const msg = eventMsg({
@@ -107,10 +106,7 @@ describe('post-commit push: event.created and data.changed', () => {
         configVersion: 4,
       });
       await xadd(msg);
-      await waitFor(
-        async () => named('event.created').length > 0,
-        'event.created',
-      );
+      await until(() => named('event.created').length > 0, 'event.created');
 
       const created = named('event.created')[0].payload;
       expect(created).toEqual({
@@ -126,10 +122,7 @@ describe('post-commit push: event.created and data.changed', () => {
       expect(await Promise.all(seenAtEmit)).toEqual([1]);
 
       const { validator } = app.get(ContractsService);
-      await waitFor(
-        async () => named('data.changed').length > 0,
-        'data.changed',
-      );
+      await until(() => named('data.changed').length > 0, 'data.changed');
       for (const m of received) {
         expect([
           m.name,
@@ -176,10 +169,7 @@ describe('post-commit push: event.created and data.changed', () => {
   it('a redelivered, already stored event → no event.created', async () => {
     const batch = entries([eventMsg()]);
     await ingest.processBatch(batch);
-    await waitFor(
-      async () => named('event.created').length === 1,
-      'first push',
-    );
+    await until(() => named('event.created').length === 1, 'first push');
     await wait(5100); // the window of the first data.changed is over
 
     received = [];
@@ -199,10 +189,7 @@ describe('post-commit push: event.created and data.changed', () => {
         closeMsg({ cameraId: 'cam_b', sessionId: open.sessionId }),
       ]),
     );
-    await waitFor(
-      async () => named('data.changed').length === 1,
-      'data.changed',
-    );
+    await until(() => named('data.changed').length === 1, 'data.changed');
     expect(named('event.created')).toHaveLength(0);
     expect(named('data.changed')[0].payload).toEqual({
       cameraIds: ['cam_b'],
@@ -236,7 +223,7 @@ describe('post-commit push: event.created and data.changed', () => {
     }
 
     await ingest.processBatch(batch);
-    await waitFor(async () => named('event.created').length === 1, 'the push');
+    await until(() => named('event.created').length === 1, 'the push');
   });
 
   it('a gateway error does not stop ingest: the next entry is still written', async () => {
@@ -256,13 +243,10 @@ describe('post-commit push: event.created and data.changed', () => {
     await wait(5100);
     received = [];
     await ingest.processBatch(entries([eventMsg()]));
-    await waitFor(
-      async () => named('event.created').length === 1,
-      'the next push',
-    );
+    await until(() => named('event.created').length === 1, 'the next push');
     expect(await count('Event')).toBe(before + 2);
     expect(
-      warn.mock.calls.some((c) =>
+      (warn.mock.calls as unknown[][]).some((c) =>
         String(c[0]).includes('socket server is gone'),
       ),
     ).toBe(true);
@@ -274,10 +258,7 @@ describe('post-commit push: event.created and data.changed', () => {
     await wait(300);
     await ingest.processBatch(entries([metricMsg({ cameraId: 'cam_b' })]));
 
-    await waitFor(
-      async () => named('data.changed').length === 2,
-      'both messages',
-    );
+    await until(() => named('data.changed').length === 2, 'both messages');
     const [first, second] = named('data.changed');
     expect(first.at - started).toBeLessThan(1500);
     expect(second.at - first.at).toBeGreaterThan(3500);
