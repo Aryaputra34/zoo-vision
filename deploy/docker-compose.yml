@@ -141,6 +141,25 @@ services:
       api:
         condition: service_healthy
 
+  # Profile demo: plays the engine's part for the demo cameras (no Python, no models, no GPU). Writes
+  # 14 days of history into the `events` stream once per Redis volume, then live events, status and
+  # still frames. Its events' snapshots go to ${ZOO_DATA_DIR}/snapshots.
+  demo-feed:
+    profiles: ["demo"]
+    image: zoo-vision-api:${ZOO_VERSION:-dev}
+    command: ["node", "dist/cli.js", "demo-feed", "--backfill-days", "14"]
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      API_URL: http://api:3001
+      ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
+      SNAPSHOT_DIR: /data/snapshots
+    volumes:
+      - ${ZOO_DATA_DIR:-./data}/snapshots:/data/snapshots
+    depends_on:
+      demo-seed:
+        condition: service_completed_successfully
+
   # The dashboard, built from a local checkout of the frontend (publishing images is Phase 5).
   web:
     profiles: ["web"]

@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { normalizeUsername } from './auth/auth.service';
 import { hashPassword, MIN_PASSWORD_LENGTH } from './auth/password';
@@ -110,6 +111,53 @@ async function demoSeedCommand(env: NodeJS.ProcessEnv): Promise<number> {
   }
 }
 
+/**
+ * Plays the engine for the demo cameras until SIGINT or SIGTERM: history once per Redis volume,
+ * then live messages, status and frames. Reads REDIS_URL, API_URL, ENGINE_TOKEN, SNAPSHOT_DIR,
+ * SITE_TIMEZONE and DEMO_SEED from the environment.
+ */
+async function demoFeedCommand(
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<number> {
+  const redisUrl = env.REDIS_URL;
+  const apiUrl = env.API_URL;
+  const engineToken = env.ENGINE_TOKEN;
+  if (!redisUrl || !apiUrl || !engineToken) {
+    console.error(
+      `${USAGE}\nREDIS_URL, API_URL and ENGINE_TOKEN must be set in the environment.`,
+    );
+    return 1;
+  }
+  const days = Number(arg(args, '--backfill-days') ?? 0);
+  if (!Number.isInteger(days) || days < 0 || days > 60) {
+    console.error('--backfill-days must be a whole number from 0 to 60');
+    return 1;
+  }
+  const { runDemoFeed } = await import('./demo/demo-feed.js');
+  const controller = new AbortController();
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => controller.abort());
+  }
+  try {
+    await runDemoFeed({
+      redisUrl,
+      apiUrl: apiUrl.replace(/\/+$/, ''),
+      engineToken,
+      snapshotDir: env.SNAPSHOT_DIR || null,
+      framesDir: join(__dirname, '..', 'demo', 'frames'),
+      backfillDays: days,
+      seed: Number(env.DEMO_SEED ?? 42),
+      tz: env.SITE_TIMEZONE || 'Asia/Jakarta',
+      signal: controller.signal,
+    });
+    return 0;
+  } catch (err) {
+    console.error((err as Error).message);
+    return 1;
+  }
+}
+
 /** The command line; returns the exit code. Exported for the tests. */
 export async function runCli(
   argv: string[],
@@ -121,6 +169,8 @@ export async function runCli(
       return createSuperadminCommand(rest, env);
     case 'demo-seed':
       return demoSeedCommand(env);
+    case 'demo-feed':
+      return demoFeedCommand(rest, env);
     default:
       console.error(USAGE);
       return 1;
