@@ -440,6 +440,8 @@ For MANAGER and SUPERADMIN. A USER gets 403 `FORBIDDEN` on every route here.
   `SUCCESS`, `WRONG_PASSWORD`, `DISABLED`, `LOCKED`, `RATE_LIMITED`, `LOGOUT`.
 - `ip` is the client's address (not the proxy's). `before` and `after` are the stored JSON; passwords, tokens and
   stream URLs are redacted when the row is written.
+- A MANAGER does not see what SUPERADMINs did, what was done to their accounts, or their logins (the users list
+  hides them too); a SUPERADMIN sees everything.
 - Camera downtime is not here: `GET /intervals?useCase=system&kind=camera_offline` (section 9).
 
 ### System events

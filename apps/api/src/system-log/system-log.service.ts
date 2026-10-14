@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { Actor } from '../auth/actor';
 import { localDateTime } from '../exports/csv';
 import { ENV, type Env } from '../config/env';
 import {
@@ -77,11 +78,46 @@ export class SystemLogService {
     this.local = localDateTime(env.SITE_TIMEZONE);
   }
 
-  private auditWhere(q: AuditFilterDto): Prisma.AuditLogWhereInput {
+  /**
+   * The ids a MANAGER may not read about: SUPERADMIN users and SUPERADMIN API tokens (what they
+   * did, what was done to their accounts, their logins), as the users list hides superadmins from
+   * managers. A SUPERADMIN has none. A user who is no longer a superadmin is no longer hidden.
+   */
+  private async hiddenIds(actor: Actor): Promise<string[]> {
+    if (actor.role === 'SUPERADMIN') return [];
+    const [users, tokens] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { role: 'SUPERADMIN' },
+        select: { id: true },
+      }),
+      this.prisma.apiToken.findMany({
+        where: { role: 'SUPERADMIN' },
+        select: { id: true },
+      }),
+    ]);
+    return [...users, ...tokens].map((r) => r.id);
+  }
+
+  private auditWhere(
+    q: AuditFilterDto,
+    hidden: string[],
+  ): Prisma.AuditLogWhereInput {
     const range = parseRange(q);
     return {
       AND: [
         { time: { gte: range.from, lt: range.to } },
+        ...(hidden.length > 0
+          ? [
+              { actorId: { notIn: hidden } },
+              {
+                OR: [
+                  { entity: { notIn: ['user', 'api_token'] } },
+                  { entityId: null },
+                  { entityId: { notIn: hidden } },
+                ],
+              },
+            ]
+          : []),
         ...(q.actor
           ? [{ actorName: { contains: q.actor, mode: 'insensitive' as const } }]
           : []),
@@ -92,11 +128,17 @@ export class SystemLogService {
     };
   }
 
-  private loginWhere(q: LoginFilterDto): Prisma.LoginLogWhereInput {
+  private loginWhere(
+    q: LoginFilterDto,
+    hidden: string[],
+  ): Prisma.LoginLogWhereInput {
     const range = parseRange(q);
     return {
       AND: [
         { time: { gte: range.from, lt: range.to } },
+        ...(hidden.length > 0
+          ? [{ OR: [{ userId: null }, { userId: { notIn: hidden } }] }]
+          : []),
         ...(q.username
           ? [
               {
@@ -113,13 +155,14 @@ export class SystemLogService {
   }
 
   async audit(
+    actor: Actor,
     q: AuditQueryDto,
   ): Promise<{ rows: AuditRowDto[]; nextCursor: string | null }> {
     const limit = q.limit ?? DEFAULT_LIMIT;
     const found = await this.prisma.auditLog.findMany({
       where: {
         AND: [
-          this.auditWhere(q),
+          this.auditWhere(q, await this.hiddenIds(actor)),
           ...(q.cursor ? [{ id: { lt: BigInt(q.cursor) } }] : []),
         ],
       },
@@ -135,13 +178,14 @@ export class SystemLogService {
   }
 
   async logins(
+    actor: Actor,
     q: LoginQueryDto,
   ): Promise<{ rows: LoginRowDto[]; nextCursor: string | null }> {
     const limit = q.limit ?? DEFAULT_LIMIT;
     const found = await this.prisma.loginLog.findMany({
       where: {
         AND: [
-          this.loginWhere(q),
+          this.loginWhere(q, await this.hiddenIds(actor)),
           ...(q.cursor ? [{ id: { lt: BigInt(q.cursor) } }] : []),
         ],
       },
@@ -161,8 +205,8 @@ export class SystemLogService {
     return this.lists.events({ ...q, useCase: 'system' });
   }
 
-  auditCsv(q: AuditFilterDto): CsvExport {
-    const where = this.auditWhere(q);
+  async auditCsv(actor: Actor, q: AuditFilterDto): Promise<CsvExport> {
+    const where = this.auditWhere(q, await this.hiddenIds(actor));
     return {
       kind: 'audit',
       filename: this.exports.filename('audit', parseRange(q)),
@@ -204,8 +248,8 @@ export class SystemLogService {
     };
   }
 
-  loginsCsv(q: LoginFilterDto): CsvExport {
-    const where = this.loginWhere(q);
+  async loginsCsv(actor: Actor, q: LoginFilterDto): Promise<CsvExport> {
+    const where = this.loginWhere(q, await this.hiddenIds(actor));
     return {
       kind: 'logins',
       filename: this.exports.filename('logins', parseRange(q)),

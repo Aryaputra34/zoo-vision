@@ -5,7 +5,7 @@ import { io, type Socket } from 'socket.io-client';
 import { ContractsService } from '../src/contracts/contracts.service';
 import { ModelsService } from '../src/models/models.service';
 import { createTestApp, listenTestApp } from './app';
-import { asRole } from './helpers/auth';
+import { asRole, seedUser } from './helpers/auth';
 import { validSettings } from './helpers/settings';
 import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
@@ -283,6 +283,65 @@ describe('system log, audit cameras and model_validation_failed', () => {
     expect(second.rows.map((r) => r.id)).toEqual(
       flagged.rows.slice(2, 4).map((r) => r.id),
     );
+  });
+
+  it('a MANAGER does not see what SUPERADMINs did or what happened to them; a SUPERADMIN sees everything', async () => {
+    // a superadmin acts (camera.create rows exist already) and logs in; a user is promoted
+    const boss = await seedUser(app, 'SUPERADMIN');
+    await http()
+      .post('/api/v1/auth/login')
+      .send({ username: boss.username, password: boss.password })
+      .expect(200);
+    const normal = await seedUser(app, 'USER');
+    await http()
+      .post('/api/v1/auth/login')
+      .send({ username: normal.username, password: normal.password })
+      .expect(200);
+    // an ordinary user is renamed by a manager: visible to managers
+    await http()
+      .patch(`/api/v1/users/${normal.id}`)
+      .set('Cookie', manager)
+      .send({ name: 'Renamed Normal' })
+      .expect(200);
+    // a row by a non-superadmin actor about a superadmin's account (an old actor, a script): hidden too
+    await ownerQuery(
+      `INSERT INTO "AuditLog" ("actorType", "actorId", "actorName", "action", "entity", "entityId")
+       VALUES ('user', 'some-manager', 'Some Manager', 'user.update', 'user', $1)`,
+      boss.id,
+    );
+
+    const superAudit = (
+      await get('audit', superadmin, { ...RANGE, limit: 500 }).expect(200)
+    ).body as Page<AuditRow>;
+    const managerAudit = (
+      await get('audit', manager, { ...RANGE, limit: 500 }).expect(200)
+    ).body as Page<AuditRow>;
+
+    expect(
+      superAudit.rows.filter((r) => r.actorName === 'Test SUPERADMIN').length,
+    ).toBeGreaterThan(0);
+    expect(
+      managerAudit.rows.some((r) => r.actorName === 'Test SUPERADMIN'),
+    ).toBe(false);
+    // a change to a superadmin's account is hidden too, one to an ordinary user is not
+    const about = (rows: AuditRow[], id: string) =>
+      rows.filter((r) => r.entity === 'user' && r.entityId === id).length;
+    expect(about(superAudit.rows, boss.id)).toBe(1);
+    expect(about(managerAudit.rows, boss.id)).toBe(0);
+    expect(about(managerAudit.rows, normal.id)).toBe(1);
+
+    const logins = async (cookie: string, username: string) =>
+      (
+        (await get('logins', cookie, { ...RANGE, username }).expect(200))
+          .body as Page<Json>
+      ).rows.length;
+    expect(await logins(superadmin, boss.username)).toBe(1);
+    expect(await logins(manager, boss.username)).toBe(0);
+    expect(await logins(manager, normal.username)).toBe(1);
+
+    // the same filter holds for the CSV
+    const csv = await get('audit.csv', manager, RANGE).expect(200);
+    expect(csv.text).not.toContain('Test SUPERADMIN');
   });
 
   it('audit filters: entity, action and actor; a bad cursor or limit is VALIDATION_FAILED', async () => {

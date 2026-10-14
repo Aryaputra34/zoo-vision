@@ -33,14 +33,20 @@ export class SystemLogController {
 
   @Get('audit')
   @ApiOkResponse({ type: AuditPageDto })
-  audit(@Query() q: AuditQueryDto): Promise<AuditPageDto> {
-    return this.log.audit(q);
+  audit(
+    @CurrentActor() actor: Actor,
+    @Query() q: AuditQueryDto,
+  ): Promise<AuditPageDto> {
+    return this.log.audit(actor, q);
   }
 
   @Get('logins')
   @ApiOkResponse({ type: LoginPageDto })
-  logins(@Query() q: LoginQueryDto): Promise<LoginPageDto> {
-    return this.log.logins(q);
+  logins(
+    @CurrentActor() actor: Actor,
+    @Query() q: LoginQueryDto,
+  ): Promise<LoginPageDto> {
+    return this.log.logins(actor, q);
   }
 
   @Get('system-events')
@@ -58,7 +64,12 @@ export class SystemLogController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.responder.send(this.log.auditCsv(q), actor, req, res);
+    await this.responder.send(
+      await this.log.auditCsv(actor, q),
+      actor,
+      req,
+      res,
+    );
   }
 
   @Get('logins.csv')
@@ -70,7 +81,12 @@ export class SystemLogController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.responder.send(this.log.loginsCsv(q), actor, req, res);
+    await this.responder.send(
+      await this.log.loginsCsv(actor, q),
+      actor,
+      req,
+      res,
+    );
   }
 
   @Get('system-events.csv')
