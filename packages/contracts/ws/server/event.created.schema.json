@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EventCreated",
+  "description": "Room alerts: one per new Event after an ingest commit (a commit with more than 50 sends only data.changed).",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cameraId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "useCase": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "severity": {
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ]
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "snapshotUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "time",
+    "cameraId",
+    "useCase",
+    "type",
+    "severity",
+    "data",
+    "snapshotUrl"
+  ],
+  "additionalProperties": false
+}

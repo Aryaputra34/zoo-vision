@@ -1,0 +1,11 @@
+{
+  "cameraIds": [
+    "cam_gate_entry_01"
+  ],
+  "useCases": [
+    "vehicle_gate"
+  ],
+  "shapes": [
+    "event"
+  ]
+}

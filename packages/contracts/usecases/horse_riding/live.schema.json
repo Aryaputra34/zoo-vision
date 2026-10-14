@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HorseRidingLive",
+  "description": "What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.",
+  "type": "object",
+  "properties": {
+    "activeHorses": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "departures": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "returns": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}

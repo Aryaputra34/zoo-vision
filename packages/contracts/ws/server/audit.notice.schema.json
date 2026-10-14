@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuditNotice",
+  "description": "Room managers: a camera with auditCamera set was changed.",
+  "type": "object",
+  "properties": {
+    "auditId": {
+      "type": "string"
+    },
+    "cameraId": {
+      "type": "string"
+    },
+    "actorName": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "auditId",
+    "cameraId",
+    "actorName",
+    "action",
+    "time"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Subscribe",
+  "description": "Join the status room.",
+  "type": "object",
+  "properties": {
+    "rooms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "status"
+        ]
+      }
+    }
+  },
+  "required": [
+    "rooms"
+  ],
+  "additionalProperties": false
+}

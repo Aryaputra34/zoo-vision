@@ -5,30 +5,82 @@
       "title": "EngineStarted",
       "type": "object",
       "properties": {
-        "bootId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
-        "engineGroup": { "type": "string" }
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "engineGroup": {
+          "type": "string"
+        }
       },
-      "required": ["bootId", "engineGroup"],
+      "required": [
+        "bootId",
+        "engineGroup"
+      ],
       "additionalProperties": false
     },
     "events_dropped": {
       "title": "EventsDropped",
       "type": "object",
       "properties": {
-        "engineGroup": { "type": "string" },
-        "count": { "type": "integer", "minimum": 1 }
+        "engineGroup": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
-      "required": ["engineGroup", "count"],
+      "required": [
+        "engineGroup",
+        "count"
+      ],
       "additionalProperties": false
     },
     "config_rejected": {
       "title": "ConfigRejected",
       "type": "object",
       "properties": {
-        "version": { "type": "integer", "minimum": 1 },
-        "reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
       },
-      "required": ["version", "reason"],
+      "required": [
+        "version",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "model_validation_failed": {
+      "title": "ModelValidationFailed",
+      "type": "object",
+      "properties": {
+        "modelId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "modelId",
+        "name",
+        "error"
+      ],
       "additionalProperties": false
     }
   }

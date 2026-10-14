@@ -10,7 +10,10 @@ const DEFAULT_DIR = path.join(__dirname, '..', 'generated', 'schemas');
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const readJsonIfExists = (file) => (fs.existsSync(file) ? readJson(file) : null);
 
-/** Reads <dir>/envelope/message.json and <dir>/usecases/<id>/{usecase,settings,events,intervals,metrics}.json. */
+/**
+ * Reads <dir>/envelope/message.json, <dir>/usecases/<id>/{usecase,settings,live,events,intervals,metrics}.json
+ * and <dir>/ws/{server,client}/<message name>.json.
+ */
 function loadRegistry(dir = DEFAULT_DIR) {
   const envelope = readJson(path.join(dir, 'envelope', 'message.json'));
   const useCases = new Map();
@@ -24,12 +27,21 @@ function loadRegistry(dir = DEFAULT_DIR) {
       label: meta.label,
       schemaVersion: meta.schemaVersion,
       settings: readJsonIfExists(path.join(folder, 'settings.json')),
+      live: readJsonIfExists(path.join(folder, 'live.json')),
       events: defs(readJsonIfExists(path.join(folder, 'events.json'))),
       intervals: defs(readJsonIfExists(path.join(folder, 'intervals.json'))),
       metrics: readJsonIfExists(path.join(folder, 'metrics.json')) ?? {},
     });
   }
-  return { envelope, useCases };
+  const ws = new Map();
+  for (const side of ['server', 'client']) {
+    const folder = path.join(dir, 'ws', side);
+    if (!fs.existsSync(folder)) continue;
+    for (const file of fs.readdirSync(folder).sort()) {
+      if (file.endsWith('.json')) ws.set(file.replace(/\.json$/, ''), readJson(path.join(folder, file)));
+    }
+  }
+  return { envelope, useCases, ws };
 }
 
 function newAjv(options = {}) {
@@ -165,6 +177,18 @@ function createValidator(registry = loadRegistry()) {
     return { ok: false, errors: [...(result.errors ?? []), ...duplicates] };
   }
 
+  /** What a pipeline reports in `live`. A use case without a live schema accepts anything. */
+  function validateLive(useCaseId, live) {
+    const schema = registry.useCases.get(useCaseId)?.live;
+    return schema ? check(`${useCaseId}:live`, schema, live) : { ok: true };
+  }
+
+  /** `name` is the message name: `event.created`, `data.changed`, `subscribe`, ... */
+  function validateWsMessage(name, payload) {
+    const schema = registry.ws?.get(name);
+    return schema ? check(`ws:${name}`, schema, payload) : fail('', `unknown WebSocket message '${name}'`);
+  }
+
   function withDefaults(useCaseId, settings) {
     const schema = registry.useCases.get(useCaseId)?.settings;
     if (!schema) throw new Error(`use case '${useCaseId}' has no settings`);
@@ -189,7 +213,15 @@ function createValidator(registry = loadRegistry()) {
     return [...registry.useCases].filter(([, c]) => c.settings).map(([id]) => id).sort();
   }
 
-  return { validateMessage, validateSettings, withDefaults, restrictedFields, assignableUseCases };
+  return {
+    validateMessage,
+    validateSettings,
+    validateLive,
+    validateWsMessage,
+    withDefaults,
+    restrictedFields,
+    assignableUseCases,
+  };
 }
 
 module.exports = { loadRegistry, createValidator, walkSchema };

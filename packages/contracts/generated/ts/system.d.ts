@@ -27,6 +27,15 @@ export interface ConfigRejected {
   version: number;
   reason: string;
 }
+/**
+ * This interface was referenced by `SystemEvents`'s JSON-Schema
+ * via the `definition` "model_validation_failed".
+ */
+export interface ModelValidationFailed {
+  modelId: string;
+  name: string;
+  error: string;
+}
 
 export interface SystemIntervals {
   [k: string]: unknown;

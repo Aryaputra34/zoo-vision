@@ -101,6 +101,56 @@
         "$ref": "#/$defs/Table"
       },
       "x-geometry": "polygon-list"
+    },
+    "TableLive": {
+      "title": "TableLive",
+      "description": "One table in a restaurant live status.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "isOccupied": {
+          "type": "boolean"
+        },
+        "personCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dwellSec": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trackDwellTime": {
+          "type": "boolean"
+        },
+        "totalSessions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status",
+        "isOccupied",
+        "personCount",
+        "capacity",
+        "dwellSec",
+        "trackDwellTime",
+        "totalSessions"
+      ],
+      "additionalProperties": true
     }
   }
 }

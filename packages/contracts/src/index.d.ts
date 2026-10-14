@@ -10,6 +10,8 @@ export interface UseCaseContract {
   schemaVersion: number;
   /** null when the use case cannot be assigned to a camera (system). */
   settings: JsonSchema | null;
+  /** What the pipeline reports in `cam:{id}:status` `live`; null for a use case without one. */
+  live: JsonSchema | null;
   /** event type -> schema */
   events: Record<string, JsonSchema>;
   /** interval kind -> schema */
@@ -21,12 +23,18 @@ export interface UseCaseContract {
 export interface Registry {
   envelope: JsonSchema;
   useCases: Map<string, UseCaseContract>;
+  /** WebSocket message name (`event.created`, `subscribe`, ...) -> schema */
+  ws: Map<string, JsonSchema>;
 }
 
 export interface Validator {
   validateMessage(message: unknown): ValidationResult;
   /** Also reports duplicate ids in every `polygon-list`, at each concrete match of a `*` path. */
   validateSettings(useCase: string, settings: unknown): ValidationResult;
+  /** Checks a pipeline's `live` object; `{ ok: true }` for a use case without a live schema. */
+  validateLive(useCase: string, live: unknown): ValidationResult;
+  /** Checks a WebSocket payload by message name; an unknown name is an error. */
+  validateWsMessage(name: string, payload: unknown): ValidationResult;
   /** Deep clone of `settings` with schema defaults filled in. */
   withDefaults(useCase: string, settings: object): object;
   /**

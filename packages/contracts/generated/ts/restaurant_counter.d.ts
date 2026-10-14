@@ -140,3 +140,36 @@ export interface RestaurantCounterIntervals {
 export interface RestaurantCounterTableSession {
   tableName: string;
 }
+
+/**
+ * What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.
+ */
+export interface RestaurantCounterLive {
+  occupancy?: number;
+  rawOccupancy?: number;
+  maxCapacity?: number;
+  warningCapacity?: number;
+  mode?: string;
+  totalTables?: number;
+  occupiedTables?: number;
+  vacantTables?: number;
+  occupancyRatePct?: number;
+  dwellTimeEnabled?: boolean;
+  tables?: TableLive[];
+  [k: string]: unknown;
+}
+/**
+ * One table in a restaurant live status.
+ */
+export interface TableLive {
+  id: string;
+  name: string;
+  status: string;
+  isOccupied: boolean;
+  personCount: number;
+  capacity: number;
+  dwellSec: number;
+  trackDwellTime: boolean;
+  totalSessions: number;
+  [k: string]: unknown;
+}

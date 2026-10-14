@@ -1,0 +1,10 @@
+{
+  "id": "evt_1",
+  "time": "2026-10-14T03:15:00.123Z",
+  "cameraId": null,
+  "useCase": "system",
+  "type": "x",
+  "severity": "fatal",
+  "data": {},
+  "snapshotUrl": null
+}

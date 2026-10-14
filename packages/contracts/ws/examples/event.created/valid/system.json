@@ -1,0 +1,13 @@
+{
+  "id": "evt_00000000000000000000000000000002",
+  "time": "2026-10-14T03:15:00.123Z",
+  "cameraId": null,
+  "useCase": "system",
+  "type": "engine_started",
+  "severity": "info",
+  "data": {
+    "bootId": "0123456789abcdef0123456789abcdef",
+    "engineGroup": "default"
+  },
+  "snapshotUrl": null
+}

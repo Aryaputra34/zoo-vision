@@ -6,18 +6,23 @@ from dataclasses import dataclass
 from pydantic import BaseModel
 
 from contracts.cashier_presence.settings import CashierPresenceSettings
+from contracts.cashier_presence.live import CashierPresenceLive
 from contracts.cashier_presence.events import CashierUnattended, CustomerWaiting
 from contracts.cashier_presence.intervals import DeskUnattended
 from contracts.horse_riding.settings import HorseRidingSettings
+from contracts.horse_riding.live import HorseRidingLive
 from contracts.horse_riding.events import HorseCrossing
 from contracts.restaurant_counter.settings import RestaurantCounterSettings
+from contracts.restaurant_counter.live import RestaurantCounterLive
 from contracts.restaurant_counter.events import CapacityAlert
 from contracts.restaurant_counter.intervals import RestaurantCounterTableSession
 from contracts.restaurant_table.settings import RestaurantTableSettings
+from contracts.restaurant_table.live import RestaurantTableLive
 from contracts.restaurant_table.intervals import RestaurantTableSession
-from contracts.system.events import EngineStarted, EventsDropped, ConfigRejected
+from contracts.system.events import EngineStarted, EventsDropped, ConfigRejected, ModelValidationFailed
 from contracts.system.intervals import CameraOffline
 from contracts.vehicle_gate.settings import VehicleGateSettings
+from contracts.vehicle_gate.live import VehicleGateLive
 from contracts.vehicle_gate.events import VehicleCrossing
 
 
@@ -26,6 +31,7 @@ class UseCaseContract:
     label: str
     schema_version: int
     settings: type[BaseModel] | None
+    live: type[BaseModel] | None  # the shape of a pipeline's `live` status values
     unique_id_lists: tuple[str, ...]  # JSON pointers of settings lists whose items need unique ids
     events: dict[str, type[BaseModel]]
     intervals: dict[str, type[BaseModel]]
@@ -37,6 +43,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Cashier presence",
         schema_version=1,
         settings=CashierPresenceSettings,
+        live=CashierPresenceLive,
         unique_id_lists=(),
         events={"cashier_unattended": CashierUnattended, "customer_waiting": CustomerWaiting},
         intervals={"desk_unattended": DeskUnattended},
@@ -46,6 +53,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Pony riding",
         schema_version=1,
         settings=HorseRidingSettings,
+        live=HorseRidingLive,
         unique_id_lists=(),
         events={"horse_crossing": HorseCrossing},
         intervals={},
@@ -55,6 +63,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Restaurant occupancy",
         schema_version=1,
         settings=RestaurantCounterSettings,
+        live=RestaurantCounterLive,
         unique_id_lists=("/table_monitoring/tables",),
         events={"capacity_alert": CapacityAlert},
         intervals={"table_session": RestaurantCounterTableSession},
@@ -64,6 +73,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Restaurant tables",
         schema_version=1,
         settings=RestaurantTableSettings,
+        live=RestaurantTableLive,
         unique_id_lists=("/tables",),
         events={},
         intervals={"table_session": RestaurantTableSession},
@@ -73,8 +83,9 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="System",
         schema_version=1,
         settings=None,
+        live=None,
         unique_id_lists=(),
-        events={"engine_started": EngineStarted, "events_dropped": EventsDropped, "config_rejected": ConfigRejected},
+        events={"engine_started": EngineStarted, "events_dropped": EventsDropped, "config_rejected": ConfigRejected, "model_validation_failed": ModelValidationFailed},
         intervals={"camera_offline": CameraOffline},
         metrics={},
     ),
@@ -82,6 +93,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         label="Vehicle gate",
         schema_version=1,
         settings=VehicleGateSettings,
+        live=VehicleGateLive,
         unique_id_lists=(),
         events={"vehicle_crossing": VehicleCrossing},
         intervals={},

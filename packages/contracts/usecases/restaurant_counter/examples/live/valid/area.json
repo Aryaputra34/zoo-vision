@@ -1,0 +1,7 @@
+{
+  "occupancy": 12,
+  "rawOccupancy": 13,
+  "maxCapacity": 60,
+  "warningCapacity": 45,
+  "mode": "area_occupancy"
+}

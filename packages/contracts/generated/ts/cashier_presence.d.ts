@@ -74,3 +74,14 @@ export interface CashierPresenceIntervals {
  * via the `definition` "desk_unattended".
  */
 export interface DeskUnattended {}
+
+/**
+ * What the pipeline reports in cam:{id}:status `live`. Every field is optional and extra fields are allowed, so a pipeline can add values without a new schema version.
+ */
+export interface CashierPresenceLive {
+  state?: string;
+  clerkPresent?: boolean;
+  clerkCount?: number;
+  visitorCount?: number;
+  [k: string]: unknown;
+}

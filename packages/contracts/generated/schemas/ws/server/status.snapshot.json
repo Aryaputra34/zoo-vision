@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StatusSnapshot",
+  "description": "Room status: every camera's status every 2 seconds; null means offline.",
+  "type": "object",
+  "properties": {
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cameras": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CameraStatus"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "at",
+    "cameras"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "CameraStatus": {
+      "title": "CameraStatus",
+      "description": "What the engine publishes in cam:{id}:status. Times are epoch seconds.",
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "fps": {
+          "type": "number"
+        },
+        "lastFrameAt": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "appliedVersion": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "configError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "restarts": {
+          "type": "integer"
+        },
+        "live": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "updatedAt": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "state",
+        "fps",
+        "lastFrameAt",
+        "appliedVersion",
+        "configError",
+        "restarts",
+        "live",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

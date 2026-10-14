@@ -1,0 +1,19 @@
+{
+  "at": "2026-10-14T10:00:02.000Z",
+  "cameras": {
+    "cam_gate_entry_01": {
+      "state": "running",
+      "fps": 5.0,
+      "lastFrameAt": 1760436000.5,
+      "appliedVersion": 3,
+      "configError": null,
+      "restarts": 0,
+      "live": {
+        "inCount": 2,
+        "outCount": 1
+      },
+      "updatedAt": 1760436000.6
+    },
+    "cam_offline_01": null
+  }
+}
