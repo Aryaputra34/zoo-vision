@@ -30,7 +30,7 @@
   "$defs": {
     "CameraStatus": {
       "title": "CameraStatus",
-      "description": "What the engine publishes in cam:{id}:status. Times are epoch seconds.",
+      "description": "What the engine publishes in cam:{id}:status. Times are epoch milliseconds.",
       "type": "object",
       "properties": {
         "state": {

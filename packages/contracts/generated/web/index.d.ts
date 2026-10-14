@@ -737,7 +737,7 @@ export interface StatusSnapshot {
   };
 }
 /**
- * What the engine publishes in cam:{id}:status. Times are epoch seconds.
+ * What the engine publishes in cam:{id}:status. Times are epoch milliseconds.
  *
  * This interface was referenced by `StatusSnapshot`'s JSON-Schema
  * via the `definition` "CameraStatus".

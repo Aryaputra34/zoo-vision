@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-/** What the engine publishes in `cam:{id}:status`. Times are epoch seconds. */
+/** What the engine publishes in `cam:{id}:status`. Times are epoch milliseconds. */
 export class CameraStatusDto {
   state!: string;
   fps!: number;

@@ -3,7 +3,7 @@
   "cameras": {
     "cam_a": {
       "state": "running",
-      "lastFrameAt": 1760436000.5,
+      "lastFrameAt": 1760436000500,
       "appliedVersion": 3,
       "configError": null,
       "restarts": 0,
@@ -11,7 +11,7 @@
         "inCount": 2,
         "outCount": 1
       },
-      "updatedAt": 1760436000.6
+      "updatedAt": 1760436000600
     }
   }
 }
