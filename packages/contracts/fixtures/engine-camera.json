@@ -1,0 +1,111 @@
+{
+  "camera": {
+    "id": "cam_fixture_gate",
+    "name": "Fixture gate",
+    "useCase": "vehicle_gate",
+    "sourceType": "RTSP",
+    "mainStreamUrl": "rtsp://fixture:fixturepw@10.1.2.3:554/main",
+    "subStreamUrl": "rtsp://fixture:fixturepw@10.1.2.3:554/sub",
+    "inferenceStream": "SUB",
+    "targetFps": 4,
+    "nxCameraId": "nx-fixture-gate"
+  },
+  "settings": {
+    "model_name": "yolo26s.onnx",
+    "imgsz": [
+      384,
+      640
+    ],
+    "tripwire": {
+      "start": [
+        0.76,
+        0.58
+      ],
+      "end": [
+        0.05,
+        0.43
+      ]
+    },
+    "roi_polygon": [
+      [
+        0,
+        0.15
+      ],
+      [
+        0.83,
+        0.15
+      ],
+      [
+        0.8,
+        1
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "confidence_threshold": 0.35
+  },
+  "engineCamera": {
+    "id": "cam_fixture_gate",
+    "name": "Fixture gate",
+    "useCase": "vehicle_gate",
+    "version": 1,
+    "schemaVersion": 1,
+    "settings": {
+      "model_name": "yolo26s.onnx",
+      "imgsz": [
+        384,
+        640
+      ],
+      "tripwire": {
+        "start": [
+          0.76,
+          0.58
+        ],
+        "end": [
+          0.05,
+          0.43
+        ]
+      },
+      "roi_polygon": [
+        [
+          0,
+          0.15
+        ],
+        [
+          0.83,
+          0.15
+        ],
+        [
+          0.8,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "confidence_threshold": 0.35,
+      "track_activation_thresh": 0.25,
+      "lost_track_buffer": 75,
+      "matching_thresh": 0.7,
+      "frame_rate": 15,
+      "anpr": {
+        "enabled": true,
+        "model_path": "models/license_plate_detector.onnx",
+        "min_plate_confidence": 0.25
+      }
+    },
+    "sourceUrl": "rtsp://fixture:fixturepw@10.1.2.3:554/sub",
+    "targetFps": 4,
+    "nxCameraId": "nx-fixture-gate",
+    "model": {
+      "path": "yolo26s.onnx",
+      "imgsz": [
+        384,
+        640
+      ]
+    }
+  }
+}

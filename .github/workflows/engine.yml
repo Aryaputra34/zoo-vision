@@ -5,6 +5,7 @@ on:
       - "services/engine/**"
       - ".github/workflows/engine.yml"
       - "packages/contracts/usecases/**"
+      - "packages/contracts/fixtures/**"
       - "services/engine/contracts/**"
 jobs:
   test:

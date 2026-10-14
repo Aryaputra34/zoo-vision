@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -121,6 +123,28 @@ describe('engine internal routes', () => {
     });
     expect(cam.version).toBe(1);
     expect(cam.schemaVersion).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the snapshot entry for the fixture camera deep-equals fixture.engineCamera', async () => {
+    // packages/contracts/fixtures/engine-camera.json: the engine's tests parse the same entry
+    const fixture = JSON.parse(
+      readFileSync(
+        join(
+          __dirname,
+          '../../../packages/contracts/fixtures/engine-camera.json',
+        ),
+        'utf8',
+      ),
+    ) as {
+      camera: Record<string, unknown>;
+      settings: Record<string, unknown>;
+      engineCamera: EngineCamera;
+    };
+    await create({ ...fixture.camera, settings: fixture.settings });
+
+    const entry = (await cameras()).find((c) => c.id === fixture.camera.id);
+
+    expect(entry).toEqual(fixture.engineCamera);
   });
 
   it('sourceUrl is the decrypted main URL; SUB uses the sub URL, and SUB without a sub URL falls back to main', async () => {

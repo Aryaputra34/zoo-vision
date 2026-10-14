@@ -1,7 +1,7 @@
 name: api
 on:
   push:
-    paths: ["apps/api/**", "packages/contracts/**", ".github/workflows/api.yml"]
+    paths: ["apps/api/**", "packages/contracts/**", "packages/contracts/fixtures/**", ".github/workflows/api.yml"]
 jobs:
   test:
     runs-on: ubuntu-24.04

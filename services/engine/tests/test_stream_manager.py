@@ -107,6 +107,18 @@ def _run_loop(mgr, sleeps, limit=6):
     ("rtsp://h/s?apikey=abc", "rtsp://h/s?apikey=***"),
     ("https://h/s?X-Amz-Signature=abc&X-Amz-Credential=def", "https://h/s?X-Amz-Signature=***&X-Amz-Credential=***"),
     ("http://h/s;jsessionid=abc", "http://h/s;jsessionid=***"),
+    # XMEye / Sofia: the credentials are parameters of the path, and the rest of the path goes with them
+    ("rtsp://10.0.0.5:554/user=admin_password=Secr3t_channel=1_stream=0.sdp", "rtsp://10.0.0.5:554/user=admin_password=***"),
+    ("rtsp://10.0.0.5/live/pwd=Secr3t_channel=1", "rtsp://10.0.0.5/live/pwd=***"),
+    # a secret value runs to the next '&': '#' and ';' inside it do not end it
+    ("rtsp://10.0.0.5/live?password=ab#cd&channel=1", "rtsp://10.0.0.5/live?password=***&channel=1"),
+    ("rtsp://10.0.0.5/live?password=ab;cd&channel=1", "rtsp://10.0.0.5/live?password=***&channel=1"),
+    # leading whitespace does not hide the scheme
+    (" rtsp://admin:pw@10.0.0.5/s", " rtsp://***@10.0.0.5/s"),
+    ("	rtsp://admin:pw@10.0.0.5/s", "	rtsp://***@10.0.0.5/s"),
+    ("  rtsp://10.0.0.5/live?token=abc", "  rtsp://10.0.0.5/live?token=***"),
+    # nothing secret-named: unchanged, and a path that merely contains a key-like word without '='
+    ("rtsp://10.0.0.5:554/stream_key/main", "rtsp://10.0.0.5:554/stream_key/main"),
 ])
 def test_mask_url(url, masked):
     assert mask_url(url) == masked

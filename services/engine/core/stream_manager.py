@@ -27,28 +27,36 @@ FILE_FPS_DEFAULT = 25.0  # a file whose frame rate is missing or unusable plays 
 FILE_FPS_MAX = 1000.0
 
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
-# a parameter whose name holds a secret word (access_token, api_key, apikey, X-Amz-Signature, jsessionid, ...)
-_SECRET_PARAM = re.compile(
-    r"(?i)([?&;][^=&#;]*(?:pass|pwd|token|key|auth|secret|sig|cred|session)[^=&#;]*=)[^&#;]*"
-)
+# the scheme of a URL to mask, after any leading whitespace
+_MASK_SCHEME = re.compile(r"^(\s*[A-Za-z][A-Za-z0-9+.-]*://)")
+_SECRET_WORDS = r"(?:pass|pwd|token|key|auth|secret|sig|cred|session)"
+# a query parameter whose name holds a secret word (access_token, api_key, apikey, X-Amz-Signature, jsessionid, ...);
+# its value runs to the next '&', so a '#' or ';' inside it is masked too
+_SECRET_PARAM = re.compile(rf"(?i)([?&;][^=&#;]*{_SECRET_WORDS}[^=&#;]*=)[^&]*")
+# XMEye / Sofia paths carry credentials as parameters of the path itself: /user=admin_password=Secr3t_channel=1.sdp;
+# everything after a secret-named `=` goes, because the value's end can not be told
+_SECRET_PATH = re.compile(rf"(?i)([/_][^=/_?&#;]*{_SECRET_WORDS}[^=/_?&#;]*=).*")
 
 
 def mask_url(url: str) -> str:
     """Hide credentials in a stream URL. Fails closed: over-masking is fine, leaking is not.
 
     Everything between `scheme://` and the last `@` anywhere after it becomes `***` (a password may hold `#`, `?`
-    or `@`, and a query value may be a URL with credentials), and the values of query parameters whose name holds
-    a secret word become `***`. Other strings are returned unchanged.
+    or `@`, and a query value may be a URL with credentials); the values of query parameters whose name holds a
+    secret word become `***` up to the next `&`; a secret-named parameter inside the path (`/user=a_password=b_...`)
+    hides the rest of the path. Leading whitespace is kept. Other strings are returned unchanged.
     """
     url = str(url)
-    scheme = _SCHEME.match(url)
+    scheme = _MASK_SCHEME.match(url)
     if not scheme:
         return url
     prefix, rest = url[: scheme.end()], url[scheme.end():]
     at = rest.rfind("@")
     if at >= 0:
         rest = "***" + rest[at:]
-    return _SECRET_PARAM.sub(r"\g<1>***", prefix + rest)
+    path, question, query = rest.partition("?")
+    path = _SECRET_PATH.sub(r"\g<1>***", path)
+    return prefix + _SECRET_PARAM.sub(r"\g<1>***", path + question + query)
 
 
 def is_live_source(source) -> bool:
