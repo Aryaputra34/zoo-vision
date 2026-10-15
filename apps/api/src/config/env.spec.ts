@@ -34,6 +34,7 @@ describe('loadEnv', () => {
       MODEL_UPLOAD_MAX_BYTES: 1073741824,
       SITE_TIMEZONE: 'Asia/Jakarta',
       SNAPSHOT_DIR: '/data/snapshots',
+      RECORDINGS_DIR: '/data/recordings',
       MEDIAMTX_PLAYBACK_URL: undefined,
       MEDIAMTX_API_URL: undefined,
       MEDIAMTX_PASSWORD: undefined,

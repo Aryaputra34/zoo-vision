@@ -14,12 +14,15 @@ import {
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
+  ApiServiceUnavailableResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { setAudit } from '../audit/audit-context';
 import type { Actor } from '../auth/actor';
 import { CurrentActor, MinRole } from '../auth/decorators';
 import { ApiErrorBody } from '../common/errors';
+import { StreamInfoDto } from '../mediamtx/dto/stream-info.dto';
+import { StreamInfoService } from '../mediamtx/stream-info.service';
 import { auditView, CamerasService } from './cameras.service';
 import type { CameraView } from './camera-view';
 import { CameraViewDto } from './dto/camera-view.dto';
@@ -28,7 +31,10 @@ import { UpdateCameraDto } from './dto/update-camera.dto';
 
 @Controller('cameras')
 export class CamerasController {
-  constructor(private readonly cameras: CamerasService) {}
+  constructor(
+    private readonly cameras: CamerasService,
+    private readonly streams: StreamInfoService,
+  ) {}
 
   /** Any role. What each role sees of a camera is decided by toCameraView. */
   @Get()
@@ -44,6 +50,18 @@ export class CamerasController {
     @Param('id') id: string,
   ): Promise<CameraView> {
     return this.cameras.get(actor, id);
+  }
+
+  /** Is the camera's stream arriving, in which codec, and what the recording costs on disk. */
+  @MinRole('MANAGER')
+  @Get(':id/stream-info')
+  @ApiOkResponse({ type: StreamInfoDto })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'MediaMTX is not configured or not reachable (UNAVAILABLE)',
+  })
+  async streamInfo(@Param('id') id: string): Promise<StreamInfoDto> {
+    return this.streams.info(await this.cameras.find(id));
   }
 
   @MinRole('SUPERADMIN')

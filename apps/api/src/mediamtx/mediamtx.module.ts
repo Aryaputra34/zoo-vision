@@ -3,6 +3,7 @@ import { UrlCipher } from '../cameras/url-cipher';
 import { ENV, type Env } from '../config/env';
 import { MEDIAMTX, MediamtxClient } from './mediamtx-client';
 import { PathSync } from './path-sync.service';
+import { StreamInfoService } from './stream-info.service';
 
 /**
  * MediaMTX's Control API: the client (null without MEDIAMTX_API_URL) and the path sync. It builds
@@ -25,7 +26,8 @@ import { PathSync } from './path-sync.service';
       useFactory: (env: Env) => new UrlCipher(env.CAMERA_URL_KEY),
     },
     PathSync,
+    StreamInfoService,
   ],
-  exports: [MEDIAMTX, PathSync],
+  exports: [MEDIAMTX, PathSync, StreamInfoService],
 })
 export class MediamtxModule {}
