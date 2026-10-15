@@ -3,6 +3,8 @@ import type { Role } from '../generated/prisma/enums';
 import { mediamtxPaths } from '../mediamtx/paths';
 import type { UrlCipher } from './url-cipher';
 
+export type LiveUrls = { main: string; sub: string | null };
+
 export type UserCameraView = {
   id: string;
   name: string;
@@ -10,6 +12,8 @@ export type UserCameraView = {
   useCase: string;
   enabled: boolean;
   activeVersion: number;
+  /** WHEP endpoints behind Caddy; null for FILE or disabled cameras and without MediaMTX. */
+  liveUrls: LiveUrls | null;
 };
 
 export type ManagerCameraView = UserCameraView & {
@@ -41,13 +45,15 @@ export type CameraView =
 
 /**
  * What `role` may see of a camera. The stream URLs are decrypted only for SUPERADMIN; they
- * never appear in any other view.
+ * never appear in any other view. `live`: the API has MediaMTX configured (liveUrls).
  */
 export function toCameraView(
   camera: Camera,
   role: Role,
   cipher: UrlCipher,
+  live: boolean,
 ): CameraView {
+  const paths = mediamtxPaths(camera);
   const user: UserCameraView = {
     id: camera.id,
     name: camera.name,
@@ -55,6 +61,13 @@ export function toCameraView(
     useCase: camera.useCase,
     enabled: camera.enabled,
     activeVersion: camera.activeVersion,
+    liveUrls:
+      live && camera.enabled && paths
+        ? {
+            main: `/media/webrtc/${paths.main}/whep`,
+            sub: paths.sub ? `/media/webrtc/${paths.sub}/whep` : null,
+          }
+        : null,
   };
   if (role === 'USER') return user;
 
@@ -62,7 +75,7 @@ export function toCameraView(
     ...user,
     sourceType: camera.sourceType,
     // derived, never the stored column
-    recordingPath: mediamtxPaths(camera)?.recorded ?? null,
+    recordingPath: paths?.recorded ?? null,
     targetFps: camera.targetFps,
     engineGroup: camera.engineGroup,
     auditCamera: camera.auditCamera,

@@ -161,6 +161,73 @@ describe('engine internal routes', () => {
     expect(byId).toEqual({ cam_main: MAIN, cam_alt: SUB, cam_nosub: MAIN });
   });
 
+  describe('with MediaMTX configured', () => {
+    const PASSWORD = 'p@ss:w/rd#1-long';
+    let mtxApp: INestApplication<App>;
+    beforeEach(async () => {
+      mtxApp = await createTestApp({
+        MEDIAMTX_API_URL: 'http://127.0.0.1:1', // nothing listens: only the URL building is under test
+        MEDIAMTX_PASSWORD: PASSWORD,
+      });
+    });
+    afterEach(async () => {
+      await mtxApp.close();
+    });
+    const make = async (over: Record<string, unknown>) => {
+      const { cookie } = await asRole(mtxApp, 'SUPERADMIN');
+      await request(mtxApp.getHttpServer())
+        .post('/api/v1/cameras')
+        .set('Cookie', cookie)
+        .send({
+          id: 'cam_a',
+          name: 'Cam A',
+          useCase: 'cashier_presence',
+          sourceType: 'RTSP',
+          mainStreamUrl: MAIN,
+          subStreamUrl: SUB,
+          settings: validSettings('cashier_presence'),
+          ...over,
+        })
+        .expect(201);
+    };
+    const urls = async () =>
+      (
+        (
+          await request(mtxApp.getHttpServer())
+            .get('/internal/engine/cameras')
+            .query({ group: 'default' })
+            .set('Authorization', bearer)
+            .expect(200)
+        ).body as { cameras: EngineCamera[] }
+      ).cameras.map((c) => [c.id, c.sourceUrl]);
+
+    it('inferenceStream SUB with a sub URL → /zv_<id>_sub, and the URL parses back to user zoo and the exact password', async () => {
+      await make({ id: 'cam_a', inferenceStream: 'SUB' });
+      const [[, sourceUrl]] = await urls();
+      expect(sourceUrl).toMatch(/\/zv_cam_a_sub$/);
+      const parsed = new URL(sourceUrl);
+      expect(parsed.hostname).toBe('127.0.0.1');
+      expect(parsed.port).toBe('8554');
+      expect(decodeURIComponent(parsed.username)).toBe('zoo');
+      expect(decodeURIComponent(parsed.password)).toBe(PASSWORD);
+    });
+
+    it('inferenceStream MAIN → /zv_<id>; SUB without a sub URL → main; a FILE camera keeps its file path', async () => {
+      await make({ id: 'cam_a' });
+      await make({ id: 'cam_b', inferenceStream: 'SUB', subStreamUrl: null });
+      await make({
+        id: 'cam_c',
+        sourceType: 'FILE',
+        mainStreamUrl: 'sample_data/cars.mp4',
+        subStreamUrl: null,
+      });
+      const byId = Object.fromEntries(await urls()) as Record<string, string>;
+      expect(byId.cam_a).toMatch(/\/zv_cam_a$/);
+      expect(byId.cam_b).toMatch(/\/zv_cam_b$/);
+      expect(byId.cam_c).toBe('sample_data/cars.mp4');
+    });
+  });
+
   it('model is {path: settings.model_name, imgsz: settings.imgsz}', async () => {
     const settings = {
       ...validSettings('cashier_presence'),

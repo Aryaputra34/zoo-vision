@@ -1,11 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { Actor } from '../auth/actor';
 import { apiError, needsSuperadmin } from '../common/errors';
+import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
 import type { Camera, Prisma } from '../generated/prisma/client';
 import type { SourceType } from '../generated/prisma/enums';
@@ -30,7 +32,7 @@ export function auditView(
   cipher: UrlCipher,
 ): Record<string, unknown> {
   return {
-    ...toCameraView(camera, 'MANAGER', cipher),
+    ...toCameraView(camera, 'MANAGER', cipher, false),
     mainStreamUrl: REDACTED,
     subStreamUrl: REDACTED,
   };
@@ -52,17 +54,30 @@ export class CamerasService {
     private readonly models: ModelsService,
     private readonly pathSync: PathSync,
     readonly cipher: UrlCipher,
+    @Inject(ENV) private readonly env: Env,
   ) {}
+
+  /** Whether camera views carry liveUrls: only where MediaMTX is configured. */
+  private get live(): boolean {
+    return !!this.env.MEDIAMTX_API_URL;
+  }
 
   async list(actor: Actor): Promise<CameraView[]> {
     const cameras = await this.prisma.camera.findMany({
       orderBy: { id: 'asc' },
     });
-    return cameras.map((c) => toCameraView(c, actor.role, this.cipher));
+    return cameras.map((c) =>
+      toCameraView(c, actor.role, this.cipher, this.live),
+    );
   }
 
   async get(actor: Actor, id: string): Promise<CameraView> {
-    return toCameraView(await this.find(id), actor.role, this.cipher);
+    return toCameraView(
+      await this.find(id),
+      actor.role,
+      this.cipher,
+      this.live,
+    );
   }
 
   async find(id: string): Promise<Camera> {
@@ -159,7 +174,10 @@ export class CamerasService {
     }
     await this.notifier.notify(camera.id, 1);
     this.pathSync.request();
-    return { camera, view: toCameraView(camera, actor.role, this.cipher) };
+    return {
+      camera,
+      view: toCameraView(camera, actor.role, this.cipher, this.live),
+    };
   }
 
   async update(
@@ -320,7 +338,7 @@ export class CamerasService {
       before,
       after,
       streamUrlsChanged,
-      view: toCameraView(after, actor.role, this.cipher),
+      view: toCameraView(after, actor.role, this.cipher, this.live),
     };
   }
 
