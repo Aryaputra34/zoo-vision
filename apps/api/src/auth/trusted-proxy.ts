@@ -8,6 +8,8 @@ import dns from 'node:dns';
 import { ENV, type Env } from '../config/env';
 
 const REFRESH_MS = 60_000;
+/** While no address is known (Caddy starts after the API), ask again soon: nothing is trusted meanwhile. */
+const RETRY_MS = 2_000;
 
 /** Every address a name resolves to. */
 export type Lookup = (host: string) => Promise<string[]>;
@@ -33,13 +35,27 @@ export function trustedProxy(host: string, lookup: Lookup = dnsLookup) {
       // keep the last list
     }
   };
-  const timer = setInterval(() => void refresh(), REFRESH_MS);
-  timer.unref();
+  let timer: NodeJS.Timeout | undefined;
+  let stopped = false;
+  const schedule = (): void => {
+    if (stopped) return;
+    timer = setTimeout(
+      () => void refresh().then(schedule),
+      addresses.size > 0 ? REFRESH_MS : RETRY_MS,
+    );
+    timer.unref();
+  };
+  schedule();
 
   return {
-    trust: (addr: string): boolean => addresses.has(plain(addr)),
+    // A socket that already closed has no address: Express hands that over as undefined
+    trust: (addr: string | undefined): boolean =>
+      typeof addr === 'string' && addresses.has(plain(addr)),
     refresh,
-    stop: (): void => clearInterval(timer),
+    stop: (): void => {
+      stopped = true;
+      clearTimeout(timer);
+    },
   };
 }
 
@@ -64,6 +80,6 @@ export class TrustedProxy implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Express `trust proxy` function: only the hop next to us, and only when it is the proxy. */
-  readonly trustHop = (addr: string, hop: number): boolean =>
+  readonly trustHop = (addr: string | undefined, hop: number): boolean =>
     hop === 0 && this.inner.trust(addr);
 }

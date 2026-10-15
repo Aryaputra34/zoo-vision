@@ -38,4 +38,32 @@ describe('trustedProxy', () => {
       proxy.stop();
     }
   });
+
+  it('an address that is not there (a closed socket) is not trusted and does not throw', async () => {
+    const proxy = trustedProxy('caddy', () => Promise.resolve(['10.0.0.1']));
+    try {
+      await proxy.refresh();
+      expect(proxy.trust(undefined)).toBe(false);
+    } finally {
+      proxy.stop();
+    }
+  });
+
+  it('asks again every 2 s while it knows no address (Caddy starts after the API)', async () => {
+    jest.useFakeTimers();
+    const lookup = jest
+      .fn<Promise<string[]>, [string]>()
+      .mockRejectedValueOnce(new Error('ENOTFOUND'))
+      .mockResolvedValue(['10.0.0.9']);
+    const proxy = trustedProxy('caddy', lookup);
+    try {
+      await proxy.refresh(); // what onModuleInit does: fails
+      expect(proxy.trust('10.0.0.9')).toBe(false);
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(proxy.trust('10.0.0.9')).toBe(true);
+    } finally {
+      proxy.stop();
+      jest.useRealTimers();
+    }
+  });
 });
