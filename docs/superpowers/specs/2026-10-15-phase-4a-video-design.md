@@ -1,6 +1,6 @@
 # Zoo Vision Phase 4a: live video (design)
 
-- **Status:** agreed section by section on 2026-10-15, awaiting review
+- **Status:** approved 2026-10-15
 - **Date:** 2026-10-15
 - **Parent spec:** `docs/superpowers/specs/2026-10-08-zoo-vision-production-architecture-design.md`, section 6
   (phase 4) and the sections it points to: 5 (video), 7 (recording settings), 8 (tests). Phase 3's design
