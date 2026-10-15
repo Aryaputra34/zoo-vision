@@ -105,15 +105,18 @@ export class LiveGateway
     const rooms = this.rooms('subscribe', body);
     if (!rooms) return { ok: false, code: 'VALIDATION_FAILED' };
     const cameraRooms = rooms.filter((r) => r.startsWith('camera:'));
-    for (const room of cameraRooms) {
-      const id = room.slice('camera:'.length);
-      const camera = await this.prisma.camera.findUnique({
-        where: { id },
+    if (cameraRooms.length > 0) {
+      const ids = cameraRooms.map((r) => r.slice('camera:'.length));
+      const found = await this.prisma.camera.findMany({
+        where: { id: { in: ids } },
         select: { id: true },
       });
-      if (!camera) {
+      if (found.length !== ids.length) {
         return { ok: false, code: 'NOT_FOUND' };
       }
+    }
+    if (socket.disconnected) {
+      return { ok: true };
     }
     await socket.join(rooms);
     return { ok: true };

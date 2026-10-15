@@ -213,6 +213,19 @@ describe('Boxes relay via WebSocket room camera:<id>', () => {
     expect(messageCount).toBeLessThanOrEqual(10);
     expect(messageCount).toBeGreaterThan(0);
   });
+
+  it('a socket that disconnects mid-subscribe does not leave a leaked room or subscription', async () => {
+    const channel = 'cam:cam_box_2:boxes';
+    expect(await numsub(channel)).toBe(0);
+
+    const s = await connect(userCookie);
+    // Send subscribe and disconnect immediately
+    void ack(s, 'subscribe', { rooms: ['camera:cam_box_2'] });
+    s.disconnect();
+
+    await wait(150);
+    expect(await numsub(channel)).toBe(0);
+  });
 });
 
 function assertAck(res: Ack, ok: boolean, code?: string) {

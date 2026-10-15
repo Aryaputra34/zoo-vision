@@ -43,14 +43,18 @@ export class DebugFramesService implements OnApplicationShutdown {
     watch.viewers.add(onFrame);
 
     if (watch.viewers.size === 1) {
-      // First viewer for this camera: set key at once and refresh every 2 s (TTL 5 s)
+      let lastWarn = 0;
       const refreshKey = () => {
         this.redis
           .set(`cam:${cameraId}:debug`, 1, 'EX', 5)
           .catch((err: Error) => {
-            this.logger.warn(
-              `Failed to refresh debug key for ${cameraId}: ${err.message}`,
-            );
+            const now = Date.now();
+            if (now - lastWarn >= 60_000) {
+              lastWarn = now;
+              this.logger.warn(
+                `Failed to refresh debug key for ${cameraId}: ${err.message}`,
+              );
+            }
           });
       };
       refreshKey();
@@ -86,18 +90,6 @@ export class DebugFramesService implements OnApplicationShutdown {
         }
         this.watches.delete(cameraId);
         throw err;
-      }
-
-      // If viewer left while subscribe was in flight:
-      if ((watch.viewers.size as number) === 0) {
-        if (watch.timer) {
-          clearInterval(watch.timer);
-          watch.timer = null;
-        }
-        this.watches.delete(cameraId);
-        if (watch.releaseSub) {
-          void watch.releaseSub();
-        }
       }
     } else if (watch.subPromise) {
       // Multiple viewers joining while first subscription is in flight

@@ -5,11 +5,14 @@ import {
   Get,
   Inject,
   Param,
+  Req,
   Res,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiParam, ApiProduces } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { AccessEvents } from '../auth/access-events';
+import type { ActorRequest } from '../auth/actor';
 import { MinRole } from '../auth/decorators';
 import { apiError } from '../common/errors';
 import { ENV, type Env } from '../config/env';
@@ -29,6 +32,7 @@ export class MediaController {
     private readonly clips: ClipsService,
     private readonly prisma: PrismaService,
     private readonly debugFrames: DebugFramesService,
+    private readonly accessEvents: AccessEvents,
   ) {}
 
   @Get('snapshots/*path')
@@ -99,11 +103,36 @@ export class MediaController {
       },
     },
   })
-  async debug(@Param('id') id: string, @Res() res: Response): Promise<void> {
+  async debug(
+    @Param('id') id: string,
+    @Req() req: ActorRequest,
+    @Res() res: Response,
+  ): Promise<void> {
     let cleanup: (() => void) | null = null;
     let closed = false;
+
+    const maxLifetime = setTimeout(
+      () => {
+        if (!closed && !res.writableEnded) {
+          res.end();
+        }
+      },
+      10 * 60 * 1000,
+    );
+    maxLifetime.unref();
+
+    const accessSub = this.accessEvents.ended$.subscribe((evt) => {
+      if (evt.userId === req.actor?.id) {
+        if (!closed && !res.writableEnded) {
+          res.destroy();
+        }
+      }
+    });
+
     res.once('close', () => {
       closed = true;
+      clearTimeout(maxLifetime);
+      accessSub.unsubscribe();
       cleanup?.();
     });
 
@@ -112,6 +141,8 @@ export class MediaController {
       select: { id: true },
     });
     if (!camera) {
+      clearTimeout(maxLifetime);
+      accessSub.unsubscribe();
       throw apiError(404, 'NOT_FOUND', 'Camera not found');
     }
 
@@ -128,7 +159,7 @@ export class MediaController {
     res.flushHeaders();
 
     cleanup = await this.debugFrames.watch(id, (jpeg: Buffer) => {
-      if (closed || res.writableEnded) return;
+      if (closed || res.writableEnded || res.writableNeedDrain) return;
       const header = `--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`;
       try {
         res.write(

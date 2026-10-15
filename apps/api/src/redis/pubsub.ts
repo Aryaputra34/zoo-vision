@@ -99,18 +99,7 @@ export class RedisPubSub implements OnApplicationShutdown {
       // When the last listener is gone, unsubscribe from Redis
       if (current.listeners.size === 0) {
         this.channels.delete(channel);
-        if (current.subscribePromise) {
-          try {
-            await current.subscribePromise;
-          } catch {
-            // ignore failure on cleanup
-          }
-        }
-        if (
-          this.subClient &&
-          (this.subClient.status === 'ready' ||
-            this.subClient.status === 'connect')
-        ) {
+        if (this.subClient) {
           try {
             await this.subClient.unsubscribe(channel);
           } catch (err) {
