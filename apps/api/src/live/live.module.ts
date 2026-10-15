@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CamerasModule } from '../cameras/cameras.module';
 import { IngestModule } from '../ingest/ingest.module';
 import { AuditPush } from './audit-push';
+import { BoxesRelay } from './boxes-relay';
 import { IngestPush } from './ingest-push';
 import { LiveGateway } from './live.gateway';
 import { StatusBroadcaster } from './status-broadcaster';
@@ -10,7 +11,13 @@ import { StatusBroadcaster } from './status-broadcaster';
 /** The `/ws` gateway and what feeds it: status ticks, and the push after each ingest commit. */
 @Module({
   imports: [AuthModule, CamerasModule, IngestModule],
-  providers: [LiveGateway, StatusBroadcaster, IngestPush, AuditPush],
+  providers: [
+    LiveGateway,
+    StatusBroadcaster,
+    IngestPush,
+    AuditPush,
+    BoxesRelay,
+  ],
   exports: [LiveGateway],
 })
 export class LiveModule {}

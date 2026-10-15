@@ -10,9 +10,12 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiParam, ApiProduces } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { MinRole } from '../auth/decorators';
 import { apiError } from '../common/errors';
 import { ENV, type Env } from '../config/env';
+import { PrismaService } from '../prisma/prisma.service';
 import { ClipsService } from './clips.service';
+import { DebugFramesService } from './debug-frames.service';
 import { resolveSnapshot } from './snapshot-path';
 
 /**
@@ -24,6 +27,8 @@ export class MediaController {
   constructor(
     @Inject(ENV) private readonly env: Env,
     private readonly clips: ClipsService,
+    private readonly prisma: PrismaService,
+    private readonly debugFrames: DebugFramesService,
   ) {}
 
   @Get('snapshots/*path')
@@ -76,5 +81,66 @@ export class MediaController {
     @Res() res: Response,
   ): Promise<void> {
     await this.clips.stream(eventId, res);
+  }
+
+  @MinRole('SUPERADMIN')
+  @Get('debug/:id')
+  @ApiParam({
+    name: 'id',
+    type: String,
+    description: 'Camera id to stream debug MJPEG frames for',
+  })
+  @ApiProduces('multipart/x-mixed-replace')
+  @ApiOkResponse({
+    description: 'MJPEG stream of engine debug frames',
+    content: {
+      'multipart/x-mixed-replace': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async debug(@Param('id') id: string, @Res() res: Response): Promise<void> {
+    let cleanup: (() => void) | null = null;
+    let closed = false;
+    res.once('close', () => {
+      closed = true;
+      cleanup?.();
+    });
+
+    const camera = await this.prisma.camera.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!camera) {
+      throw apiError(404, 'NOT_FOUND', 'Camera not found');
+    }
+
+    if (closed) {
+      return;
+    }
+
+    res.status(200);
+    res.set({
+      'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.flushHeaders();
+
+    cleanup = await this.debugFrames.watch(id, (jpeg: Buffer) => {
+      if (closed || res.writableEnded) return;
+      const header = `--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`;
+      try {
+        res.write(
+          Buffer.concat([Buffer.from(header), jpeg, Buffer.from('\r\n')]),
+        );
+      } catch {
+        // Socket closed
+      }
+    });
+
+    if (closed) {
+      cleanup();
+    }
   }
 }
