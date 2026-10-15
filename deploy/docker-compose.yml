@@ -180,8 +180,8 @@ services:
       retries: 10
       start_period: 20s
 
-  # Pulls every camera once, records it (mediamtx.yml), re-serves RTSP to the AI engine
-  # and serves event clips to the dashboard on :9996.
+  # Pulls every camera once (paths zv_* are created by the API through :9997), records it per camera, re-serves
+  # RTSP to the AI engine, WebRTC to the dashboard (through Caddy) and event clips on :9996 (password required).
   mediamtx:
     profiles: ["engine"]
     image: bluenviron/mediamtx:1.21.1
@@ -189,6 +189,10 @@ services:
     network_mode: "host"
     environment:
       - MTX_PATHDEFAULTS_RECORDPATH=/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+      # The password of user `zoo`: the API, the engine and Caddy use it (the file's first authInternalUsers entry)
+      - MTX_AUTHINTERNALUSERS_0_PASS=${MEDIAMTX_PASSWORD:?set MEDIAMTX_PASSWORD in .env}
+      # The address the browser's WebRTC (ICE, UDP 8189) connects to: the one the dashboard is opened at
+      - MTX_WEBRTCADDITIONALHOSTS=${ZOO_SITE_ADDRESS:-localhost}
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
       - ${ZOO_DATA_DIR:-./data}/recordings:/recordings

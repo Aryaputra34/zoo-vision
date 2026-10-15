@@ -10,7 +10,7 @@ every phase; the full operator manual comes in Phase 5.
 
 | Part | Repo / folder | Port | Talks to |
 | :--- | :--- | :--- | :--- |
-| MediaMTX | `zoo-vision` root, config `deploy/mediamtx.yml` | 8554 RTSP, 9996 clips | FFmpeg loops in, engine and dashboard out |
+| MediaMTX | `zoo-vision` root, config `deploy/mediamtx.yml` | 8554 RTSP, 8889 WebRTC, 9996 playback, 9997 Control API (Phase 4a below) | FFmpeg loops in, engine and dashboard out |
 | Engine | `zoo-vision/services/engine` | 8000 (preview, snapshots) | fetches its cameras from the API and applies changes live; reads RTSP from MediaMTX; sends events to the API's Redis stream, which the API stores and pushes to the dashboard over the WebSocket (Phase 3) |
 | Dashboard | `zoo-vision-fe` | 3000 | shows the engine's live preview; receives no events until Phase 3; proxies the engine API and MediaMTX clips |
 
@@ -40,8 +40,9 @@ copy .env.example .env.local                  # defaults already point at 127.0.
 
 **Point the configs at each other.**
 * `services\engine\configs\cameras.yaml` (read only by the import below): per camera, `source: rtsp://127.0.0.1:8554/<path>` and
-  `recording_path: <path>`. Use the same path names as `deploy\mediamtx.yml` (`cam_cashier_01`,
-  `cam_restaurant_01`, `cam_gate_entry_01`, `cam_horse_01`).
+  `recording_path: <path>`. Use the same path names as `deploy\mediamtx.yml` (`feed_cashier`,
+  `feed_restaurant`, `feed_gate`, `feed_horse`; from Phase 4a these are test feeds, and cameras added in the web
+  UI become `zv_<id>` paths, see Phase 4a below).
 * `deploy\mediamtx.yml`: each camera path has a `runOnInit: ffmpeg ... -i "<video>"` loop. Change the four
   video paths to recordings on your machine.
 * The engine reads no YAML. It gets its cameras from the API (next sections) and its static settings from
@@ -273,6 +274,38 @@ Add its cameras through `POST /api/v1/cameras` (sourceType `FILE` with a path fo
 `default`). Two cameras with the same model share one loaded instance, so GPU memory does not double; keep to 2 or
 3 cameras on the 4 GB card.
 
+## Phase 4a: MediaMTX for live video
+
+From Phase 4a MediaMTX needs a password and the API drives it. The API creates one path `zv_<cameraId>` (and
+`zv_<cameraId>_sub`) per camera through MediaMTX's Control API, records it as the camera's settings say, and the
+engine reads `rtsp://zoo:<password>@127.0.0.1:8554/zv_<id>`. The `feed_*` paths of `deploy\mediamtx.yml` are only
+test feeds: add a camera in the web UI as `RTSP` with `rtsp://127.0.0.1:8554/feed_gate` and it goes through the
+same path as a real camera. `FILE` cameras get no MediaMTX path and no live video.
+
+`MEDIAMTX_PASSWORD` is a new secret in `deploy\.env` (`openssl rand -hex 24`, 12 characters or more, URL-safe). Run
+MediaMTX natively with it:
+
+```powershell
+# deploy\.env also needs:  MEDIAMTX_PASSWORD=<same value>
+$env:MTX_AUTHINTERNALUSERS_0_PASS = "<MEDIAMTX_PASSWORD>"      # the password of user `zoo`
+# only on a laptop where Windows reserves 9996/9997 (see below):
+$env:MTX_APIADDRESS = ":9890"; $env:MTX_PLAYBACKADDRESS = ":9891"
+.\mediamtx.exe deploy\mediamtx.yml
+```
+
+Windows (Hyper-V, WSL) can reserve TCP port ranges at boot. If MediaMTX says `listen tcp :9996: bind: An attempt
+was made to access a socket in a way forbidden`, run `netsh int ipv4 show excludedportrange protocol=tcp`, move
+the two ports out of the listed ranges with the two variables above, and tell the API where they went in
+`deploy\.env`:
+
+```
+ZOO_MEDIAMTX_API_URL=http://host.docker.internal:9890
+ZOO_MEDIAMTX_PLAYBACK_URL=http://host.docker.internal:9891
+```
+
+Check it: `curl.exe -u zoo:<password> http://127.0.0.1:9996/v3/config/paths/list` answers 200 and, without `-u`,
+401. Anonymous RTSP is refused except for `feed_*` on localhost. Use the engine's `API_URL` as in Phase 3.
+
 ## Check that it works (no cameras needed)
 
 ```powershell
@@ -289,7 +322,7 @@ See [08_TESTING_GUIDE.md](08_TESTING_GUIDE.md) for every option and a command pe
 
 | # | Folder | Command |
 | :--- | :--- | :--- |
-| 1 | `zoo-vision` | `.\mediamtx.exe deploy\mediamtx.yml` |
+| 1 | `zoo-vision` | `.\mediamtx.exe deploy\mediamtx.yml` with the environment from Phase 4a below |
 | 2 | `zoo-vision\services\engine` | `uv run python main.py` (add `--preview` for OpenCV windows), with the environment from the Backend section |
 | 3 | `zoo-vision-fe` | `npm run dev`, then open http://localhost:3000 (once the dashboard is on the API, open it through Caddy at http://localhost:8080 instead: the API's cookie and the WebSocket only work there) |
 
