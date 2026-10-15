@@ -94,12 +94,12 @@ describe('GET /api/v1/events and /api/v1/intervals', () => {
     await addCamera('rec', {
       name: 'Gate with recording',
       useCase: 'horse_riding',
-      recordingPath: 'rec',
+      sourceType: 'RTSP',
       recordingEnabled: true,
     });
     await addCamera('rec_off', {
       useCase: 'horse_riding',
-      recordingPath: 'rec_off',
+      sourceType: 'RTSP',
       recordingEnabled: false,
     });
     await addCamera('rec_none', { useCase: 'horse_riding' });
@@ -352,7 +352,7 @@ describe('GET /api/v1/events and /api/v1/intervals', () => {
     expect(none.rows.every((r) => r.snapshotUrl === null)).toBe(true);
   });
 
-  it('clipUrl only for cameras with a recordingPath and recording on', async () => {
+  it('clipUrl only for cameras that have a MediaMTX path (not FILE) and recording on', async () => {
     const page = await events({ cameraIds: 'rec,rec_off,rec_none' });
     const clip = Object.fromEntries(page.rows.map((r) => [r.id, r.clipUrl]));
     expect(clip).toEqual({

@@ -6,12 +6,13 @@ import { ownerQuery } from '../setup/db';
  * statement). Times are anything Postgres reads as a timestamptz, e.g. ISO strings.
  */
 
-/** Inserts a FILE camera. Defaults: use case cashier_presence, no recording. */
+/** Inserts a camera. Defaults: a FILE camera, use case cashier_presence, recording on (FILE has no clips). */
 export async function addCamera(
   id: string,
   opts: {
     name?: string;
     useCase?: string;
+    sourceType?: 'FILE' | 'RTSP';
     recordingPath?: string | null;
     recordingEnabled?: boolean;
     clipBeforeSec?: number;
@@ -21,7 +22,7 @@ export async function addCamera(
   await ownerQuery(
     `INSERT INTO "Camera" ("id", "name", "useCase", "sourceType", "mainStreamUrlEnc", "recordingPath",
                            "recordingEnabled", "clipBeforeSec", "clipAfterSec", "activeVersion", "updatedAt")
-     VALUES ($1, $2, $3, 'FILE', 'enc', $4, $5, $6, $7, 1, now())`,
+     VALUES ($1, $2, $3, $8::"SourceType", 'enc', $4, $5, $6, $7, 1, now())`,
     id,
     opts.name ?? id,
     opts.useCase ?? 'cashier_presence',
@@ -29,6 +30,7 @@ export async function addCamera(
     opts.recordingEnabled ?? true,
     opts.clipBeforeSec ?? 15,
     opts.clipAfterSec ?? 15,
+    opts.sourceType ?? 'FILE',
   );
 }
 

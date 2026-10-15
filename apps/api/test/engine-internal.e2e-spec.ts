@@ -149,7 +149,7 @@ describe('engine internal routes', () => {
 
   it('sourceUrl is the decrypted main URL; SUB uses the sub URL, and SUB without a sub URL falls back to main', async () => {
     await create({ id: 'cam_main' });
-    await create({ id: 'cam_sub', inferenceStream: 'SUB' });
+    await create({ id: 'cam_alt', inferenceStream: 'SUB' });
     await create({
       id: 'cam_nosub',
       inferenceStream: 'SUB',
@@ -158,7 +158,7 @@ describe('engine internal routes', () => {
     const byId = Object.fromEntries(
       (await cameras()).map((c) => [c.id, c.sourceUrl]),
     );
-    expect(byId).toEqual({ cam_main: MAIN, cam_sub: SUB, cam_nosub: MAIN });
+    expect(byId).toEqual({ cam_main: MAIN, cam_alt: SUB, cam_nosub: MAIN });
   });
 
   it('model is {path: settings.model_name, imgsz: settings.imgsz}', async () => {

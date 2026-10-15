@@ -25,7 +25,12 @@ export class CameraViewDto {
   // MANAGER and SUPERADMIN
   @ApiPropertyOptional({ enum: SourceType, enumName: 'SourceType' })
   sourceType?: SourceType;
-  @ApiPropertyOptional({ type: String, nullable: true })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'The MediaMTX path being recorded (zv_<id>, or zv_<id>_sub), derived from the recording settings. Null for FILE cameras or with recording off.',
+  })
   recordingPath?: string | null;
   targetFps?: number;
   engineGroup?: string;

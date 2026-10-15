@@ -1,5 +1,6 @@
 import type { Camera } from '../generated/prisma/client';
 import type { Role } from '../generated/prisma/enums';
+import { mediamtxPaths } from '../mediamtx/paths';
 import type { UrlCipher } from './url-cipher';
 
 export type UserCameraView = {
@@ -60,7 +61,8 @@ export function toCameraView(
   const manager: ManagerCameraView = {
     ...user,
     sourceType: camera.sourceType,
-    recordingPath: camera.recordingPath,
+    // derived, never the stored column
+    recordingPath: mediamtxPaths(camera)?.recorded ?? null,
     targetFps: camera.targetFps,
     engineGroup: camera.engineGroup,
     auditCamera: camera.auditCamera,

@@ -9,6 +9,7 @@ import { apiError, needsSuperadmin } from '../common/errors';
 import { ContractsService } from '../contracts/contracts.service';
 import type { Camera, Prisma } from '../generated/prisma/client';
 import type { SourceType } from '../generated/prisma/enums';
+import { PathSync } from '../mediamtx/path-sync.service';
 import { ModelsService } from '../models/models.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { type CameraView, toCameraView } from './camera-view';
@@ -49,6 +50,7 @@ export class CamerasService {
     private readonly contracts: ContractsService,
     private readonly notifier: ConfigNotifier,
     private readonly models: ModelsService,
+    private readonly pathSync: PathSync,
     readonly cipher: UrlCipher,
   ) {}
 
@@ -110,7 +112,6 @@ export class CamerasService {
           subStreamUrlEnc: dto.subStreamUrl
             ? this.cipher.encrypt(dto.subStreamUrl)
             : null,
-          recordingPath: dto.recordingPath ?? null,
           ...(dto.targetFps !== undefined && { targetFps: dto.targetFps }),
           ...(dto.engineGroup !== undefined && {
             engineGroup: dto.engineGroup,
@@ -157,6 +158,7 @@ export class CamerasService {
       throw err;
     }
     await this.notifier.notify(camera.id, 1);
+    this.pathSync.request();
     return { camera, view: toCameraView(camera, actor.role, this.cipher) };
   }
 
@@ -188,14 +190,6 @@ export class CamerasService {
     }
     if (dto.sourceType !== undefined) {
       set('sourceType', 'sourceType', dto.sourceType, before.sourceType);
-    }
-    if (dto.recordingPath !== undefined) {
-      set(
-        'recordingPath',
-        'recordingPath',
-        dto.recordingPath,
-        before.recordingPath,
-      );
     }
     if (dto.targetFps !== undefined) {
       set('targetFps', 'targetFps', dto.targetFps, before.targetFps);
@@ -321,6 +315,7 @@ export class CamerasService {
         ? await this.prisma.camera.update({ where: { id }, data })
         : before;
     await this.notifier.notify(id, after.activeVersion);
+    this.pathSync.request();
     return {
       before,
       after,
@@ -358,6 +353,7 @@ export class CamerasService {
       throw err;
     }
     await this.notifier.notify(id, null);
+    this.pathSync.request();
     return camera;
   }
 

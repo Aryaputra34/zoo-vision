@@ -75,7 +75,6 @@ export async function seedDemo(
       targetFps: 5,
       engineGroup: DEMO_GROUP,
       enabled: true,
-      recordingPath: camera.recordingPath,
     };
     await cameras.create(actor, dto);
     created.cameras.push(camera.id);

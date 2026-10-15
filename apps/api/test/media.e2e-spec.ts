@@ -20,7 +20,14 @@ const MP4 = Buffer.concat([
   Buffer.alloc(64, 7),
 ]);
 
-type PlaybackRequest = { url: URL; closedEarly: boolean; finished: boolean };
+type PlaybackRequest = {
+  url: URL;
+  auth: string | undefined;
+  closedEarly: boolean;
+  finished: boolean;
+};
+
+const MEDIAMTX_PASSWORD = 'media-test-pw-0123';
 
 describe('/media', () => {
   let app: INestApplication<App>;
@@ -94,6 +101,7 @@ describe('/media', () => {
     playback = http.createServer((req, res) => {
       const entry: PlaybackRequest = {
         url: new URL(req.url ?? '/', 'http://playback'),
+        auth: req.headers.authorization,
         closedEarly: false,
         finished: false,
       };
@@ -108,26 +116,28 @@ describe('/media', () => {
     app = await createTestApp({
       SNAPSHOT_DIR: root,
       MEDIAMTX_PLAYBACK_URL: playbackUrl,
+      MEDIAMTX_PASSWORD,
     });
     base = await listenTestApp(app);
     cookie = (await asRole(app, 'USER')).cookie;
 
     await addCamera('rec', {
       useCase: 'horse_riding',
-      recordingPath: 'cam_rec/main',
+      sourceType: 'RTSP',
       clipBeforeSec: 10,
       clipAfterSec: 20,
     });
-    await addCamera('weird', {
+    // not a camera id the API would accept: proves the path is one encoded value anyway
+    await addCamera('we&x=1/../y z', {
       useCase: 'horse_riding',
-      recordingPath: 'cam&x=1/../y z',
+      sourceType: 'RTSP',
     });
     await addCamera('off', {
       useCase: 'horse_riding',
-      recordingPath: 'cam_off',
+      sourceType: 'RTSP',
       recordingEnabled: false,
     });
-    await addCamera('nopath', { useCase: 'horse_riding' });
+    await addCamera('nopath', { useCase: 'horse_riding' }); // FILE: no MediaMTX path
 
     const event = (id: string, cameraId: string | null, time: string) =>
       addEvent({
@@ -141,7 +151,7 @@ describe('/media', () => {
           : { bootId: 'd'.repeat(32), engineGroup: 'default' },
       });
     await event('evt_old', 'rec', '2026-10-14T03:00:00.000Z');
-    await event('evt_weird', 'weird', '2026-10-14T03:00:00.000Z');
+    await event('evt_weird', 'we&x=1/../y z', '2026-10-14T03:00:00.000Z');
     await event('evt_off', 'off', '2026-10-14T03:00:00.000Z');
     await event('evt_nopath', 'nopath', '2026-10-14T03:00:00.000Z');
     await event('evt_system', null, '2026-10-14T03:00:00.000Z');
@@ -248,13 +258,17 @@ describe('/media', () => {
       const { url } = seen[0];
       expect(url.pathname).toBe('/get');
       expect(Object.fromEntries(url.searchParams)).toEqual({
-        path: 'cam_rec/main',
+        path: 'zv_rec',
         start: '2026-10-14T02:59:50.000Z', // 10 s before 03:00:00
         duration: '30', // 10 + 20
         format: 'mp4',
       });
       // a clip that is over can be cached by the browser, privately
       expect(res.headers['cache-control']).toBe('private, max-age=3600');
+      // playback wants the MediaMTX service password (user zoo)
+      expect(seen[0].auth).toBe(
+        `Basic ${Buffer.from(`zoo:${MEDIAMTX_PASSWORD}`).toString('base64')}`,
+      );
     });
 
     it('no-store for an event whose clip end is in the future', async () => {
@@ -265,7 +279,7 @@ describe('/media', () => {
     it('puts the recording path in the query as one encoded value', async () => {
       await get('/media/clips/evt_weird').expect(200);
       const params = seen[0].url.searchParams;
-      expect(params.get('path')).toBe('cam&x=1/../y z');
+      expect(params.get('path')).toBe('zv_we&x=1/../y z');
       expect(params.has('x')).toBe(false);
       expect([...params.keys()].sort()).toEqual([
         'duration',
@@ -275,7 +289,7 @@ describe('/media', () => {
       ]);
     });
 
-    it('RECORDING_NOT_AVAILABLE when the camera has no recordingPath, recording is off, or the event has no camera', async () => {
+    it('RECORDING_NOT_AVAILABLE when the camera is a FILE camera, recording is off, or the event has no camera', async () => {
       for (const id of ['evt_nopath', 'evt_off', 'evt_system']) {
         const res = await get(`/media/clips/${id}`).expect(404);
         expect([id, (res.body as { code: string }).code]).toEqual([

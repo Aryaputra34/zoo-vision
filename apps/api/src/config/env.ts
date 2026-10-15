@@ -27,6 +27,10 @@ export type Env = Readonly<{
   SNAPSHOT_DIR: string;
   /** MediaMTX's playback server, e.g. http://host.docker.internal:9996; unset: clips are unavailable. */
   MEDIAMTX_PLAYBACK_URL: string | undefined;
+  /** MediaMTX's Control API, e.g. http://host.docker.internal:9997; unset: no path sync, no live video. */
+  MEDIAMTX_API_URL: string | undefined;
+  /** The password of MediaMTX's user `zoo` (Control API, playback). Required with MEDIAMTX_API_URL. */
+  MEDIAMTX_PASSWORD: string | undefined;
 }>;
 
 export class EnvError extends Error {
@@ -75,6 +79,9 @@ const positiveInt: Check<number> = (value) => {
 };
 
 const text: Check<string> = (value) => value;
+
+const password12: Check<string> = (value) =>
+  value.length >= 12 ? value : undefined;
 
 // Region/City names only: Intl also takes "+07:00", which Postgres reads with the sign flipped
 const timeZone: Check<string> = (value) => {
@@ -164,6 +171,17 @@ export function loadEnv(source: Source = process.env): Env {
     MEDIAMTX_PLAYBACK_URL: source.MEDIAMTX_PLAYBACK_URL
       ? read('MEDIAMTX_PLAYBACK_URL', url('http:', 'https:'), 'an http(s) URL')
       : undefined,
+    MEDIAMTX_API_URL: source.MEDIAMTX_API_URL
+      ? read('MEDIAMTX_API_URL', url('http:', 'https:'), 'an http(s) URL')
+      : undefined,
+    MEDIAMTX_PASSWORD:
+      source.MEDIAMTX_API_URL || source.MEDIAMTX_PASSWORD
+        ? read(
+            'MEDIAMTX_PASSWORD',
+            password12,
+            'at least 12 characters (openssl rand -hex 24)',
+          )
+        : undefined,
   };
 
   if (problems.length > 0) {

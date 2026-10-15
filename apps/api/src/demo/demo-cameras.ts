@@ -10,17 +10,15 @@ export type DemoCamera = {
   name: string;
   useCase: string;
   settings: object;
-  /** MediaMTX path; null leaves the camera without clips (RECORDING_NOT_AVAILABLE). */
-  recordingPath: string | null;
 };
 
 /** The use cases a demo camera exists for, with the camera's display name. */
-const USE_CASES: [useCase: string, name: string, recordingPath: boolean][] = [
-  ['cashier_presence', 'Demo cashier desk', false],
-  ['horse_riding', 'Demo pony rides', true],
-  ['restaurant_counter', 'Demo restaurant counter', false],
-  ['restaurant_table', 'Demo restaurant tables', false],
-  ['vehicle_gate', 'Demo vehicle gate', true],
+const USE_CASES: [useCase: string, name: string][] = [
+  ['cashier_presence', 'Demo cashier desk'],
+  ['horse_riding', 'Demo pony rides'],
+  ['restaurant_counter', 'Demo restaurant counter'],
+  ['restaurant_table', 'Demo restaurant tables'],
+  ['vehicle_gate', 'Demo vehicle gate'],
 ];
 
 /** The valid example settings of a use case in the contracts package (`current_rules.json`). */
@@ -41,15 +39,12 @@ function exampleSettings(useCase: string): object {
 }
 
 /** Ids are `demo_<use case>`, one per assignable use case. */
-export const DEMO_CAMERAS: DemoCamera[] = USE_CASES.map(
-  ([useCase, name, recorded]) => ({
-    id: `demo_${useCase}`,
-    name,
-    useCase,
-    settings: exampleSettings(useCase),
-    recordingPath: recorded ? `demo_${useCase}` : null,
-  }),
-);
+export const DEMO_CAMERAS: DemoCamera[] = USE_CASES.map(([useCase, name]) => ({
+  id: `demo_${useCase}`,
+  name,
+  useCase,
+  settings: exampleSettings(useCase),
+}));
 
 export const DEMO_USERS: {
   username: 'demo-superadmin' | 'demo-manager' | 'demo-user';

@@ -77,6 +77,9 @@ services:
       SNAPSHOT_DIR: /data/snapshots
       # MediaMTX's playback server (the engine profile runs it on the host network, port 9996)
       MEDIAMTX_PLAYBACK_URL: ${ZOO_MEDIAMTX_PLAYBACK_URL-http://host.docker.internal:9996} # empty = no clips
+      # MediaMTX's Control API: the API keeps one zv_* path per camera in sync (empty = no sync, no live video)
+      MEDIAMTX_API_URL: ${ZOO_MEDIAMTX_API_URL-http://host.docker.internal:9997}
+      MEDIAMTX_PASSWORD: ${MEDIAMTX_PASSWORD:-}
       JOBS: "on" # offline check every 5 s; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models
