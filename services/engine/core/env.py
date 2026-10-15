@@ -24,9 +24,6 @@ class EngineEnv:
     models_dir: str
     snapshot_dir: str
     snapshot_retention_days: int
-    preview_host: str
-    preview_port: int
-    preview_api_key: str = field(repr=False)
     max_batch: int
     model_jobs: bool
 
@@ -67,7 +64,6 @@ def load_env(source: Optional[Mapping[str, str]] = None) -> EngineEnv:
         bad.append("ENGINE_GROUP must match ^[a-z0-9_-]{1,32}$")
 
     retention = _int(env, "SNAPSHOT_RETENTION_DAYS", 30, 0, None, bad)
-    port = _int(env, "PREVIEW_PORT", 8000, 0, 65535, bad)
     max_batch = _int(env, "ENGINE_MAX_BATCH", 1, 1, 16, bad)
 
     jobs_raw = env.get("ENGINE_MODEL_JOBS", "on").strip().lower()
@@ -86,9 +82,6 @@ def load_env(source: Optional[Mapping[str, str]] = None) -> EngineEnv:
         models_dir=env.get("ZOO_MODELS_DIR", "models"),
         snapshot_dir=env.get("SNAPSHOT_DIR", "snapshots"),
         snapshot_retention_days=retention,
-        preview_host=env.get("PREVIEW_HOST", "127.0.0.1"),
-        preview_port=port,
-        preview_api_key=env.get("PREVIEW_API_KEY", ""),
         max_batch=max_batch,
         model_jobs=jobs_raw == "on",
     )

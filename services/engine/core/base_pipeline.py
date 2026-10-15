@@ -58,7 +58,7 @@ class BasePipeline(ABC):
         self.nx_client = nx_client
         self.config_version = config_version
 
-        # Live preview + health, read by core/api_server.py from another thread
+        # Latest frame, read by DebugPublisher and the live preview
         self._frame_lock = threading.Lock()
         self._latest_frame: Optional[np.ndarray] = None
         self.last_frame_at = 0.0

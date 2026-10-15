@@ -21,7 +21,6 @@ import redis
 from dotenv import load_dotenv
 
 from core.api_client import EngineApi
-from core.api_server import create_app, start_api_server
 from core.boxes import BoxPublisher
 from core.config_listener import ConfigListener
 from core.debug_frames import DebugPublisher
@@ -45,7 +44,7 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
     """Runs the engine until `stop` is set. `loader` replaces ultralytics' YOLO in the model pool (tests)."""
     boot_id = uuid.uuid4().hex
     client = redis.Redis.from_url(env.redis_url, socket_timeout=5, socket_connect_timeout=5)
-    events = pool = snapshots = supervisor = listener = publisher = server = jobs = jobs_client = boxes_pub = debug_pub = boxes_client = debug_client = None
+    events = pool = snapshots = supervisor = listener = publisher = jobs = jobs_client = boxes_pub = debug_pub = boxes_client = debug_client = None
     try:
         events = EventStream(env.redis_url, engine_group=env.engine_group)
         events.send(event_message(None, "system", "engine_started",
@@ -74,9 +73,6 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
             jobs_client = redis.Redis.from_url(env.redis_url, socket_timeout=10, socket_connect_timeout=5)
             jobs = ModelJobs(jobs_client, api, env.models_dir, env.device)
             jobs.start()
-        if env.preview_port:
-            app = create_app(supervisor.pipelines, snapshots, env.preview_api_key or None)
-            server = start_api_server(app, host=env.preview_host, port=env.preview_port)
         logger.info("Engine %s (group %s) is running", boot_id[:8], env.engine_group)
 
         if preview:
@@ -94,8 +90,6 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         for thread in threads:
             if thread is not None and thread.is_alive():
                 thread.join(THREAD_JOIN_S)
-        if server is not None:
-            server.should_exit = True
         if pool is not None:
             pool.close()
         if snapshots is not None:
