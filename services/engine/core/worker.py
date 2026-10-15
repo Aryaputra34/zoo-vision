@@ -61,6 +61,7 @@ class WorkerDeps:
     snapshots: SnapshotStore | None
     nx_client: NxClient
     device: str
+    boxes: Any = None
     stream_factory: Callable[..., Any] = StreamManager  # (source=, camera_id=, target_fps=) -> start/stop/get_frame
 
 
@@ -500,6 +501,7 @@ class CameraWorker:
                                        nx_client=self._deps.nx_client, config_version=config.version)
             pipeline.events = self._deps.events
             pipeline.snapshots = self._deps.snapshots
+            pipeline.boxes = self._deps.boxes
         except Exception as e:
             logger.exception("[%s] The %s pipeline failed to start", self.id, config.use_case)
             self._release(detector)

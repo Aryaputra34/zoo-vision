@@ -151,6 +151,7 @@ class TableOccupancyPipeline(BasePipeline):
         )[0]
         detections = sv.Detections.from_ultralytics(results)
         detections = self._suppress_duplicates(detections)
+        self.publish_boxes(detections)
 
         # 2. Update table occupancy engine
         summary = self.table_engine.update(

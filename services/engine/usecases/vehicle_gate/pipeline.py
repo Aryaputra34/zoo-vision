@@ -171,6 +171,7 @@ class VehicleGatePipeline(BasePipeline):
         detections = self.tracker.update_with_detections(detections)
         if len(detections) > 0:
             detections = self.smoother.update_with_detections(detections)
+        self.publish_boxes(detections)
 
         # 4. Perform ANPR on active vehicles in ROI (cache plate text per tracker_id)
         current_plates_to_draw = []

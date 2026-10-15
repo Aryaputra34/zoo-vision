@@ -22,7 +22,9 @@ from dotenv import load_dotenv
 
 from core.api_client import EngineApi
 from core.api_server import create_app, start_api_server
+from core.boxes import BoxPublisher
 from core.config_listener import ConfigListener
+from core.debug_frames import DebugPublisher
 from core.env import EngineEnv, EnvError, load_env
 from core.event_stream import EventStream
 from core.messages import event_message
@@ -43,7 +45,7 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
     """Runs the engine until `stop` is set. `loader` replaces ultralytics' YOLO in the model pool (tests)."""
     boot_id = uuid.uuid4().hex
     client = redis.Redis.from_url(env.redis_url, socket_timeout=5, socket_connect_timeout=5)
-    events = pool = snapshots = supervisor = listener = publisher = server = jobs = jobs_client = None
+    events = pool = snapshots = supervisor = listener = publisher = server = jobs = jobs_client = boxes_pub = debug_pub = boxes_client = debug_client = None
     try:
         events = EventStream(env.redis_url, engine_group=env.engine_group)
         events.send(event_message(None, "system", "engine_started",
@@ -52,14 +54,21 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         pool = ModelPool(env.device, env.models_dir, max_batch=env.max_batch, loader=loader)
         nx_client = NxClient(mock_mode=True)  # bookmarks are only logged until the API's nx output module exists
 
+        boxes_client = redis.Redis.from_url(env.redis_url, socket_timeout=2, socket_connect_timeout=2)
+        boxes_pub = BoxPublisher(boxes_client)
+        boxes_pub.start()
+
         api = EngineApi(env.api_url, env.engine_token, env.engine_group)
-        deps = WorkerDeps(pool=pool, events=events, snapshots=snapshots, nx_client=nx_client, device=env.device)
+        deps = WorkerDeps(pool=pool, events=events, snapshots=snapshots, nx_client=nx_client, device=env.device, boxes=boxes_pub)
         publisher = StatusPublisher(client, lambda: list(supervisor.workers.values()),
                                     engine_group=env.engine_group, boot_id=boot_id)
         supervisor = Supervisor(api, deps, on_stop=publisher.forget)
         listener = ConfigListener(client, supervisor.request_sync)
+        debug_client = redis.Redis.from_url(env.redis_url, socket_timeout=2, socket_connect_timeout=2)
+        debug_pub = DebugPublisher(debug_client, supervisor.pipelines)
         publisher.start()
         listener.start()
+        debug_pub.start()
         if env.model_jobs:
             # BRPOP blocks for 5 s, so this connection's read timeout must be longer than the shared client's
             jobs_client = redis.Redis.from_url(env.redis_url, socket_timeout=10, socket_connect_timeout=5)
@@ -78,7 +87,7 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         logger.info("Engine stopping")
         if supervisor is not None:
             supervisor.shutdown()  # supervisor.run has returned
-        threads = (listener, publisher, jobs)
+        threads = (listener, publisher, jobs, boxes_pub, debug_pub)
         for thread in threads:
             if thread is not None:
                 thread.stop()
@@ -96,6 +105,10 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         client.close()
         if jobs_client is not None:
             jobs_client.close()
+        if boxes_client is not None:
+            boxes_client.close()
+        if debug_client is not None:
+            debug_client.close()
 
 
 def _run_with_windows(supervisor: Supervisor, stop: threading.Event) -> None:

@@ -337,6 +337,7 @@ class RestaurantCounterPipeline(BasePipeline):
             active_detections = tracked_detections
         else:
             active_detections = detections
+        self.publish_boxes(active_detections)
 
         # 5. Filter detections inside dining area polygon
         is_in_zone = self.polygon_zone.trigger(detections=active_detections)
@@ -439,6 +440,7 @@ class RestaurantCounterPipeline(BasePipeline):
         if self.tracker is None:
             self.tracker = sv.ByteTrack()
         detections = self.tracker.update_with_detections(detections)
+        self.publish_boxes(detections)
 
         crossed_in, crossed_out = self.line_zone.trigger(detections=detections)
         self.current_occupancy = max(0, self.line_zone.in_count - self.line_zone.out_count)

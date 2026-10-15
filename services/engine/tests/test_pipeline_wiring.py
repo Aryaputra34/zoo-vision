@@ -68,3 +68,21 @@ def test_every_message_kind_carries_the_config_version(fake_yolo, stream):
     p.shutdown()  # closes the interval and flushes the minute metrics
     assert {m["message"] for m in stream.sent} == {"event", "interval_open", "interval_close", "metric"}
     assert {m["configVersion"] for m in stream.sent} == {7}
+
+
+class FakeBoxes:
+    def __init__(self):
+        self.calls = 0
+
+    def offer(self, camera_id, payload):
+        self.calls += 1
+
+
+@pytest.mark.parametrize("use_case", ASSIGNABLE)
+def test_each_pipeline_calls_publish_boxes_once_per_run(fake_yolo, use_case):
+    p = make_pipeline(use_case)
+    boxes = FakeBoxes()
+    p.boxes = boxes
+    p.run(FRAME.copy(), 1000)
+    assert boxes.calls == 1
+

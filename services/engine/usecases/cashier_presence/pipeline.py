@@ -129,6 +129,7 @@ class CashierPresencePipeline(BasePipeline):
             device=self.device
         )[0]
         detections = sv.Detections.from_ultralytics(results)
+        self.publish_boxes(detections)
 
         # 2. Evaluate zones
         is_clerk = self.clerk_zone.trigger(detections=detections)
