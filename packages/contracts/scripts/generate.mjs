@@ -54,7 +54,7 @@ const collect = (rel) => {
     }
   }
 };
-for (const top of ['common', 'envelope', 'usecases', 'ws']) collect(top);
+for (const top of ['common', 'envelope', 'engine', 'usecases', 'ws']) collect(top);
 
 const bundled = new Map(); // rel source path -> bundled schema
 for (const rel of sources.sort()) {
@@ -179,6 +179,7 @@ const codegen = (input, output) => {
 const bundledPath = (rel) => join(schemasOut, rel.replace(/\.schema\.json$/, '.json'));
 
 codegen(bundledPath('envelope/message.schema.json'), join(pyOut, 'envelope.py'));
+codegen(bundledPath('engine/boxes.schema.json'), join(pyOut, 'boxes.py'));
 writeText(join(pyOut, '__init__.py'), `${PY_HEADER}\n`);
 
 // JSON pointers of the lists whose items need unique ids (`x-geometry: polygon-list`): Pydantic cannot express

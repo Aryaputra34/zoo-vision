@@ -1,0 +1,16 @@
+{
+  "cameraId": "cam_gate",
+  "t": 1760436000123,
+  "sentAt": 1760436000200,
+  "boxes": [
+    {
+      "trackId": null,
+      "cls": 0,
+      "label": "person",
+      "x1": -0.1,
+      "y1": 0.2,
+      "x2": 0.3,
+      "y2": 0.4
+    }
+  ]
+}

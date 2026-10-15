@@ -9,8 +9,14 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "enum": [
-          "status"
+        "anyOf": [
+          {
+            "const": "status"
+          },
+          {
+            "type": "string",
+            "pattern": "^camera:[a-z][a-z0-9_]{2,63}$"
+          }
         ]
       }
     }

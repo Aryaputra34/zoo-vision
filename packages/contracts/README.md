@@ -6,9 +6,10 @@ else is generated from the JSON Schemas here.
 ```
 common/geometry.schema.json        Point, Polygon, Line ($defs, coordinates 0-1)
 envelope/message.schema.json       the four stream messages (event, interval_open, interval_close, metric)
+engine/boxes.schema.json           box payload published by the engine
 usecases/<id>/                     usecase.json, settings.schema.json (optional), live.schema.json (with settings),
                                    events.schema.json, intervals.schema.json, metrics.json, examples/
-ws/server/*.schema.json            the WebSocket messages the API sends (event.created, data.changed, ...)
+ws/server/*.schema.json            the WebSocket messages the API sends (event.created, data.changed, boxes, ...)
 ws/client/*.schema.json            the ones the browser sends (subscribe, unsubscribe)
 ws/examples/<message>/             valid/ and invalid/ payloads, checked by npm test
 generated/schemas/**               bundled, self-contained copies (what src/index.js loads)
@@ -57,7 +58,7 @@ npm test           # validator + example tests
 ## WebSocket messages
 
 `ws/server/<name>.schema.json` and `ws/client/<name>.schema.json` describe each socket.io payload; the file name is
-the event name (`event.created`, `data.changed`, `status.snapshot`, `audit.notice`, `session.ended`, `subscribe`,
+the event name (`event.created`, `data.changed`, `status.snapshot`, `audit.notice`, `session.ended`, `boxes`, `subscribe`,
 `unsubscribe`). The schema `title` names the generated type (`EventCreated`, `DataChanged`, ...). The API imports
 the types from this package, and the gateway's real messages are validated against the schemas in its tests.
 Change rules are the same: only add optional fields and new message types.
@@ -84,6 +85,7 @@ v.validateWsMessage('event.created', payload); // an unknown message name is an 
 
 ```python
 from contracts.envelope import Message
+from contracts.boxes import Boxes, Box
 from contracts.registry import REGISTRY
 ```
 

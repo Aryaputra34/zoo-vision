@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Boxes",
+  "description": "Bounding boxes published by the engine for a camera frame.",
+  "type": "object",
+  "properties": {
+    "cameraId": {
+      "type": "string"
+    },
+    "t": {
+      "type": "integer",
+      "description": "Epoch ms at frame grab time."
+    },
+    "boxes": {
+      "type": "array",
+      "maxItems": 300,
+      "items": {
+        "$ref": "#/$defs/Box"
+      }
+    }
+  },
+  "required": [
+    "cameraId",
+    "t",
+    "boxes"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Box": {
+      "title": "Box",
+      "type": "object",
+      "properties": {
+        "trackId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "cls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "label": {
+          "type": "string"
+        },
+        "x1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "x2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "trackId",
+        "cls",
+        "label",
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
