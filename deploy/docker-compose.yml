@@ -121,6 +121,16 @@ services:
       ZOO_SITE_ADDRESS: ${ZOO_SITE_ADDRESS:-localhost}
       ZOO_CADDY_MODE: ${ZOO_CADDY_MODE:-internal-tls} # dev | internal-tls | custom-tls
       ZOO_WEB_UPSTREAM: ${ZOO_WEB_UPSTREAM:-web:3000} # in development: host.docker.internal:3000
+      ZOO_MEDIAMTX_WEBRTC_UPSTREAM: ${ZOO_MEDIAMTX_WEBRTC_UPSTREAM:-host.docker.internal:8889} # MediaMTX's WebRTC (WHEP)
+      MEDIAMTX_PASSWORD: ${MEDIAMTX_PASSWORD:-}
+    # The Caddyfile adds the MediaMTX service password to WHEP calls: build its basic-auth value from the
+    # one secret in .env, so nobody hand-makes a base64 string. $$ is Compose's escape for a literal $.
+    command:
+      - sh
+      - -c
+      - |
+        export ZOO_MEDIAMTX_BASIC=$$(printf 'zoo:%s' "$$MEDIAMTX_PASSWORD" | base64 | tr -d '\n')
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
       - ./caddy:/etc/caddy:ro
       - ${ZOO_DATA_DIR:-./data}/certs:/certs:ro # custom-tls: cert.pem and key.pem

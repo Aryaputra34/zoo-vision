@@ -16,11 +16,49 @@
 		-Server
 	}
 
+	# The WHEP calls reader.js makes, and nothing else: OPTIONS/POST on zv_<id>/whep, PATCH/DELETE on its
+	# session. This is the only way to MediaMTX from outside, so the pattern is exact. It is matched on the
+	# path as the client wrote it (orig_uri): Caddy's `path` matchers clean `//` and `..` first, and the
+	# upstream would still get the raw path. Anything else under /media/webrtc/ gets the 404 below.
+	@whep {
+		expression {http.request.orig_uri.path}.matches('^/media/webrtc/zv_[a-z0-9_]+/whep(/[0-9a-f-]+)?$')
+		method OPTIONS POST PATCH DELETE
+	}
+
 	# `route` keeps the order below: the engine's routes are never reachable from outside
 	route {
 		respond /internal/* 404
-		reverse_proxy @backend api:3001
+		handle @whep {
+			# 204 from the API means a valid dashboard session (or API token); else its 401 goes back
+			forward_auth api:3001 {
+				uri /api/v1/auth/check
+			}
+			uri strip_prefix /media/webrtc
+			reverse_proxy {$ZOO_MEDIAMTX_WEBRTC_UPSTREAM:host.docker.internal:8889} {
+				# MediaMTX's service password (compose builds ZOO_MEDIAMTX_BASIC); the browser never sees it
+				header_up Authorization "Basic {$ZOO_MEDIAMTX_BASIC}"
+				header_up -Cookie
+				# the session URL MediaMTX answers with is relative to its own root
+				header_down Location ^/ /media/webrtc/
+			}
+		}
+		respond /media/webrtc/* 404
+		# flush_interval -1: MJPEG frames (the debug view) must not wait in a buffer
+		reverse_proxy @backend api:3001 {
+			flush_interval -1
+		}
 		reverse_proxy {$ZOO_WEB_UPSTREAM:web:3000}
+	}
+
+	# Caddy's own error pages (502 while the API is down, ...) carry the same headers
+	handle_errors {
+		header {
+			X-Content-Type-Options nosniff
+			X-Frame-Options DENY
+			Referrer-Policy strict-origin-when-cross-origin
+			-Server
+		}
+		respond "{err.status_code} {err.status_text}"
 	}
 }
 

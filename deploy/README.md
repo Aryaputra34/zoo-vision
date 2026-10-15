@@ -46,8 +46,13 @@ Every host port is a variable in `.env`. Change one when the default is taken.
 | `ZOO_REDIS_PORT` | 6379 | Redis, on `127.0.0.1` only (the host-networked engine reaches it here) |
 | `ZOO_PG_PORT` | 5433 | Postgres admin access, only with `docker-compose.override.yml` |
 | `ZOO_WEB_UPSTREAM` | `web:3000` | Where Caddy sends the dashboard's paths. In development: `host.docker.internal:3000` (`next dev` on the host) |
+| `ZOO_MEDIAMTX_WEBRTC_UPSTREAM` | `host.docker.internal:8889` | Where Caddy sends the browser's WHEP calls (`/media/webrtc/*`, session required) |
 
-MediaMTX and the engine use host networking, so their ports are changed in their own settings.
+MediaMTX and the engine use host networking, so their ports are changed in their own settings. MediaMTX
+uses 8554 (RTSP), 9996 (playback), 9997 (Control API) and 8889 (WebRTC HTTP), all password-protected or
+reached only through Caddy, and **UDP 8189** (WebRTC media). The browser connects to UDP 8189 directly: open
+it in the server's firewall for the park's LAN and nothing wider. Without it the live view connects and then
+shows no picture.
 
 ## Variables added in Phase 3
 

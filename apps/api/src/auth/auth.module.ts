@@ -15,6 +15,7 @@ import { LoginThrottlerGuard } from './login-throttler.guard';
 import { PasswordThrottlerGuard } from './password-throttler.guard';
 import { RolesGuard } from './roles.guard';
 import { SessionService } from './session.service';
+import { TrustedProxy } from './trusted-proxy';
 
 @Module({
   imports: [
@@ -35,10 +36,17 @@ import { SessionService } from './session.service';
     LocalAuthGuard,
     LoginThrottlerGuard,
     PasswordThrottlerGuard,
+    TrustedProxy,
     // Order matters: authenticate first, then check the role.
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [AccessEvents, ActorResolver, SessionService, LockoutService],
+  exports: [
+    AccessEvents,
+    ActorResolver,
+    SessionService,
+    LockoutService,
+    TrustedProxy,
+  ],
 })
 export class AuthModule {}

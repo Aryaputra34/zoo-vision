@@ -35,6 +35,7 @@ describe('loadEnv', () => {
       SITE_TIMEZONE: 'Asia/Jakarta',
       SNAPSHOT_DIR: '/data/snapshots',
       RECORDINGS_DIR: '/data/recordings',
+      TRUSTED_PROXY_HOST: 'caddy',
       MEDIAMTX_PLAYBACK_URL: undefined,
       MEDIAMTX_API_URL: undefined,
       MEDIAMTX_PASSWORD: undefined,

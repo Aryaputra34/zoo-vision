@@ -11,7 +11,12 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiProperty } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiProperty,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import type { CookieOptions, Request, Response } from 'express';
@@ -93,6 +98,17 @@ export class AuthController {
     const token = (req.cookies as Record<string, string>)[SESSION_COOKIE];
     await this.auth.logout(actor.id, token, requestMeta(req));
     res.clearCookie(SESSION_COOKIE, this.cookieOptions());
+  }
+
+  /**
+   * Caddy's forward_auth asks this before it lets a WHEP call through to MediaMTX: 204 with a
+   * session or an API token, 401 (the global guard) without. No body.
+   */
+  @Get('check')
+  @HttpCode(204)
+  @ApiNoContentResponse({ description: 'A valid session or API token' })
+  check(): void {
+    // the global AuthGuard has done the work
   }
 
   @Get('me')

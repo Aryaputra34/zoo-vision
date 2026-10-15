@@ -34,6 +34,8 @@ export async function createTestApp(
     SWAGGER: 'off',
     INGEST: 'off',
     JOBS: 'off',
+    // supertest connects from the loopback: the app's "proxy" is this machine
+    TRUSTED_PROXY_HOST: '127.0.0.1',
     ...env,
     MODELS_DIR: modelsDir,
   });

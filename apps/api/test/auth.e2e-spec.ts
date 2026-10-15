@@ -6,7 +6,7 @@ import Redis from 'ioredis';
 import { REDIS } from '../src/redis/redis.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './app';
-import { login, seedUser } from './helpers/auth';
+import { asRole, login, seedUser } from './helpers/auth';
 import { flushRedis, resetDb } from './setup/db';
 
 type LoginBody = { id: string; username: string; name: string; role: string };
@@ -176,6 +176,50 @@ describe('auth', () => {
       .set('X-Forwarded-For', '203.0.113.7')
       .expect(200);
     expect((await lastLog()).ip).toBe('203.0.113.7');
+  });
+
+  it('TRUSTED_PROXY_HOST not the peer: X-Forwarded-For: 203.0.113.7 is ignored and the socket address is logged', async () => {
+    const other = await createTestApp({ TRUSTED_PROXY_HOST: '10.255.255.1' });
+    try {
+      const user = await seedUser(other, 'USER');
+      await request(other.getHttpServer())
+        .post('/api/v1/auth/login')
+        .set('X-Forwarded-For', '203.0.113.7')
+        .send({ username: user.username, password: user.password })
+        .expect(200);
+      const row = await other
+        .get(PrismaService)
+        .loginLog.findFirstOrThrow({ orderBy: { id: 'desc' } });
+      expect(row.ip).not.toBe('203.0.113.7');
+      expect(row.ip).toMatch(/127\.0\.0\.1$/);
+    } finally {
+      await other.close();
+    }
+  });
+
+  it('GET /auth/check: 204 with a session, 204 with an API token, 401 UNAUTHENTICATED with nothing', async () => {
+    const { cookie } = await asRole(app, 'USER');
+    await request(app.getHttpServer())
+      .get('/api/v1/auth/check')
+      .set('Cookie', cookie)
+      .expect(204);
+
+    const sa = await asRole(app, 'SUPERADMIN');
+    const made = await request(app.getHttpServer())
+      .post('/api/v1/api-tokens')
+      .set('Cookie', sa.cookie)
+      .send({ name: 'check-test', role: 'USER' })
+      .expect(201);
+    const token = (made.body as { token: string }).token;
+    await request(app.getHttpServer())
+      .get('/api/v1/auth/check')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(204);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/auth/check')
+      .expect(401);
+    expect(res.body).toMatchObject({ code: 'UNAUTHENTICATED' });
   });
 
   it('PUT /auth/password: the 6th attempt within 15 minutes → 429 RATE_LIMITED, even with the right password', async () => {
