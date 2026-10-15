@@ -70,6 +70,9 @@ export class BoxesRelay
 
   private onDeleteRoom(room: string): void {
     if (!room.startsWith('camera:')) return;
+    const cameraId = room.slice('camera:'.length);
+    this.lastEmit.delete(cameraId);
+
     const sub = this.subscriptions.get(room);
     if (!sub) return;
 
@@ -82,11 +85,17 @@ export class BoxesRelay
   }
 
   private handleBoxes(room: string, cameraId: string, data: Buffer): void {
+    const now = Date.now();
+    const last = this.lastEmit.get(cameraId) ?? 0;
+    // drop if < 90 ms after the camera's last emit (~10 fps target with jitter tolerance)
+    if (now - last < 90) {
+      return;
+    }
+
     let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(data.toString()) as Record<string, unknown>;
     } catch (err) {
-      const now = Date.now();
       if (now - this.lastParseErrorLog >= 60_000) {
         this.lastParseErrorLog = now;
         this.logger.warn(
@@ -96,12 +105,6 @@ export class BoxesRelay
       return;
     }
 
-    const now = Date.now();
-    const last = this.lastEmit.get(cameraId) ?? 0;
-    // drop if < 100 ms after the camera's last emit
-    if (now - last < 100) {
-      return;
-    }
     this.lastEmit.set(cameraId, now);
 
     this.gateway.server.to(room).emit('boxes', {

@@ -99,12 +99,20 @@ export class PathSync implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async once(client: MediamtxClient): Promise<void> {
-    // both reads come first: a camera that cannot be read deletes nothing
+    // List MediaMTX first so anything committed in the DB while listing is seen in wanted
+    const existing = await client.listConfigs();
+    const failedCameras = new Set<string>();
     const wanted = wantedPaths(
       await this.prisma.camera.findMany(),
       this.cipher,
+      (cameraId, err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.log.warn(
+          `Cannot decrypt stream URL for camera ${cameraId}: ${msg}; skipping sync for this camera`,
+        );
+        failedCameras.add(cameraId);
+      },
     );
-    const existing = await client.listConfigs();
 
     for (const [name, want] of wanted) {
       const have = existing.get(name);
@@ -115,6 +123,10 @@ export class PathSync implements OnApplicationBootstrap, OnModuleDestroy {
     }
     for (const name of existing.keys()) {
       if (isManaged(name) && !wanted.has(name)) {
+        const isFromFailedCamera = [...failedCameras].some(
+          (id) => name === `zv_${id}` || name === `zv_${id}_sub`,
+        );
+        if (isFromFailedCamera) continue;
         await this.try(name, () => client.remove(name));
       }
     }

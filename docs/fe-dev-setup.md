@@ -60,8 +60,29 @@ Then work on the dashboard with `npm run dev` and hot reload.
 
 There are five demo cameras, one per use case: `demo_vehicle_gate`, `demo_horse_riding`, `demo_cashier_presence`,
 `demo_restaurant_counter` and `demo_restaurant_table`. Their stills are synthetic scenes marked DEMO. Clips are not
-available (`RECORDING_NOT_AVAILABLE`): there is no MediaMTX in the demo. Roughly every 10 minutes one camera goes
-silent for 2 minutes, so the offline states get exercised.
+available (`RECORDING_NOT_AVAILABLE`): there is no MediaMTX in the demo stack, so `camera.liveUrls` is `null`.
+Roughly every 10 minutes one camera goes silent for 2 minutes, so the offline states get exercised.
+
+## Live video & MediaMTX in development
+
+The demo stack runs without MediaMTX: `camera.liveUrls` is `null`, and clips answer `RECORDING_NOT_AVAILABLE`.
+The frontend shows the synthetic stills from `/cameras/:id/frame` and exercises the status lifecycles.
+
+To develop or test live WebRTC video with the dashboard:
+1. Start MediaMTX natively from the `zoo-vision` root:
+   ```powershell
+   $env:MTX_AUTHINTERNALUSERS_0_PASS = "0b9751a1f5b01012172a17bf7c9564d1881bb12d27639ecc"
+   $env:MTX_APIADDRESS = ":9890"; $env:MTX_PLAYBACKADDRESS = ":9891"
+   .\mediamtx.exe deploy\mediamtx.yml
+   ```
+2. Set the MediaMTX variables in `deploy/.env`:
+   ```
+   ZOO_MEDIAMTX_API_URL=http://host.docker.internal:9890
+   ZOO_MEDIAMTX_PLAYBACK_URL=http://host.docker.internal:9891
+   MEDIAMTX_PASSWORD=0b9751a1f5b01012172a17bf7c9564d1881bb12d27639ecc
+   ```
+3. Restart the API (`docker compose up -d api`). Camera views now populate `liveUrls: {main, sub}`, and WHEP
+   WebRTC video is accessible at `/media/webrtc/<path>/whep` with a valid session cookie.
 
 ## Useful addresses
 

@@ -303,8 +303,30 @@ ZOO_MEDIAMTX_API_URL=http://host.docker.internal:9890
 ZOO_MEDIAMTX_PLAYBACK_URL=http://host.docker.internal:9891
 ```
 
-Check it: `curl.exe -u zoo:<password> http://127.0.0.1:9996/v3/config/paths/list` answers 200 and, without `-u`,
-401. Anonymous RTSP is refused except for `feed_*` on localhost. Use the engine's `API_URL` as in Phase 3.
+Check it: `curl.exe -u zoo:<password> http://127.0.0.1:9997/v3/config/paths/list` (or `:9890` if moved)
+answers 200 and lists existing paths; without `-u`, it answers 401. Anonymous RTSP is refused except for `feed_*`
+on localhost. The API synchronizes paths automatically whenever cameras are created, patched, or deleted.
+
+### Phase 4a Laptop Run
+
+1. Start MediaMTX with credentials:
+   ```powershell
+   $env:MTX_AUTHINTERNALUSERS_0_PASS = "<MEDIAMTX_PASSWORD>"
+   $env:MTX_APIADDRESS = ":9890"; $env:MTX_PLAYBACKADDRESS = ":9891"
+   .\mediamtx.exe deploy\mediamtx.yml
+   ```
+2. Start backend containers in `deploy/`:
+   ```powershell
+   docker compose up -d --build postgres redis api-migrate api caddy
+   ```
+3. Start the engine from source on CUDA (`services/engine`):
+   ```powershell
+   uv run python main.py
+   ```
+4. Add 2-3 cameras in the UI or via API as `RTSP`, with `mainStreamUrl: "rtsp://127.0.0.1:8554/feed_gate"`.
+   The API immediately adds `zv_<id>` in MediaMTX; the engine connects and begins streaming.
+5. Watch live bounding boxes in the `camera:<id>` WebSocket room, and view inference debug frames at
+   `http://localhost:8080/media/debug/<id>` (as SUPERADMIN).
 
 ## Check that it works (no cameras needed)
 

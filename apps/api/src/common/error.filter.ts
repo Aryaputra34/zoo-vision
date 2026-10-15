@@ -177,25 +177,33 @@ function errorText(err: unknown): string {
 
 function isMalformedJson(err: unknown): boolean {
   if ((err as { type?: unknown })?.type === 'entity.parse.failed') return true;
-  if ((err as { cause?: { type?: unknown } })?.cause?.type === 'entity.parse.failed') return true;
-  if (err instanceof SyntaxError && (err as { status?: number }).status === 400) return true;
+  if (
+    (err as { cause?: { type?: unknown } })?.cause?.type ===
+    'entity.parse.failed'
+  ) {
+    return true;
+  }
   if (err instanceof HttpException) {
-    if ((err.cause as { type?: unknown })?.type === 'entity.parse.failed') return true;
-    if ((err as { type?: unknown }).type === 'entity.parse.failed') return true;
+    if (err.getStatus() !== 400) return false;
     const res = err.getResponse();
-    const msg =
-      typeof res === 'object' && res !== null && 'message' in res
-        ? String((res as { message: unknown }).message)
-        : err.message;
-    if (
-      msg.includes('in JSON at position') ||
-      msg.includes('JSON at position') ||
-      msg.includes('Unexpected token') ||
-      msg.includes('Expected property name')
-    ) {
-      return true;
+    if (typeof res === 'object' && res !== null) {
+      // If it already has an application error code, it is a domain error, not a body-parser error
+      if ('code' in res && typeof (res as { code: unknown }).code === 'string') {
+        return false;
+      }
+      const msg =
+        'message' in res
+          ? String((res as { message: unknown }).message)
+          : err.message;
+      if (
+        msg.includes('in JSON at position') ||
+        msg.includes('JSON at position') ||
+        msg.includes('Unexpected token') ||
+        msg.includes('Expected property name')
+      ) {
+        return true;
+      }
     }
   }
   return false;
 }
-

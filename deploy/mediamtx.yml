@@ -18,7 +18,7 @@
 authInternalUsers:
   # MUST stay the first entry: MTX_AUTHINTERNALUSERS_0_PASS fills its password.
   - user: zoo
-    pass:
+    pass: "UNCONFIGURED_DO_NOT_USE_RANDOM_SECRET_1a8f93e2b4c5d6e7f8"
     ips: []
     permissions:
       - action: read

@@ -60,32 +60,46 @@ export function mediamtxPaths(c: PathCamera): CameraPaths | null {
 export function wantedPaths(
   cameras: Camera[],
   cipher: UrlCipher,
+  onDecryptError?: (cameraId: string, error: unknown) => void,
 ): Map<string, PathConf> {
   const wanted = new Map<string, PathConf>();
   for (const camera of cameras) {
     const paths = mediamtxPaths(camera);
     if (!paths) continue;
     const recordDeleteAfter = `${camera.retentionDays ?? DEFAULT_RETENTION_DAYS}d`;
-    const conf = (name: string, encryptedUrl: string): PathConf =>
-      camera.enabled
-        ? {
-            source: cipher.decrypt(encryptedUrl),
-            rtspTransport: 'tcp',
-            record: paths.recorded === name,
-            recordDeleteAfter,
-            // pulled only while someone watches, unless it is recorded or read by the engine
-            sourceOnDemand: paths.recorded !== name && paths.engine !== name,
-          }
-        : {
-            source: 'publisher',
-            rtspTransport: 'tcp',
-            record: false,
-            recordDeleteAfter,
-            sourceOnDemand: false,
-          };
-    wanted.set(paths.main, conf(paths.main, camera.mainStreamUrlEnc));
-    if (paths.sub && camera.subStreamUrlEnc) {
-      wanted.set(paths.sub, conf(paths.sub, camera.subStreamUrlEnc));
+    try {
+      const conf = (name: string, encryptedUrl: string): PathConf =>
+        camera.enabled
+          ? {
+              source: cipher.decrypt(encryptedUrl),
+              rtspTransport: 'tcp',
+              record: paths.recorded === name,
+              recordDeleteAfter,
+              // pulled only while someone watches, unless it is recorded or read by the engine
+              sourceOnDemand: paths.recorded !== name && paths.engine !== name,
+            }
+          : {
+              source: 'publisher',
+              rtspTransport: 'tcp',
+              record: false,
+              recordDeleteAfter,
+              sourceOnDemand: false,
+            };
+      const mainConf = conf(paths.main, camera.mainStreamUrlEnc);
+      const subConf =
+        paths.sub && camera.subStreamUrlEnc
+          ? conf(paths.sub, camera.subStreamUrlEnc)
+          : null;
+      wanted.set(paths.main, mainConf);
+      if (paths.sub && subConf) {
+        wanted.set(paths.sub, subConf);
+      }
+    } catch (err) {
+      if (onDecryptError) {
+        onDecryptError(camera.id, err);
+      } else {
+        throw err;
+      }
     }
   }
   return wanted;
