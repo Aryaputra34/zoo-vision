@@ -73,16 +73,29 @@ describe('wantedPaths', () => {
     expect(wantedPaths([c], cipher).get('zv_gate')?.record).toBe(true);
   });
 
-  it('FILE cameras have no paths; disabled cameras are not wanted', () => {
+  it('FILE cameras have no paths', () => {
     expect(mediamtxPaths(camera({ sourceType: 'FILE' }))).toBeNull();
+    expect([
+      ...wantedPaths([camera({ sourceType: 'FILE' })], cipher).keys(),
+    ]).toEqual([]);
+  });
+
+  it('a disabled camera keeps idle paths: no source URL, no recording, retention kept', () => {
     const wanted = wantedPaths(
-      [
-        camera({ sourceType: 'FILE' }),
-        camera({ id: 'off_cam', enabled: false }),
-      ],
+      [camera({ enabled: false, retentionDays: 3 })],
       cipher,
     );
-    expect([...wanted.keys()]).toEqual([]);
+    expect([...wanted.keys()].sort()).toEqual(['zv_gate', 'zv_gate_sub']);
+    for (const conf of wanted.values()) {
+      expect(conf).toEqual({
+        source: 'publisher',
+        rtspTransport: 'tcp',
+        record: false,
+        recordDeleteAfter: '3d',
+        sourceOnDemand: false,
+      });
+    }
+    expect(JSON.stringify([...wanted])).not.toContain('rtsp://u:p');
   });
 
   it('retentionDays null is 7d, 3 is 3d', () => {

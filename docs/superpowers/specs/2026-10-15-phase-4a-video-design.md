@@ -60,7 +60,7 @@ The API owns every MediaMTX path whose name starts with `zv_`:
 |---|---|
 | `recordingEnabled` + `recordingStream` | `record: true` on the main or the sub path, never both; `false` on the other |
 | `retentionDays` (null = 7 days until `SiteSettings` arrives in 4b) | `recordDeleteAfter` on the recorded path |
-| `enabled: false` | both paths removed |
+| `enabled: false` | both paths stay as idle paths (`source: publisher`, no recording, same `recordDeleteAfter`): old recordings stay playable and MediaMTX still deletes them on schedule. Deleting the camera removes the paths |
 | a path that is not recorded and not read by the engine | `sourceOnDemand: true`, so MediaMTX pulls it only while someone watches |
 
 `FILE` cameras get no path: the engine reads the file directly as today, with no recording, no live video and no

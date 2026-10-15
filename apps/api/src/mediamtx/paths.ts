@@ -51,7 +51,12 @@ export function mediamtxPaths(c: PathCamera): CameraPaths | null {
   };
 }
 
-/** The paths MediaMTX should hold: enabled, non-FILE cameras. Throws if a stored URL cannot be decrypted. */
+/**
+ * The paths MediaMTX should hold: every non-FILE camera. A disabled camera keeps its paths as idle
+ * ones (`source: publisher`, nobody may publish, no recording): its old recordings stay playable
+ * and MediaMTX still deletes them after `recordDeleteAfter`, and its camera URL is not stored in
+ * MediaMTX. Throws if a stored URL cannot be decrypted.
+ */
 export function wantedPaths(
   cameras: Camera[],
   cipher: UrlCipher,
@@ -59,16 +64,25 @@ export function wantedPaths(
   const wanted = new Map<string, PathConf>();
   for (const camera of cameras) {
     const paths = mediamtxPaths(camera);
-    if (!camera.enabled || !paths) continue;
+    if (!paths) continue;
     const recordDeleteAfter = `${camera.retentionDays ?? DEFAULT_RETENTION_DAYS}d`;
-    const conf = (name: string, encryptedUrl: string): PathConf => ({
-      source: cipher.decrypt(encryptedUrl),
-      rtspTransport: 'tcp',
-      record: paths.recorded === name,
-      recordDeleteAfter,
-      // pulled only while someone watches, unless it is recorded or read by the engine
-      sourceOnDemand: paths.recorded !== name && paths.engine !== name,
-    });
+    const conf = (name: string, encryptedUrl: string): PathConf =>
+      camera.enabled
+        ? {
+            source: cipher.decrypt(encryptedUrl),
+            rtspTransport: 'tcp',
+            record: paths.recorded === name,
+            recordDeleteAfter,
+            // pulled only while someone watches, unless it is recorded or read by the engine
+            sourceOnDemand: paths.recorded !== name && paths.engine !== name,
+          }
+        : {
+            source: 'publisher',
+            rtspTransport: 'tcp',
+            record: false,
+            recordDeleteAfter,
+            sourceOnDemand: false,
+          };
     wanted.set(paths.main, conf(paths.main, camera.mainStreamUrlEnc));
     if (paths.sub && camera.subStreamUrlEnc) {
       wanted.set(paths.sub, conf(paths.sub, camera.subStreamUrlEnc));

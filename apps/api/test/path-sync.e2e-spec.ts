@@ -180,20 +180,34 @@ describe('MediaMTX path sync', () => {
     expect(fake.mutations().map((c) => c.method)).toEqual(['PATCH', 'PATCH']);
   });
 
-  it('disabling deletes both paths; enabling adds them back', async () => {
+  it('disabling makes both paths idle (no source, no recording) so recordings stay; enabling restores; deleting removes', async () => {
     await create().expect(201);
     await sync.reconcile();
 
     await patch('gate_a', { enabled: false }).expect(200);
     await sync.reconcile();
-    expect(fake.paths.size).toBe(0);
-
-    await patch('gate_a', { enabled: true }).expect(200);
-    await sync.reconcile();
     expect([...fake.paths.keys()].sort()).toEqual([
       'zv_gate_a',
       'zv_gate_a_sub',
     ]);
+    for (const conf of fake.paths.values()) {
+      expect(conf).toMatchObject({ source: 'publisher', record: false });
+    }
+    expect(JSON.stringify([...fake.paths])).not.toContain('10.1.2.3');
+
+    await patch('gate_a', { enabled: true }).expect(200);
+    await sync.reconcile();
+    expect(fake.paths.get('zv_gate_a')).toMatchObject({
+      source: URL_MAIN,
+      record: true,
+    });
+
+    await request(app.getHttpServer())
+      .delete('/api/v1/cameras/gate_a')
+      .set('Cookie', cookie)
+      .expect(204);
+    await sync.reconcile();
+    expect(fake.paths.size).toBe(0);
   });
 
   it('reconcile deletes a stale zv_gone and leaves feed_gate and other_path alone', async () => {
