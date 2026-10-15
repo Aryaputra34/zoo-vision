@@ -18,7 +18,7 @@ export type Polygon = [Point, Point, Point, ...Point[]];
  * @minItems 2
  * @maxItems 2
  */
-export type Point = [unknown, unknown];
+export type Point = [number, number];
 /**
  * @minItems 3
  */
@@ -27,7 +27,7 @@ export type Polygon1 = [Point1, Point1, Point1, ...Point1[]];
  * @minItems 2
  * @maxItems 2
  */
-export type Point1 = [unknown, unknown];
+export type Point1 = [number, number];
 
 export interface CashierPresenceSettings {
   model_name?: ModelName;

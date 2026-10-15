@@ -44,6 +44,7 @@ The browser talks to one address, served by Caddy:
 | Call | Answer |
 |---|---|
 | `POST /api/v1/auth/login` `{username, password}` | 200 `{id, username, name, role}` and a `zoo_session` cookie |
+| `GET /api/v1/auth/check` | 204 with a session or API token, 401 `UNAUTHENTICATED` without (used by Caddy's `forward_auth` for WHEP) |
 | `GET /api/v1/auth/me` | 200 `{type: "user" \| "token", id, name, role}` |
 | `POST /api/v1/auth/logout` | 204, the cookie is cleared |
 | `PUT /api/v1/auth/password` `{currentPassword, newPassword}` | 204; the user's other sessions end, this one stays |
@@ -85,8 +86,9 @@ into the request body (or, for settings problems, into the settings: `/model_id`
 
 | Code | Status | When | What the UI does |
 |---|---|---|---|
-| `BAD_REQUEST` | 400 | A malformed request (bad id, unreadable JSON, an unknown use case) | Show `message` |
-| `VALIDATION_FAILED` | 400 | A body field broke a rule; one `errors` entry per field | Mark the fields |
+| `BAD_REQUEST` | 400 | A malformed request (bad id, an unknown use case) | Show `message` |
+| `WRONG_PASSWORD` | 400 | Current password is wrong at `PUT /auth/password` | Show `message` |
+| `VALIDATION_FAILED` | 400 | A body field broke a rule, or request body is malformed JSON; `errors` entries per field | Mark the fields |
 | `SETTINGS_INVALID` | 400 | Settings fail their schema, or reference a model that is not READY; `errors` hold the paths | Mark the zones and fields |
 | `FIELD_NOT_ALLOWED` | 400 | A `groupBy`, `max` or `where` field the requested types do not declare as the right kind (section 8) | Show `message`; it is a bug in the page |
 | `RANGE_TOO_LONG` | 400 | The range is longer than its bucket allows (section 8) | Ask for a shorter range or a bigger bucket |
@@ -95,7 +97,8 @@ into the request body (or, for settings problems, into the settings: `/model_id`
 | `ROLE_REQUIRED` | 403 | The save touches fields above the user's role; `errors` name them with `"needs SUPERADMIN"` | Disable those fields |
 | `NOT_FOUND` | 404 | No such route, camera, config version, model or user | Show a not-found state |
 | `RECORDING_NOT_AVAILABLE` | 404 | A clip that is gone, never recorded, or whose playback server does not answer (section 11) | Show "recording not available" |
-| `CONFLICT` | 409 | The request clashes with the current state (camera id exists, model already registered or being converted) | Show `message` |
+| `CONFLICT` | 409 | The request clashes with the current state (model already registered or being converted) | Show `message` |
+| `CAMERA_ID_TAKEN` | 409 | The camera id exists already on create (`POST /cameras`) | Mark the camera id field |
 | `STALE_VERSION` | 409 | `baseVersion` is not the camera's active config version (someone saved first) | Offer to reload the config |
 | `USERNAME_TAKEN` | 409 | A user with that username exists | Mark the username |
 | `LAST_SUPERADMIN` | 409 | The change would leave no active superadmin | Show `message` |
@@ -149,6 +152,10 @@ The API enforces it on save (`ROLE_REQUIRED`).
 - `PATCH /api/v1/cameras/:id` (MANAGER): camera fields. A MANAGER may change **`name`, `area` and `enabled`**; any
   other field is `ROLE_REQUIRED`. Stream URLs (`mainStreamUrl`, `subStreamUrl`) are visible, and settable, only to
   SUPERADMIN; they never appear in any other role's response.
+- `recordingPath` is derived and managed by the API; any value sent in create or update payloads is ignored.
+- The camera view (`GET /cameras`, `GET /cameras/:id`, `POST /cameras`, `PATCH /cameras/:id`) includes
+  `liveUrls: {main, sub | null} | null` (null for `FILE` or disabled cameras, and when the API has no MediaMTX
+  configured, as in the demo profile). The frontend uses these URLs directly and never builds MediaMTX paths.
 
 **`baseVersion` and `STALE_VERSION`.** The edit form remembers the version it loaded. On save the API compares it
 with the camera's active version; a mismatch is 409 `STALE_VERSION`: offer to reload, never overwrite silently.
@@ -166,6 +173,9 @@ two, for up to a minute) for the same two fields.
   not reported in the last 15 seconds.
 - `GET /api/v1/cameras/:id/frame`: the engine's latest JPEG (`image/jpeg`, `Cache-Control: no-store`). 404 until the
   first frame, and again when the engine has sent none for 10 seconds. Poll it every 2 seconds for a "live" still.
+- `GET /api/v1/cameras/:id/stream-info` (MANAGER): `{running, mainStream, subStream, warning, diskEstimate}`. Reports
+  whether MediaMTX paths are active, detected codecs and bitrates, any browser playback warning (e.g. H.265
+  `codec_not_browser_native`), and daily disk usage estimate. 503 `UNAVAILABLE` when MediaMTX is not reachable.
 
 `status` is `{state, fps, lastFrameAt, appliedVersion, configError, restarts, live, updatedAt}`; times are epoch
 **milliseconds**. `live` holds the use case's current values and is typed per use case in the types file
@@ -342,7 +352,15 @@ event rows. Asking for `/api/v1/media/...` is a 404.
 |---|---|
 | `GET /media/snapshots/<camera>/<date>/<event>.jpg` | `image/jpeg`, `Cache-Control: private, max-age=86400`. 404 `NOT_FOUND` when the file is missing |
 | `GET /media/clips/<eventId>` | `video/mp4`, the recording from `clipBeforeSec` before the event to `clipAfterSec` after it |
+| `POST /media/webrtc/<path>/whep` | WHEP session setup for WebRTC live video; forwarded to MediaMTX via Caddy `forward_auth` |
+| `GET /media/debug/:id` | `multipart/x-mixed-replace`, live MJPEG stream with inference boxes, SUPERADMIN only |
 
+- Live WebRTC playback uses the paths provided in `camera.liveUrls` (`/media/webrtc/<path>/whep`) with WHEP
+  (`reader.js`). Any logged-in user can view live video. **Accepted limit:** a playing WebRTC stream survives
+  logout until the page closes or the connection drops (MediaMTX manages the WebRTC peer connection).
+- `/media/debug/:id` streams live MJPEG debug frames directly from the engine while open (SUPERADMIN only;
+  403 `ROLE_REQUIRED` for other roles). The API refreshes a Redis key every 2 s while the response is streaming,
+  and the engine stops JPEG encoding within 5 s after the viewer disconnects.
 - A clip is **404 `RECORDING_NOT_AVAILABLE`** when the camera has no recording path, recording is off, the
   recording has been deleted (retention), or the playback server is not there. Show "recording not available". An
   unknown event id is `NOT_FOUND`.
@@ -390,11 +408,14 @@ never leave a page wrong.
 | `alerts` | everyone, joined at connect | `event.created` `{id, time, cameraId, useCase, type, severity, data, snapshotUrl}` | once per new event after an ingest commit. A commit with more than 50 new events sends none of these, only `data.changed` |
 | `alerts` | everyone | `data.changed` `{cameraIds, useCases, shapes}` | after ingest commits, **at most once every 5 s**: the first change after a quiet period at once, later ones merged into one message at the end of the window. `shapes` are `event`, `interval`, `metric` |
 | `status` | on request | `status.snapshot` `{at, cameras: {<id>: status \| null}}` | every 2 s while someone is in the room; `null` is an offline camera |
+| `camera:<id>` | on request | `boxes` `{t, sentAt, boxes}` | up to 10/s while someone is in the room. Real-time inference boxes (coords 0–1, `t` capture ms, `sentAt` wall ms, `trackId` nullable) |
 | `managers` | MANAGER and SUPERADMIN, joined at connect | `audit.notice` `{auditId, cameraId, actorName, action, time}` | a camera with `auditCamera` set was changed (section 13) |
 | (own sockets) | the affected user | `session.ended` `{reason}` | just before the server disconnects the socket |
 
-Client to server: `socket.emit('subscribe', {rooms: ['status']}, ack)` and `unsubscribe`. Only `status` can be
-named; the ack is `{ok: true}` or `{ok: false, code: 'VALIDATION_FAILED'}`. Subscribe again after a reconnect.
+Client to server: `socket.emit('subscribe', {rooms: ['status', 'camera:cam_01']}, ack)` and `unsubscribe`. Rooms
+available for subscription are `status` and `camera:<id>`. The ack is `{ok: true}` or `{ok: false, code: 'VALIDATION_FAILED'}`.
+Subscribing to `camera:<id>` keeps `cam:<id>:active` alive in Redis so the engine publishes boxes. Subscribe again after
+a reconnect.
 
 - `event.created` is for alerts (a toast, the bell). Do not build tables from it: refetch on `data.changed`.
   `data.changed` says which `cameraIds`, `useCases` and `shapes` changed so a page can ignore the rest.
@@ -466,6 +487,17 @@ as `audit.notice` (`AuditNotice` in the types file). Show a toast; `auditId` is 
 MANAGER and SUPERADMIN sockets are in `managers`: a USER never receives it.
 
 ## 14. Changelog
+
+### v0.5
+
+- New: `GET /api/v1/auth/check` (204 / 401 `UNAUTHENTICATED`), used by Caddy's `forward_auth` for WHEP.
+- New: `GET /api/v1/cameras/:id/stream-info` for codec warnings, bitrates, and disk usage estimates.
+- Camera view: new `liveUrls: {main, sub | null} | null` (null for `FILE` or disabled cameras, and when MediaMTX is unconfigured); the frontend never builds MediaMTX paths.
+- `recordingPath` is now derived by the API; client-sent values on create or update are ignored.
+- New media routes: `/media/webrtc/*` (WHEP WebRTC live video for any logged-in user) and `/media/debug/:id` (live MJPEG inference stream for SUPERADMIN).
+- WebSocket: new room `camera:<id>` and message `boxes` (real-time bounding boxes up to 10/s per opened camera).
+- `openapi.json`: error responses documented (`authLogin` 401/423/429, `authChangePassword` 400/429, default 500/503); `bearerFormat` is `zv_ API token`; `Point` schema has `items`, generating `[number, number]`.
+- Error codes: new `CAMERA_ID_TAKEN` (409); malformed JSON is `VALIDATION_FAILED` without parser text; **changed:** a wrong current password at `PUT /auth/password` is `WRONG_PASSWORD` (400) instead of `BAD_REQUEST`.
 
 ### v0.4
 

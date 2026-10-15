@@ -58,6 +58,14 @@ export class ErrorFilter implements ExceptionFilter {
   }
 
   private toBody(exception: unknown, host: ArgumentsHost): ApiErrorBody {
+    if (isMalformedJson(exception)) {
+      return {
+        statusCode: 400,
+        code: 'VALIDATION_FAILED',
+        message: 'Malformed JSON',
+      };
+    }
+
     if (exception instanceof HttpException) return fromHttpException(exception);
 
     if (isTransient(exception)) {
@@ -166,3 +174,28 @@ function errorCode(err: unknown): string {
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+function isMalformedJson(err: unknown): boolean {
+  if ((err as { type?: unknown })?.type === 'entity.parse.failed') return true;
+  if ((err as { cause?: { type?: unknown } })?.cause?.type === 'entity.parse.failed') return true;
+  if (err instanceof SyntaxError && (err as { status?: number }).status === 400) return true;
+  if (err instanceof HttpException) {
+    if ((err.cause as { type?: unknown })?.type === 'entity.parse.failed') return true;
+    if ((err as { type?: unknown }).type === 'entity.parse.failed') return true;
+    const res = err.getResponse();
+    const msg =
+      typeof res === 'object' && res !== null && 'message' in res
+        ? String((res as { message: unknown }).message)
+        : err.message;
+    if (
+      msg.includes('in JSON at position') ||
+      msg.includes('JSON at position') ||
+      msg.includes('Unexpected token') ||
+      msg.includes('Expected property name')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+

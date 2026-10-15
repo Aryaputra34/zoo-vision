@@ -239,6 +239,24 @@ describe('auth', () => {
     await login(app, user.username, user.password);
   });
 
+  it('PUT /auth/password with a wrong current password → 400 WRONG_PASSWORD', async () => {
+    const user = await seedUser(app, 'USER');
+    const cookie = await login(app, user.username, user.password);
+    const res = await request(app.getHttpServer())
+      .put('/api/v1/auth/password')
+      .set('Cookie', cookie)
+      .send({
+        currentPassword: 'wrong-password-123',
+        newPassword: 'another-pass-123',
+      })
+      .expect(400);
+    expect(res.body).toMatchObject({
+      statusCode: 400,
+      code: 'WRONG_PASSWORD',
+      message: 'Current password is wrong',
+    });
+  });
+
   it('an extra body field gives 400 with no LoginLog row and no session', async () => {
     const user = await seedUser(app, 'USER');
     const redis = app.get<Redis>(REDIS);

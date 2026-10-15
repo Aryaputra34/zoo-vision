@@ -24,7 +24,14 @@ export function swaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       { type: 'apiKey', in: 'cookie' },
       'zoo_session',
     )
-    .addBearerAuth()
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'zv_ API token',
+      },
+      'bearer',
+    )
     .addSecurityRequirements('zoo_session')
     .addSecurityRequirements('bearer')
     .build();
@@ -93,6 +100,10 @@ function addErrorResponses(doc: OpenAPIObject, publicIds: Set<string>): void {
         add('403', 'The role is too low (FORBIDDEN, ROLE_REQUIRED)');
       }
       if (path.includes('{')) add('404', 'No such resource (NOT_FOUND)');
+      op.responses['default'] ??= {
+        description: '500 INTERNAL or 503 UNAVAILABLE',
+        content: ERROR_CONTENT,
+      };
     }
   }
 }

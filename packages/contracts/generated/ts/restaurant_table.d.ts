@@ -22,7 +22,7 @@ export type Polygon = [Point, Point, Point, ...Point[]];
  * @minItems 2
  * @maxItems 2
  */
-export type Point = [unknown, unknown];
+export type Point = [number, number];
 export type ConfidenceThreshold1 = number;
 
 export interface RestaurantTableSettings {

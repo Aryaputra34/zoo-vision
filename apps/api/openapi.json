@@ -162,6 +162,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "summary": "503 keeps terminus's per-dependency map next to the standard error fields.",
@@ -205,6 +215,46 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Invalid credentials or account disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "The account is temporarily locked (ACCOUNT_LOCKED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many login attempts (RATE_LIMITED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "summary": "The credentials are checked by LocalAuthGuard (LocalStrategy), which leaves the result on req.user.",
@@ -241,8 +291,63 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/check": {
+      "get": {
+        "operationId": "authCheck",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "A valid session or API token"
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Caddy's forward_auth asks this before it lets a WHEP call through to MediaMTX: 204 with a\nsession or an API token, 401 (the global guard) without. No body.",
         "tags": [
           "Auth"
         ]
@@ -282,6 +387,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -305,10 +420,10 @@
         },
         "responses": {
           "204": {
-            "description": ""
+            "description": "Password changed"
           },
           "400": {
-            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "description": "Invalid body or wrong current password (WRONG_PASSWORD)",
             "content": {
               "application/json": {
                 "schema": {
@@ -329,6 +444,26 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many password change attempts (RATE_LIMITED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -472,6 +607,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -590,6 +735,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -685,6 +840,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -806,6 +971,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -903,6 +1078,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -985,6 +1170,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1022,6 +1217,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1091,6 +1296,16 @@
           },
           "409": {
             "description": "The username is taken (USERNAME_TAKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1188,6 +1403,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1249,6 +1474,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "summary": "The only response that ever carries the raw token.",
@@ -1285,6 +1520,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1355,6 +1600,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1392,6 +1647,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1469,6 +1734,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1532,6 +1807,16 @@
           },
           "404": {
             "description": "No such resource (NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1617,6 +1902,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "summary": "MANAGER may change name, area and enabled; any other changed field needs SUPERADMIN.",
@@ -1689,8 +1984,109 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
+        "tags": [
+          "Cameras"
+        ]
+      }
+    },
+    "/api/v1/cameras/{id}/stream-info": {
+      "get": {
+        "operationId": "camerasStreamInfo",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamInfoDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource (NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "MediaMTX is not configured or not reachable (UNAVAILABLE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Is the camera's stream arriving, in which codec, and what the recording costs on disk.",
         "tags": [
           "Cameras"
         ]
@@ -1752,6 +2148,16 @@
           },
           "404": {
             "description": "No such resource (NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1848,6 +2254,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1914,6 +2330,16 @@
           },
           "404": {
             "description": "No such resource (NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1992,6 +2418,16 @@
           },
           "404": {
             "description": "No such resource (NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -2089,6 +2525,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2126,6 +2572,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -2203,6 +2659,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2267,6 +2733,16 @@
           },
           "404": {
             "description": "No such resource (NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -2346,6 +2822,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2417,6 +2903,98 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Media"
+        ]
+      }
+    },
+    "/media/debug/{id}": {
+      "get": {
+        "operationId": "mediaDebug",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Camera id to stream debug MJPEG frames for",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MJPEG stream of engine debug frames",
+            "content": {
+              "multipart/x-mixed-replace": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource (NOT_FOUND)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2454,6 +3032,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -2548,6 +3136,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2582,6 +3180,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -2660,6 +3268,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2724,6 +3342,16 @@
           },
           "409": {
             "description": "A camera uses the model (MODEL_IN_USE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -2811,6 +3439,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2884,6 +3522,16 @@
           },
           "409": {
             "description": "Only a READY PT model can be converted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -3018,6 +3666,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3132,6 +3790,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -3263,6 +3931,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -3409,6 +4087,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3521,6 +4209,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -3647,6 +4345,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3746,6 +4454,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3829,6 +4547,16 @@
           },
           "403": {
             "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -3938,6 +4666,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -3982,6 +4720,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -4007,7 +4755,7 @@
       },
       "bearer": {
         "scheme": "bearer",
-        "bearerFormat": "JWT",
+        "bearerFormat": "zv_ API token",
         "type": "http"
       }
     },
@@ -4060,6 +4808,80 @@
           "id",
           "username",
           "name"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "BAD_REQUEST",
+          "VALIDATION_FAILED",
+          "SETTINGS_INVALID",
+          "FIELD_NOT_ALLOWED",
+          "RANGE_TOO_LONG",
+          "UNAUTHENTICATED",
+          "FORBIDDEN",
+          "ROLE_REQUIRED",
+          "FORBIDDEN_ORIGIN",
+          "NOT_FOUND",
+          "RECORDING_NOT_AVAILABLE",
+          "CONFLICT",
+          "STALE_VERSION",
+          "USERNAME_TAKEN",
+          "CAMERA_ID_TAKEN",
+          "WRONG_PASSWORD",
+          "LAST_SUPERADMIN",
+          "CAMERA_HAS_DATA",
+          "MODEL_IN_USE",
+          "ACCOUNT_LOCKED",
+          "TOO_LARGE",
+          "RATE_LIMITED",
+          "UNAVAILABLE",
+          "INTERNAL"
+        ]
+      },
+      "FieldError": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "example": "/clerk_zone/0"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ]
+      },
+      "ApiErrorBody": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number"
+          },
+          "code": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "code",
+          "message"
         ]
       },
       "ActorDto": {
@@ -4430,78 +5252,6 @@
           "role"
         ]
       },
-      "ErrorCode": {
-        "type": "string",
-        "enum": [
-          "BAD_REQUEST",
-          "VALIDATION_FAILED",
-          "SETTINGS_INVALID",
-          "FIELD_NOT_ALLOWED",
-          "RANGE_TOO_LONG",
-          "UNAUTHENTICATED",
-          "FORBIDDEN",
-          "ROLE_REQUIRED",
-          "FORBIDDEN_ORIGIN",
-          "NOT_FOUND",
-          "RECORDING_NOT_AVAILABLE",
-          "CONFLICT",
-          "STALE_VERSION",
-          "USERNAME_TAKEN",
-          "LAST_SUPERADMIN",
-          "CAMERA_HAS_DATA",
-          "MODEL_IN_USE",
-          "ACCOUNT_LOCKED",
-          "TOO_LARGE",
-          "RATE_LIMITED",
-          "UNAVAILABLE",
-          "INTERNAL"
-        ]
-      },
-      "FieldError": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "example": "/clerk_zone/0"
-          },
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "path",
-          "message"
-        ]
-      },
-      "ApiErrorBody": {
-        "type": "object",
-        "properties": {
-          "statusCode": {
-            "type": "number"
-          },
-          "code": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ErrorCode"
-              }
-            ]
-          },
-          "message": {
-            "type": "string"
-          },
-          "errors": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FieldError"
-            }
-          }
-        },
-        "required": [
-          "statusCode",
-          "code",
-          "message"
-        ]
-      },
       "UpdateUserDto": {
         "type": "object",
         "properties": {
@@ -4634,6 +5384,24 @@
           "revokedAt"
         ]
       },
+      "LiveUrlsDto": {
+        "type": "object",
+        "properties": {
+          "main": {
+            "type": "string",
+            "description": "WHEP URL of the main stream, behind Caddy and a session.",
+            "example": "/media/webrtc/zv_gate/whep"
+          },
+          "sub": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "main",
+          "sub"
+        ]
+      },
       "SourceType": {
         "type": "string",
         "enum": [
@@ -4685,6 +5453,16 @@
       "CameraViewDto": {
         "type": "object",
         "properties": {
+          "liveUrls": {
+            "nullable": true,
+            "description": "Null for FILE or disabled cameras, and when the API has no MediaMTX configured (demo profile). The frontend never builds MediaMTX paths itself.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LiveUrlsDto"
+              }
+            ]
+          },
           "sourceType": {
             "allOf": [
               {
@@ -4694,7 +5472,8 @@
           },
           "recordingPath": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "The MediaMTX path being recorded (zv_<id>, or zv_<id>_sub), derived from the recording settings. Null for FILE cameras or with recording off."
           },
           "inferenceStream": {
             "allOf": [
@@ -4755,12 +5534,114 @@
           }
         },
         "required": [
+          "liveUrls",
           "id",
           "name",
           "area",
           "useCase",
           "enabled",
           "activeVersion"
+        ]
+      },
+      "StreamPathInfoDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "zv_gate"
+          },
+          "stream": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StreamChoice"
+              }
+            ]
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "MediaMTX has the stream and is receiving it"
+          },
+          "recorded": {
+            "type": "boolean",
+            "description": "This path is the one being recorded"
+          },
+          "codecs": {
+            "example": [
+              "H264"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "codecWarning": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "H265_BROWSER"
+            ],
+            "description": "H265_BROWSER: a browser may not play this stream"
+          },
+          "bitrateBps": {
+            "type": "number",
+            "nullable": true,
+            "description": "Measured from two readings 1-120 s apart; null until there are two"
+          },
+          "estimatedBytes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only on the recorded path: bitrate x 86400 x retention days (7 when the camera has none)"
+          }
+        },
+        "required": [
+          "name",
+          "stream",
+          "ready",
+          "recorded",
+          "codecs",
+          "codecWarning",
+          "bitrateBps",
+          "estimatedBytes"
+        ]
+      },
+      "DiskInfoDto": {
+        "type": "object",
+        "properties": {
+          "freeBytes": {
+            "type": "number"
+          },
+          "totalBytes": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "freeBytes",
+          "totalBytes"
+        ]
+      },
+      "StreamInfoDto": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamPathInfoDto"
+            }
+          },
+          "disk": {
+            "nullable": true,
+            "description": "The recordings volume; null when it cannot be read",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DiskInfoDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "paths",
+          "disk"
         ]
       },
       "RecordingDto": {
@@ -4816,7 +5697,9 @@
             "type": "string",
             "nullable": true,
             "minLength": 1,
-            "maxLength": 500
+            "maxLength": 500,
+            "deprecated": true,
+            "description": "Ignored: the recorded MediaMTX path is derived from the recording settings."
           },
           "targetFps": {
             "type": "number",
@@ -4913,7 +5796,9 @@
             "type": "string",
             "nullable": true,
             "minLength": 1,
-            "maxLength": 500
+            "maxLength": 500,
+            "deprecated": true,
+            "description": "Ignored: the recorded MediaMTX path is derived from the recording settings."
           },
           "targetFps": {
             "type": "number",

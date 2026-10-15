@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -168,7 +167,7 @@ export class CamerasService {
       });
     } catch (err) {
       if (code(err) === 'P2002') {
-        throw new ConflictException('Camera id already exists');
+        throw apiError(409, 'CAMERA_ID_TAKEN', 'Camera id already exists');
       }
       throw err;
     }

@@ -180,7 +180,7 @@ describe('ErrorFilter', () => {
     },
   );
 
-  it('a body-parser error (status 400, text from the parser) → 400 BAD_REQUEST without the parser text', () => {
+  it('a body-parser error (status 400, text from the parser) → 400 VALIDATION_FAILED without the parser text', () => {
     const { filter, body, status } = setup();
     const err = Object.assign(new SyntaxError('Unexpected token } in JSON'), {
       status: 400,
@@ -192,8 +192,8 @@ describe('ErrorFilter', () => {
     expect(status()).toBe(400);
     expect(body()).toEqual({
       statusCode: 400,
-      code: 'BAD_REQUEST',
-      message: 'Malformed request body',
+      code: 'VALIDATION_FAILED',
+      message: 'Malformed JSON',
     });
   });
 

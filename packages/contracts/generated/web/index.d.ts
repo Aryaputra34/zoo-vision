@@ -91,7 +91,7 @@ export declare namespace cashier_presence {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point = [unknown, unknown];
+  export type Point = [number, number];
   /**
    * @minItems 3
    */
@@ -100,7 +100,7 @@ export declare namespace cashier_presence {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point1 = [unknown, unknown];
+  export type Point1 = [number, number];
 
   export interface CashierPresenceSettings {
     model_name?: ModelName;
@@ -175,12 +175,12 @@ export declare namespace horse_riding {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point = [unknown, unknown];
+  export type Point = [number, number];
   /**
    * @minItems 2
    * @maxItems 2
    */
-  export type Point1 = [unknown, unknown];
+  export type Point1 = [number, number];
   /**
    * @minItems 3
    */
@@ -189,7 +189,7 @@ export declare namespace horse_riding {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point2 = [unknown, unknown];
+  export type Point2 = [number, number];
 
   export interface HorseRidingSettings {
     model_name?: ModelName;
@@ -267,27 +267,27 @@ export declare namespace restaurant_counter {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point = [unknown, unknown];
+  export type Point = [number, number];
   /**
    * @minItems 2
    * @maxItems 2
    */
-  export type Point1 = [unknown, unknown];
+  export type Point1 = [number, number];
   /**
    * @minItems 2
    * @maxItems 2
    */
-  export type Point2 = [unknown, unknown];
+  export type Point2 = [number, number];
   /**
    * @minItems 2
    * @maxItems 2
    */
-  export type Point3 = [unknown, unknown];
+  export type Point3 = [number, number];
   /**
    * @minItems 2
    * @maxItems 2
    */
-  export type Point4 = [unknown, unknown];
+  export type Point4 = [number, number];
   export type ConfidenceThreshold1 = number;
   /**
    * @minItems 3
@@ -297,7 +297,7 @@ export declare namespace restaurant_counter {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point5 = [unknown, unknown];
+  export type Point5 = [number, number];
   export type ConfidenceThreshold2 = number;
   export type TableList = Table[];
 
@@ -447,7 +447,7 @@ export declare namespace restaurant_table {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point = [unknown, unknown];
+  export type Point = [number, number];
   export type ConfidenceThreshold1 = number;
 
   export interface RestaurantTableSettings {
@@ -592,12 +592,12 @@ export declare namespace vehicle_gate {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point = [unknown, unknown];
+  export type Point = [number, number];
   /**
    * @minItems 2
    * @maxItems 2
    */
-  export type Point1 = [unknown, unknown];
+  export type Point1 = [number, number];
   /**
    * @minItems 3
    */
@@ -606,7 +606,7 @@ export declare namespace vehicle_gate {
    * @minItems 2
    * @maxItems 2
    */
-  export type Point2 = [unknown, unknown];
+  export type Point2 = [number, number];
 
   export interface VehicleGateSettings {
     model_name?: ModelName;

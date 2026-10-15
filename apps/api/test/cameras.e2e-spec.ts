@@ -384,4 +384,15 @@ describe('cameras', () => {
     );
     expect(text).not.toMatch(/rtsp:|hunter2pw|zzpw99/);
   });
+
+  it('POST /cameras with an existing id → 409 CAMERA_ID_TAKEN', async () => {
+    await create();
+    const res = await create();
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      statusCode: 409,
+      code: 'CAMERA_ID_TAKEN',
+      message: 'Camera id already exists',
+    });
+  });
 });
