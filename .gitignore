@@ -29,6 +29,7 @@ services/engine/models/*
 # Videos and images (small test videos go through Git LFS, see .gitattributes)
 *.mp4
 *.jpg
+!apps/api/demo/frames/*.jpg
 
 # Runtime output
 snapshots/

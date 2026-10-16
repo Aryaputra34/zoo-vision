@@ -28,6 +28,7 @@ export class BoxesRelay
   ) {}
 
   onApplicationBootstrap(): void {
+    if (!this.gateway.server) return;
     const adapter = this.gateway.server.of('/').adapter;
     adapter.on('create-room', (room: string) => this.onCreateRoom(room));
     adapter.on('delete-room', (room: string) => this.onDeleteRoom(room));
