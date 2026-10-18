@@ -164,7 +164,7 @@ WebSocket room camera:{id} ──► `boxes` {…, sentAt}   at most 10 per seco
 - While a response is open, the API keeps `cam:{id}:debug` alive (TTL 5 s, refreshed every 2 s) and subscribes to
   `cam:{id}:debugframes`; each JPEG received is written as one part. Several viewers share one subscription.
 - An engine thread reads the debug keys of its cameras once a second. For a watched camera it encodes
-  `latest_frame()` (the annotated frame the pipelines already draw for snapshots) at up to 5 per second and up to
+  `latest_frame()` (the annotated frame the pipelines already draw for snapshots) at up to 15 per second and up to
   960 px wide, and publishes it. No key, no encoding.
 - Caddy's `/media/*` route gets `flush_interval -1`, so frames are not buffered.
 

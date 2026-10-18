@@ -358,7 +358,8 @@ event rows. Asking for `/api/v1/media/...` is a 404.
 - Live WebRTC playback uses the paths provided in `camera.liveUrls` (`/media/webrtc/<path>/whep`) with WHEP
   (`reader.js`). Any logged-in user can view live video. **Accepted limit:** a playing WebRTC stream survives
   logout until the page closes or the connection drops (MediaMTX manages the WebRTC peer connection).
-- `/media/debug/:id` streams live MJPEG debug frames directly from the engine while open (SUPERADMIN only;
+- `/media/debug/:id` streams live MJPEG debug frames directly from the engine while open, at up to 15 per second and
+  at most 960 px wide (SUPERADMIN only;
   403 `ROLE_REQUIRED` for other roles). The API refreshes a Redis key every 2 s while the response is streaming,
   and the engine stops JPEG encoding within 5 s after the viewer disconnects.
 - A clip is **404 `RECORDING_NOT_AVAILABLE`** when the camera has no recording path, recording is off, the

@@ -12,12 +12,16 @@ from core.base_pipeline import BasePipeline
 
 logger = logging.getLogger("DebugPublisher")
 
+# Capped by the camera's own processing rate; ~3 ms and ~110 KB per 960 px JPEG on the dev laptop, so 15 fps costs
+# ~4% of a core and ~14 Mbit/s per viewer (a troubleshooting view, not the everyday one)
+DEBUG_MAX_FPS = 15
+
 
 class DebugPublisher(threading.Thread):
     """Background thread that publishes debug MJPEG frames for cameras with active viewers.
 
     Once a second, checks if `cam:{id}:debug` exists in Redis for each camera.
-    For any camera where the key exists, encodes `latest_frame()` at up to 5 fps (0.2 s interval)
+    For any camera where the key exists, encodes `latest_frame()` at up to DEBUG_MAX_FPS (15) per second
     scaled to at most 960 px wide at JPEG quality 70, and publishes the bytes to
     `cam:{id}:debugframes`. If the key does not exist, no frames are encoded.
     """
@@ -69,7 +73,7 @@ class DebugPublisher(threading.Thread):
                         self._last_error_log = now_mono
                         logger.warning("DebugPublisher key check failed: %s", e)
 
-            # 2. For each watched camera, publish latest_frame() if 0.2 s passed and last_frame_at changed
+            # 2. For each watched camera, publish latest_frame() at most DEBUG_MAX_FPS per second, when last_frame_at changed
             if self._watched_cameras:
                 try:
                     current_pipelines = self.pipelines()
@@ -81,7 +85,7 @@ class DebugPublisher(threading.Thread):
                     if pipe_obj is None:
                         continue
 
-                    if now - self._last_publish_time.get(cid, 0.0) < 0.2:
+                    if now - self._last_publish_time.get(cid, 0.0) < 1.0 / DEBUG_MAX_FPS:
                         continue
 
                     last_frame_at = getattr(pipe_obj, "last_frame_at", 0.0)
