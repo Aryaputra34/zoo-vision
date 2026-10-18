@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
@@ -96,7 +95,7 @@ export class AuthService {
   ): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
-      throw new BadRequestException('Current password is wrong');
+      throw apiError(400, 'WRONG_PASSWORD', 'Current password is wrong');
     }
     await this.prisma.user.update({
       where: { id: userId },

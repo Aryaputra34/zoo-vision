@@ -8,13 +8,10 @@ import {
 import Redis from 'ioredis';
 import { ENV, type Env } from '../config/env';
 
-/**
- * Injection token for the shared ioredis client, for ordinary commands. Anything that blocks
- * (XREADGROUP BLOCK, SUBSCRIBE) must use its own
- * `redis.duplicate({ maxRetriesPerRequest: null, commandTimeout: undefined })` (the shared
- * client's timeouts would cut a BLOCK), give it an `error` listener and close it itself.
- */
-export const REDIS = Symbol('REDIS');
+import { RedisPubSub } from './pubsub';
+
+import { REDIS } from './redis.constants';
+export { REDIS } from './redis.constants';
 
 const logger = new Logger('Redis');
 
@@ -36,8 +33,9 @@ const logger = new Logger('Redis');
         return redis;
       },
     },
+    RedisPubSub,
   ],
-  exports: [REDIS],
+  exports: [REDIS, RedisPubSub],
 })
 export class RedisModule implements OnApplicationShutdown {
   constructor(@Inject(REDIS) private readonly redis: Redis) {}

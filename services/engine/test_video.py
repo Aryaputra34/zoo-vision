@@ -25,7 +25,6 @@ from contracts.registry import REGISTRY
 from core.base_pipeline import CameraInfo
 from core.event_stream import EventStream
 from core.messages import event_message
-from core.api_server import create_app, start_api_server
 from core.model_pool import ModelPool
 from core.settings import SettingsError, parse_settings
 from core.snapshot_store import SnapshotStore
@@ -198,8 +197,7 @@ def test_video(
     )
 
     # Optionally send events, intervals and metrics to the Redis stream (REDIS_URL), with event snapshots
-    # and the live preview API, so the run looks like a real camera
-    events = snapshots = api_server = None
+    events = snapshots = None
     if analytics:
         redis_url = os.environ.get("REDIS_URL")
         if redis_url:
@@ -213,14 +211,6 @@ def test_video(
         snapshots = SnapshotStore(root=os.environ.get("SNAPSHOT_DIR", "snapshots"),
                                   retention_days=int(os.environ.get("SNAPSHOT_RETENTION_DAYS", "30")))
         pipeline.snapshots = snapshots
-        preview_port = int(os.environ.get("PREVIEW_PORT", "8000"))
-        if preview_port:
-            api_server = start_api_server(
-                create_app(lambda: {pipeline.camera_id: pipeline}, snapshots,
-                           os.environ.get("PREVIEW_API_KEY") or None),
-                host=os.environ.get("PREVIEW_HOST", "127.0.0.1"),
-                port=preview_port,
-            )
 
     # Seek to start time if provided
     start_sec = parse_time_str(start_time)
@@ -357,8 +347,6 @@ def test_video(
                 logger.info(f"[ANPR TOGGLE] ANPR is now {state_str}")
 
     cap.release()
-    if api_server:
-        api_server.should_exit = True
     pipeline.shutdown()
     pool.release(model)
     pool.close()
@@ -395,7 +383,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-anpr", action="store_true", help="Disable License Plate Recognition (ANPR) for gate pipeline")
     parser.add_argument("--duration", default=None, help="Stop after this much video, e.g. '60' or '1:30'. Renders a window out of a long recording.")
     parser.add_argument("--device", default="cpu", help="Inference device, e.g. cpu or cuda:0 (default: cpu)")
-    parser.add_argument("--analytics", action="store_true", help="Send events, intervals and metrics to the Redis stream (REDIS_URL) with snapshots, and serve the live preview (SNAPSHOT_DIR, PREVIEW_* environment variables)")
+    parser.add_argument("--analytics", action="store_true", help="Send events, intervals and metrics to the Redis stream (REDIS_URL) with snapshots (SNAPSHOT_DIR environment variable)")
     args = parser.parse_args()
 
     test_video(

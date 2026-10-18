@@ -9,12 +9,17 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { SourceType } from '../../generated/prisma/enums';
-import { CAMERA_ID_PATTERN, CameraFieldsDto } from './camera-fields.dto';
+import {
+  CAMERA_ID_NOT_SUB,
+  CAMERA_ID_PATTERN,
+  CameraFieldsDto,
+} from './camera-fields.dto';
 
 export class CreateCameraDto extends CameraFieldsDto {
   @ApiProperty({ pattern: CAMERA_ID_PATTERN.source })
   @IsString()
   @Matches(CAMERA_ID_PATTERN)
+  @Matches(CAMERA_ID_NOT_SUB, { message: 'id must not end with _sub' })
   id!: string;
 
   @ApiProperty({ minLength: 1, maxLength: 100 })

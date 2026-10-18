@@ -34,7 +34,11 @@ describe('loadEnv', () => {
       MODEL_UPLOAD_MAX_BYTES: 1073741824,
       SITE_TIMEZONE: 'Asia/Jakarta',
       SNAPSHOT_DIR: '/data/snapshots',
+      RECORDINGS_DIR: '/data/recordings',
+      TRUSTED_PROXY_HOST: 'caddy',
       MEDIAMTX_PLAYBACK_URL: undefined,
+      MEDIAMTX_API_URL: undefined,
+      MEDIAMTX_PASSWORD: undefined,
     });
   });
 
@@ -73,6 +77,33 @@ describe('loadEnv', () => {
     expect(
       loadEnv({ ...required, MEDIAMTX_PLAYBACK_URL: '' }).MEDIAMTX_PLAYBACK_URL,
     ).toBeUndefined();
+  });
+
+  it('MEDIAMTX_API_URL needs MEDIAMTX_PASSWORD of 12 characters or more, and never echoes it', () => {
+    const api = 'http://host.docker.internal:9997';
+    expect(errorOf({ ...required, MEDIAMTX_API_URL: api })).toMatch(
+      /^ {2}MEDIAMTX_PASSWORD: required/m,
+    );
+    const short = errorOf({
+      ...required,
+      MEDIAMTX_API_URL: api,
+      MEDIAMTX_PASSWORD: 'too-short',
+    });
+    expect(short).toMatch(/^ {2}MEDIAMTX_PASSWORD: must be at least 12/m);
+    expect(short).not.toContain('too-short');
+    expect(
+      loadEnv({
+        ...required,
+        MEDIAMTX_API_URL: api,
+        MEDIAMTX_PASSWORD: 'long-enough-pw-1',
+      }),
+    ).toMatchObject({
+      MEDIAMTX_API_URL: api,
+      MEDIAMTX_PASSWORD: 'long-enough-pw-1',
+    });
+    expect(
+      errorOf({ ...required, MEDIAMTX_API_URL: 'rtsp://mediamtx:8554' }),
+    ).toMatch(/^ {2}MEDIAMTX_API_URL: must be an http\(s\) URL/m);
   });
 
   it('names SITE_TIMEZONE when it is not an IANA time zone', () => {

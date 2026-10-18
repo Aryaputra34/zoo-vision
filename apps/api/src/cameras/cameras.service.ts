@@ -1,14 +1,16 @@
 import {
   BadRequestException,
-  ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { Actor } from '../auth/actor';
 import { apiError, needsSuperadmin } from '../common/errors';
+import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
 import type { Camera, Prisma } from '../generated/prisma/client';
 import type { SourceType } from '../generated/prisma/enums';
+import { PathSync } from '../mediamtx/path-sync.service';
 import { ModelsService } from '../models/models.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { type CameraView, toCameraView } from './camera-view';
@@ -29,7 +31,7 @@ export function auditView(
   cipher: UrlCipher,
 ): Record<string, unknown> {
   return {
-    ...toCameraView(camera, 'MANAGER', cipher),
+    ...toCameraView(camera, 'MANAGER', cipher, false),
     mainStreamUrl: REDACTED,
     subStreamUrl: REDACTED,
   };
@@ -49,18 +51,32 @@ export class CamerasService {
     private readonly contracts: ContractsService,
     private readonly notifier: ConfigNotifier,
     private readonly models: ModelsService,
+    private readonly pathSync: PathSync,
     readonly cipher: UrlCipher,
+    @Inject(ENV) private readonly env: Env,
   ) {}
+
+  /** Whether camera views carry liveUrls: only where MediaMTX is configured. */
+  private get live(): boolean {
+    return !!this.env.MEDIAMTX_API_URL;
+  }
 
   async list(actor: Actor): Promise<CameraView[]> {
     const cameras = await this.prisma.camera.findMany({
       orderBy: { id: 'asc' },
     });
-    return cameras.map((c) => toCameraView(c, actor.role, this.cipher));
+    return cameras.map((c) =>
+      toCameraView(c, actor.role, this.cipher, this.live),
+    );
   }
 
   async get(actor: Actor, id: string): Promise<CameraView> {
-    return toCameraView(await this.find(id), actor.role, this.cipher);
+    return toCameraView(
+      await this.find(id),
+      actor.role,
+      this.cipher,
+      this.live,
+    );
   }
 
   async find(id: string): Promise<Camera> {
@@ -110,7 +126,6 @@ export class CamerasService {
           subStreamUrlEnc: dto.subStreamUrl
             ? this.cipher.encrypt(dto.subStreamUrl)
             : null,
-          recordingPath: dto.recordingPath ?? null,
           ...(dto.targetFps !== undefined && { targetFps: dto.targetFps }),
           ...(dto.engineGroup !== undefined && {
             engineGroup: dto.engineGroup,
@@ -152,12 +167,16 @@ export class CamerasService {
       });
     } catch (err) {
       if (code(err) === 'P2002') {
-        throw new ConflictException('Camera id already exists');
+        throw apiError(409, 'CAMERA_ID_TAKEN', 'Camera id already exists');
       }
       throw err;
     }
     await this.notifier.notify(camera.id, 1);
-    return { camera, view: toCameraView(camera, actor.role, this.cipher) };
+    this.pathSync.request();
+    return {
+      camera,
+      view: toCameraView(camera, actor.role, this.cipher, this.live),
+    };
   }
 
   async update(
@@ -188,14 +207,6 @@ export class CamerasService {
     }
     if (dto.sourceType !== undefined) {
       set('sourceType', 'sourceType', dto.sourceType, before.sourceType);
-    }
-    if (dto.recordingPath !== undefined) {
-      set(
-        'recordingPath',
-        'recordingPath',
-        dto.recordingPath,
-        before.recordingPath,
-      );
     }
     if (dto.targetFps !== undefined) {
       set('targetFps', 'targetFps', dto.targetFps, before.targetFps);
@@ -321,11 +332,12 @@ export class CamerasService {
         ? await this.prisma.camera.update({ where: { id }, data })
         : before;
     await this.notifier.notify(id, after.activeVersion);
+    this.pathSync.request();
     return {
       before,
       after,
       streamUrlsChanged,
-      view: toCameraView(after, actor.role, this.cipher),
+      view: toCameraView(after, actor.role, this.cipher, this.live),
     };
   }
 
@@ -358,6 +370,7 @@ export class CamerasService {
       throw err;
     }
     await this.notifier.notify(id, null);
+    this.pathSync.request();
     return camera;
   }
 

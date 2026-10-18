@@ -43,7 +43,6 @@ def test_one_file_camera_runs_and_reports_its_version(tmp_path, fake_yolo):
     env = load_env({
         "REDIS_URL": os.environ["REDIS_URL"], "API_URL": api.url, "ENGINE_TOKEN": TOKEN,
         "ENGINE_GROUP": "main-test", "ZOO_MODELS_DIR": str(tmp_path), "SNAPSHOT_DIR": str(tmp_path / "snaps"),
-        "PREVIEW_PORT": "0",
     })
     r = redis.Redis.from_url(os.environ["REDIS_URL"])
     stop = threading.Event()

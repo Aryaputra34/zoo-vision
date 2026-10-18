@@ -11,11 +11,20 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiOkResponse, ApiProperty } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiProperty,
+  ApiResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import type { CookieOptions, Request, Response } from 'express';
 import { setAudit, SkipAudit } from '../audit/audit-context';
+import { ApiErrorBody } from '../common/errors';
 import { ENV, type Env } from '../config/env';
 import type { Actor, ActorRequest } from './actor';
 import { SESSION_COOKIE } from './auth.guard';
@@ -64,6 +73,20 @@ export class AuthController {
   @SkipAudit()
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: LoginUserDto })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'Invalid credentials or account disabled',
+  })
+  @ApiResponse({
+    status: 423,
+    type: ApiErrorBody,
+    description: 'The account is temporarily locked (ACCOUNT_LOCKED)',
+  })
+  @ApiResponse({
+    status: 429,
+    type: ApiErrorBody,
+    description: 'Too many login attempts (RATE_LIMITED)',
+  })
   @UseGuards(LoginThrottlerGuard, LocalAuthGuard)
   @HttpCode(200)
   @Post('login')
@@ -95,6 +118,17 @@ export class AuthController {
     res.clearCookie(SESSION_COOKIE, this.cookieOptions());
   }
 
+  /**
+   * Caddy's forward_auth asks this before it lets a WHEP call through to MediaMTX: 204 with a
+   * session or an API token, 401 (the global guard) without. No body.
+   */
+  @Get('check')
+  @HttpCode(204)
+  @ApiNoContentResponse({ description: 'A valid session or API token' })
+  check(): void {
+    // the global AuthGuard has done the work
+  }
+
   @Get('me')
   @ApiOkResponse({ type: ActorDto })
   me(@CurrentActor() actor: Actor): Actor {
@@ -103,6 +137,16 @@ export class AuthController {
 
   /** Session users only; an API token cannot change a password. Other sessions end, this one stays. */
   @HttpCode(204)
+  @ApiNoContentResponse({ description: 'Password changed' })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description: 'Invalid body or wrong current password (WRONG_PASSWORD)',
+  })
+  @ApiResponse({
+    status: 429,
+    type: ApiErrorBody,
+    description: 'Too many password change attempts (RATE_LIMITED)',
+  })
   @UseGuards(PasswordThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 15 * 60_000 } })
   @Put('password')

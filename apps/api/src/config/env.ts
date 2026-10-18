@@ -27,6 +27,17 @@ export type Env = Readonly<{
   SNAPSHOT_DIR: string;
   /** MediaMTX's playback server, e.g. http://host.docker.internal:9996; unset: clips are unavailable. */
   MEDIAMTX_PLAYBACK_URL: string | undefined;
+  /**
+   * The name the API resolves to find its reverse proxy (Caddy's compose service name). Only the
+   * addresses it resolves to may set X-Forwarded-For; from source, set it to 127.0.0.1.
+   */
+  TRUSTED_PROXY_HOST: string;
+  /** The recordings volume as the API sees it (read-only), for the free-space figure of stream-info. */
+  RECORDINGS_DIR: string;
+  /** MediaMTX's Control API, e.g. http://host.docker.internal:9997; unset: no path sync, no live video. */
+  MEDIAMTX_API_URL: string | undefined;
+  /** The password of MediaMTX's user `zoo` (Control API, playback). Required with MEDIAMTX_API_URL. */
+  MEDIAMTX_PASSWORD: string | undefined;
 }>;
 
 export class EnvError extends Error {
@@ -75,6 +86,9 @@ const positiveInt: Check<number> = (value) => {
 };
 
 const text: Check<string> = (value) => value;
+
+const password12: Check<string> = (value) =>
+  value.length >= 12 ? value : undefined;
 
 // Region/City names only: Intl also takes "+07:00", which Postgres reads with the sign flipped
 const timeZone: Check<string> = (value) => {
@@ -164,6 +178,29 @@ export function loadEnv(source: Source = process.env): Env {
     MEDIAMTX_PLAYBACK_URL: source.MEDIAMTX_PLAYBACK_URL
       ? read('MEDIAMTX_PLAYBACK_URL', url('http:', 'https:'), 'an http(s) URL')
       : undefined,
+    TRUSTED_PROXY_HOST: read(
+      'TRUSTED_PROXY_HOST',
+      text,
+      'a host name or address',
+      'caddy',
+    ),
+    RECORDINGS_DIR: read(
+      'RECORDINGS_DIR',
+      text,
+      'a folder path',
+      '/data/recordings',
+    ),
+    MEDIAMTX_API_URL: source.MEDIAMTX_API_URL
+      ? read('MEDIAMTX_API_URL', url('http:', 'https:'), 'an http(s) URL')
+      : undefined,
+    MEDIAMTX_PASSWORD:
+      source.MEDIAMTX_API_URL || source.MEDIAMTX_PASSWORD
+        ? read(
+            'MEDIAMTX_PASSWORD',
+            password12,
+            'at least 12 characters (openssl rand -hex 24)',
+          )
+        : undefined,
   };
 
   if (problems.length > 0) {

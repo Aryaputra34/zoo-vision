@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { apiError } from '../common/errors';
 import { ENV, type Env } from '../config/env';
+import { mediamtxPaths } from '../mediamtx/paths';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** How long playback may take to start answering before the clip is called unavailable. */
@@ -39,13 +40,19 @@ export class ClipsService {
    * The request to playback is aborted when the client goes away.
    */
   async stream(eventId: string, res: Response): Promise<void> {
+    // before the first await: a client that leaves while the event is looked up aborts the fetch too
+    const gone = new AbortController();
+    res.once('close', () => gone.abort());
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       include: {
         camera: {
           select: {
-            recordingPath: true,
+            sourceType: true,
+            subStreamUrlEnc: true,
             recordingEnabled: true,
+            recordingStream: true,
+            inferenceStream: true,
             clipBeforeSec: true,
             clipAfterSec: true,
           },
@@ -56,23 +63,23 @@ export class ClipsService {
 
     const { camera } = event;
     const base = this.env.MEDIAMTX_PLAYBACK_URL;
-    if (!base || !camera?.recordingPath || !camera.recordingEnabled) {
-      throw unavailable();
-    }
+    const path =
+      camera && event.cameraId
+        ? mediamtxPaths({ ...camera, id: event.cameraId })?.recorded
+        : null;
+    if (!base || !camera || !path) throw unavailable();
 
     const before = camera.clipBeforeSec;
     const after = camera.clipAfterSec;
     // URLSearchParams encodes the recording path as one value: it can not add or change a parameter
     const url = new URL('get', base.endsWith('/') ? base : `${base}/`);
     url.search = new URLSearchParams({
-      path: camera.recordingPath,
+      path,
       start: new Date(event.time.getTime() - before * 1000).toISOString(),
       duration: String(before + after),
       format: 'mp4',
     }).toString();
 
-    const gone = new AbortController();
-    res.once('close', () => gone.abort());
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -85,6 +92,12 @@ export class ClipsService {
       upstream = await fetch(url, {
         signal: gone.signal,
         redirect: 'error',
+        // MediaMTX's playback needs the service password (user `zoo`)
+        headers: this.env.MEDIAMTX_PASSWORD
+          ? {
+              Authorization: `Basic ${Buffer.from(`zoo:${this.env.MEDIAMTX_PASSWORD}`).toString('base64')}`,
+            }
+          : undefined,
       });
     } catch (err) {
       // a client that left is not a fault; a refused connection or a silent server is, and it

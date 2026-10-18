@@ -13,6 +13,7 @@ from typing import Any, ClassVar, Dict, Optional
 import numpy as np
 from pydantic import BaseModel
 
+from contracts.boxes import Box, Boxes
 from core.event_stream import EventStream
 from core.messages import event_message, interval_close_message, interval_open_message, metric_message, new_id
 from core.metrics import MinuteMetrics
@@ -36,6 +37,7 @@ class BasePipeline(ABC):
     metric_fields: ClassVar[Dict[str, str]] = {}  # status field -> metric name, averaged per minute
     events: Optional[EventStream] = None  # assigned by the camera worker / test_video.py; None = nothing is sent
     snapshots = None  # SnapshotStore, assigned likewise; None = events carry no snapshot
+    boxes = None  # BoxPublisher, assigned by the camera worker; None = no boxes published
 
     def __init__(
         self,
@@ -56,7 +58,7 @@ class BasePipeline(ABC):
         self.nx_client = nx_client
         self.config_version = config_version
 
-        # Live preview + health, read by core/api_server.py from another thread
+        # Latest frame, read by DebugPublisher and the live preview
         self._frame_lock = threading.Lock()
         self._latest_frame: Optional[np.ndarray] = None
         self.last_frame_at = 0.0
@@ -65,6 +67,7 @@ class BasePipeline(ABC):
         self._pending: Optional[list] = None  # events raised inside run(), sent once the annotated frame exists
         self._open_intervals: Dict[str, str] = {}  # session id -> interval kind
         self._metrics = MinuteMetrics(self._send_metric)
+        self._last_box_error_log = 0.0
 
         logger.info(f"[{self.camera_name}] {self.use_case} pipeline ready (imgsz={settings.imgsz}, device='{device}').")
 
@@ -160,6 +163,8 @@ class BasePipeline(ABC):
         """process_frame() plus event snapshots, live preview frame and FPS."""
         annotated = None
         self._pending = []
+        self._current_frame_size = frame.shape[:2]
+        self._current_timestamp_ms = timestamp_ms
         try:
             annotated = self.process_frame(frame, timestamp_ms)
             return annotated
@@ -185,6 +190,81 @@ class BasePipeline(ABC):
             self.camera_id, self.use_case, event_type, data, severity,
             time_ms=ts, snapshot_path=rel, event_id=event_id, config_version=self.config_version
         ))
+
+    def publish_boxes(self, detections: Any, labels: Optional[list[str]] = None) -> None:
+        """Builds Boxes and offers them to the box publisher (no-op when self.boxes is None)."""
+        if not self.boxes:
+            return
+        try:
+            h, w = getattr(self, "_current_frame_size", (1, 1))
+            if h <= 0 or w <= 0:
+                return
+            t = getattr(self, "_current_timestamp_ms", int(time.time() * 1000))
+
+            box_list = []
+            if detections is not None and len(detections) > 0:
+                xyxy = detections.xyxy
+                track_ids = (
+                    detections.tracker_id
+                    if detections.tracker_id is not None
+                    else [None] * len(detections)
+                )
+                class_ids = (
+                    detections.class_id
+                    if detections.class_id is not None
+                    else [0] * len(detections)
+                )
+
+                count = min(len(detections), 300)
+                for i in range(count):
+                    box = xyxy[i]
+                    tid = track_ids[i]
+                    cls = int(class_ids[i]) if class_ids[i] is not None else 0
+
+                    # Coordinates divided by w/h and clamped to 0–1
+                    x1 = max(0.0, min(1.0, float(box[0]) / w))
+                    y1 = max(0.0, min(1.0, float(box[1]) / h))
+                    x2 = max(0.0, min(1.0, float(box[2]) / w))
+                    y2 = max(0.0, min(1.0, float(box[3]) / h))
+
+                    if labels is not None and i < len(labels):
+                        lbl = str(labels[i])
+                    elif (
+                        hasattr(self.model, "names")
+                        and isinstance(self.model.names, dict)
+                        and cls in self.model.names
+                    ):
+                        lbl = str(self.model.names[cls])
+                    elif (
+                        hasattr(self.model, "names")
+                        and isinstance(self.model.names, (list, tuple))
+                        and 0 <= cls < len(self.model.names)
+                    ):
+                        lbl = str(self.model.names[cls])
+                    else:
+                        lbl = str(cls)
+
+                    box_list.append(
+                        Box(
+                            trackId=int(tid) if tid is not None else None,
+                            cls=cls,
+                            label=lbl,
+                            x1=x1,
+                            y1=y1,
+                            x2=x2,
+                            y2=y2,
+                        )
+                    )
+
+            payload = Boxes(cameraId=self.camera_id, t=t, boxes=box_list)
+            self.boxes.offer(self.camera_id, payload.model_dump(mode="json"))
+        except Exception as e:
+            now = time.time()
+            if now - self._last_box_error_log >= 60.0:
+                self._last_box_error_log = now
+                logger.warning(
+                    f"[{self.camera_name}] Failed to publish boxes: {e}"
+                )
 
     def latest_frame(self) -> Optional[np.ndarray]:
         """Most recent annotated frame (do not modify it; the preview encodes it from another thread)."""

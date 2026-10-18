@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ENV, type Env } from '../config/env';
+import { MediamtxModule } from '../mediamtx/mediamtx.module';
 import { ModelsModule } from '../models/models.module';
 import { CameraConfigController } from './camera-config.controller';
 import { CameraStatusController } from './camera-status.controller';
@@ -11,7 +12,7 @@ import { ConfigVersionsService } from './config-versions.service';
 import { UrlCipher } from './url-cipher';
 
 @Module({
-  imports: [ModelsModule],
+  imports: [ModelsModule, MediamtxModule],
   controllers: [
     CamerasController,
     CameraConfigController,

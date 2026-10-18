@@ -101,6 +101,11 @@
           ],
           "title": "Point",
           "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
           "prefixItems": [
             {
               "type": "number",
@@ -123,6 +128,11 @@
           ],
           "title": "Point",
           "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
           "prefixItems": [
             {
               "type": "number",
@@ -149,6 +159,11 @@
       "items": {
         "title": "Point",
         "type": "array",
+        "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "prefixItems": [
           {
             "type": "number",

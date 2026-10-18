@@ -24,7 +24,8 @@ COPY apps/api/ apps/api/
 RUN cd apps/api \
  && npx prisma generate \
  && npm run build \
- && npm prune --omit=dev
+ && npm prune --omit=dev \
+ && mkdir -p demo/frames
 
 FROM node:22-bookworm-slim
 RUN apt-get update \

@@ -75,12 +75,17 @@ services:
       SITE_TIMEZONE: ${ZOO_SITE_TIMEZONE:-Asia/Jakarta} # reports and CSV times; an IANA name
       MODELS_DIR: /data/models
       SNAPSHOT_DIR: /data/snapshots
+      RECORDINGS_DIR: /data/recordings # read-only: only the free-space figure of stream-info
       # MediaMTX's playback server (the engine profile runs it on the host network, port 9996)
       MEDIAMTX_PLAYBACK_URL: ${ZOO_MEDIAMTX_PLAYBACK_URL-http://host.docker.internal:9996} # empty = no clips
+      # MediaMTX's Control API: the API keeps one zv_* path per camera in sync (empty = no sync, no live video)
+      MEDIAMTX_API_URL: ${ZOO_MEDIAMTX_API_URL-http://host.docker.internal:9997}
+      MEDIAMTX_PASSWORD: ${MEDIAMTX_PASSWORD:-}
       JOBS: "on" # offline check every 5 s; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models
       - ${ZOO_DATA_DIR:-./data}/snapshots:/data/snapshots:ro # written by the engine or the demo feed
+      - ${ZOO_DATA_DIR:-./data}/recordings:/data/recordings:ro # written by MediaMTX
     ports:
       # The loopback port is for the engine running from source and for debugging; Caddy reaches
       # the API on the compose network.
@@ -116,6 +121,16 @@ services:
       ZOO_SITE_ADDRESS: ${ZOO_SITE_ADDRESS:-localhost}
       ZOO_CADDY_MODE: ${ZOO_CADDY_MODE:-internal-tls} # dev | internal-tls | custom-tls
       ZOO_WEB_UPSTREAM: ${ZOO_WEB_UPSTREAM:-web:3000} # in development: host.docker.internal:3000
+      ZOO_MEDIAMTX_WEBRTC_UPSTREAM: ${ZOO_MEDIAMTX_WEBRTC_UPSTREAM:-host.docker.internal:8889} # MediaMTX's WebRTC (WHEP)
+      MEDIAMTX_PASSWORD: ${MEDIAMTX_PASSWORD:-}
+    # The Caddyfile adds the MediaMTX service password to WHEP calls: build its basic-auth value from the
+    # one secret in .env, so nobody hand-makes a base64 string. $$ is Compose's escape for a literal $.
+    command:
+      - sh
+      - -c
+      - |
+        export ZOO_MEDIAMTX_BASIC=$$(printf 'zoo:%s' "$$MEDIAMTX_PASSWORD" | base64 | tr -d '\n')
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
       - ./caddy:/etc/caddy:ro
       - ${ZOO_DATA_DIR:-./data}/certs:/certs:ro # custom-tls: cert.pem and key.pem
@@ -180,8 +195,8 @@ services:
       retries: 10
       start_period: 20s
 
-  # Pulls every camera once, records it (mediamtx.yml), re-serves RTSP to the AI engine
-  # and serves event clips to the dashboard on :9996.
+  # Pulls every camera once (paths zv_* are created by the API through :9997), records it per camera, re-serves
+  # RTSP to the AI engine, WebRTC to the dashboard (through Caddy) and event clips on :9996 (password required).
   mediamtx:
     profiles: ["engine"]
     image: bluenviron/mediamtx:1.21.1
@@ -189,6 +204,10 @@ services:
     network_mode: "host"
     environment:
       - MTX_PATHDEFAULTS_RECORDPATH=/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+      # The password of user `zoo`: the API, the engine and Caddy use it (the file's first authInternalUsers entry)
+      - MTX_AUTHINTERNALUSERS_0_PASS=${MEDIAMTX_PASSWORD:?set MEDIAMTX_PASSWORD in .env}
+      # The address the browser's WebRTC (ICE, UDP 8189) connects to: the one the dashboard is opened at
+      - MTX_WEBRTCADDITIONALHOSTS=${ZOO_SITE_ADDRESS:-localhost}
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
       - ${ZOO_DATA_DIR:-./data}/recordings:/recordings

@@ -1,69 +1,73 @@
-# MediaMTX for zoo-monitor (https://github.com/bluenviron/mediamtx, tested with v1.21.1).
+# MediaMTX for Zoo Vision (https://github.com/bluenviron/mediamtx, tested with v1.21.1).
 # Only settings that differ from the MediaMTX defaults are listed.
 #
-# MediaMTX pulls each camera once, records it with a retention window, and re-serves it:
-#   zoo-monitor reads   rtsp://127.0.0.1:8554/<path>                          (cameras.yaml `source`)
-#   dashboard clips     http://<host>:9996/get?path=<path>&start=<RFC3339>&duration=<s>
-#                       (cameras.yaml `recording_path` = <path>; dashboard MEDIAMTX_PLAYBACK_URL)
-#   raw live view       http://<host>:8889/<path>                             (WebRTC, fallback only)
+# The API owns every path named zv_<cameraId> / zv_<cameraId>_sub: it adds, patches and deletes them
+# through the Control API (:9997) and turns recording on per path. Nothing else is written here for a camera.
+#   engine reads   rtsp://zoo:<MEDIAMTX_PASSWORD>@127.0.0.1:8554/zv_<id>
+#   clips          http://<host>:9996/get?path=zv_<id>&start=<RFC3339>&duration=<s>   (basic auth, user zoo)
+#   browser live   WHEP on :8889, only through Caddy's /media/webrtc (session checked); ICE over UDP 8189
 # Browsers play H.264 reliably; set the camera stream to H.264 rather than H.265.
 #
-# Disk: a 4 Mbit/s camera records ~43 GB/day, so 12 cameras x 7 days ~ 3.6 TB. Lower recordDeleteAfter
-# (or point cameras at their sub-stream) if the site's NVR already keeps long-term footage.
+# Auth: user `zoo` is the only identity with a password. Its password comes from the environment
+# (MTX_AUTHINTERNALUSERS_0_PASS, set from MEDIAMTX_PASSWORD), so it is not written in this file. Nothing on the
+# LAN reads video, plays back or uses the API without it. Localhost may publish and read the feed_* test paths.
+#
+# Disk: a 4 Mbit/s camera records ~43 GB/day, so 12 cameras x 7 days ~ 3.6 TB. Set a camera's retention
+# (or record its sub-stream) if the site's NVR already keeps long-term footage.
 
 authInternalUsers:
-  # Read / play back from localhost and private networks, without a password.
-  - user: any
-    pass:
-    ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  # MUST stay the first entry: MTX_AUTHINTERNALUSERS_0_PASS fills its password.
+  - user: zoo
+    pass: "UNCONFIGURED_DO_NOT_USE_RANDOM_SECRET_1a8f93e2b4c5d6e7f8"
+    ips: []
     permissions:
       - action: read
       - action: playback
-  # Cameras are pulled (`source:` below), so only local test feeds ever publish.
+      - action: api
+  # Local test feeds (ffmpeg, see `paths:` below) publish, and can be read, without a password.
   - user: any
     pass:
     ips: ["127.0.0.1", "::1"]
     permissions:
       - action: publish
-      - action: api
-      - action: metrics
+        path: ~^feed_
+      - action: read
+        path: ~^feed_
 
+api: true
 playback: true
 rtmp: false
 hls: false
 srt: false
 moq: false
 
+# The ICE address the browser is told is set by MTX_WEBRTCADDITIONALHOSTS (compose: ZOO_SITE_ADDRESS).
+webrtcLocalUDPAddress: :8189
+
 pathDefaults:
   # UDP drops packets under load and smears frames, both for the AI and in the recordings
   rtspTransport: tcp
-  record: true
+  # Recording is switched on per zv_ path by the API, from the camera's recording settings.
+  record: false
   recordPath: ./recordings/%path/%Y-%m-%d_%H-%M-%S-%f
-  # Chunk length: 2m for faster rotation in dev
-  recordSegmentDuration: 2m
-  # Retention: automatically deletes chunks older than 11 minutes
-  recordDeleteAfter: 11m
+  recordSegmentDuration: 10m
+  recordDeleteAfter: 7d
 
-# recordSegmentDuration: 10m
-# recordDeleteAfter: 7d
-
-# One entry per camera. The name is what cameras.yaml uses in `source` and `recording_path`.
-# Paths use runOnInit to automatically loop the local MP4 files as 24/7 RTSP camera feeds.
+# Test feeds: runOnInit loops a local MP4 as a 24/7 RTSP feed. They never record. On the laptop, add a camera
+# in the web UI as RTSP with rtsp://127.0.0.1:8554/feed_<name>: it then goes through a zv_ path like a real one.
 paths:
-  cam_cashier_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h41m49s-kasir.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_cashier_01
+  feed_cashier:
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h41m49s-kasir.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/feed_cashier
     runOnInitRestart: yes
 
-  cam_restaurant_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h46m00s-restoran.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_restaurant_01
+  feed_restaurant:
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h46m00s-restoran.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/feed_restaurant
     runOnInitRestart: yes
 
-  cam_gate_entry_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h48m37s-gateway_kendaraan.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_gate_entry_01
+  feed_gate:
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-10-02-19h48m37s-gateway_kendaraan.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/feed_gate
     runOnInitRestart: yes
 
-  cam_horse_01:
-    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-09-30-14h55m15s-horse_riding.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam_horse_01
+  feed_horse:
+    runOnInit: ffmpeg -re -stream_loop -1 -i "D:/WORK/video_demo/vlc-record-2026-09-30-14h55m15s-horse_riding.mp4-.mp4" -c copy -an -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/feed_horse
     runOnInitRestart: yes
-
-

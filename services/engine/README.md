@@ -64,10 +64,8 @@ environment stops it at start and names every bad variable (never the value). En
 | `ENGINE_GROUP` | `default` | The camera group this engine runs, `^[a-z0-9_-]{1,32}$` |
 | `DEVICE` | `cpu` | Torch/ONNX device, e.g. `cuda:0` |
 | `ZOO_MODELS_DIR` | `models` | The models folder (same folder the API manages) |
-| `SNAPSHOT_DIR` | `snapshots` | Event JPEGs, served by the preview server |
+| `SNAPSHOT_DIR` | `snapshots` | Event JPEGs, served by the API |
 | `SNAPSHOT_RETENTION_DAYS` | `30` | Older snapshots are deleted; `0` keeps them |
-| `PREVIEW_HOST` / `PREVIEW_PORT` | `127.0.0.1` / `8000` | The preview and snapshot server the dashboard's live view uses |
-| `PREVIEW_API_KEY` | empty | If set, every preview request needs `Authorization: Bearer <key>` |
 | `ENGINE_MAX_BATCH` | `1` | Most frames batched into one model call, 1..16 |
 | `ENGINE_MODEL_JOBS` | `on` | `on` or `off`: whether this engine runs validation and conversion jobs. A second engine group sets `off` |
 

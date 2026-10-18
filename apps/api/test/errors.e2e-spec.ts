@@ -129,4 +129,18 @@ describe('error shape', () => {
       code: 'UNAUTHENTICATED',
     });
   });
+
+  it('a body of "{bad json" → 400 VALIDATION_FAILED "Malformed JSON", no "Unexpected token" in the body', async () => {
+    const res = await http()
+      .post('/api/v1/auth/login')
+      .set('Content-Type', 'application/json')
+      .send('{bad json')
+      .expect(400);
+    expect(res.body).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_FAILED',
+      message: 'Malformed JSON',
+    });
+    expect(JSON.stringify(res.body)).not.toContain('Unexpected token');
+  });
 });

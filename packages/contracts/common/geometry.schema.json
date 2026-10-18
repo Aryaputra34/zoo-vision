@@ -6,6 +6,7 @@
     "Point": {
       "title": "Point",
       "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
       "prefixItems": [
         { "type": "number", "minimum": 0, "maximum": 1 },
         { "type": "number", "minimum": 0, "maximum": 1 }

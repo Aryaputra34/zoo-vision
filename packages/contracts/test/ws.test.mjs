@@ -21,6 +21,7 @@ const NAMES = [
   'status.snapshot',
   'audit.notice',
   'session.ended',
+  'boxes',
   'subscribe',
   'unsubscribe',
 ];
@@ -60,4 +61,6 @@ test('validateWsMessage("nope", {}) fails; subscribe {rooms: ["managers"]} fails
   assert.equal(v.validateWsMessage('subscribe', { rooms: ['managers'] }).ok, false);
   assert.equal(v.validateWsMessage('subscribe', { rooms: [] }).ok, false);
   assert.equal(v.validateWsMessage('subscribe', { rooms: ['status'] }).ok, true);
+  assert.equal(v.validateWsMessage('subscribe', { rooms: ['camera:cam_gate'] }).ok, true);
+  assert.equal(v.validateWsMessage('subscribe', { rooms: ['camera:bad-id'] }).ok, false);
 });

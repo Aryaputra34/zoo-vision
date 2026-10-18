@@ -46,8 +46,13 @@ Every host port is a variable in `.env`. Change one when the default is taken.
 | `ZOO_REDIS_PORT` | 6379 | Redis, on `127.0.0.1` only (the host-networked engine reaches it here) |
 | `ZOO_PG_PORT` | 5433 | Postgres admin access, only with `docker-compose.override.yml` |
 | `ZOO_WEB_UPSTREAM` | `web:3000` | Where Caddy sends the dashboard's paths. In development: `host.docker.internal:3000` (`next dev` on the host) |
+| `ZOO_MEDIAMTX_WEBRTC_UPSTREAM` | `host.docker.internal:8889` | Where Caddy sends the browser's WHEP calls (`/media/webrtc/*`, session required) |
 
-MediaMTX and the engine use host networking, so their ports are changed in their own settings.
+MediaMTX and the engine use host networking, so their ports are changed in their own settings. MediaMTX
+uses 8554 (RTSP), 9996 (playback), 9997 (Control API) and 8889 (WebRTC HTTP), all password-protected or
+reached only through Caddy, and **UDP 8189** (WebRTC media). The browser connects to UDP 8189 directly: open
+it in the server's firewall for the park's LAN and nothing wider. Without it the live view connects and then
+shows no picture.
 
 ## Variables added in Phase 3
 
@@ -69,6 +74,29 @@ Set in `.env` (see `.env.example`); Compose passes them to the API as the variab
 
 Two things in the API need no variable: the WebSocket at `/ws` (Caddy forwards the upgrade) and the `audit_camera`
 migration, which `api-migrate` applies on the next `docker compose up -d --build api-migrate api`.
+
+## Variables added in Phase 4a
+
+Set in `deploy/.env` for live video and MediaMTX integration:
+
+| Variable | Default | API variable | What |
+|---|---|---|---|
+| `ZOO_MEDIAMTX_CONTROL_URL` | `http://host.docker.internal:9997` | `MEDIAMTX_CONTROL_URL` | MediaMTX Control API address. Empty disables path reconciliation and stream inspection (demo profile) |
+| `ZOO_MEDIAMTX_SERVICE_USER` | `zoo` | `MEDIAMTX_SERVICE_USER` | User for Control API, playback, and internal RTSP re-serving |
+| `ZOO_MEDIAMTX_SERVICE_PASSWORD` | empty | `MEDIAMTX_SERVICE_PASSWORD` | Service user password (shared with MediaMTX `mediamtx.yml` and engine) |
+| `ZOO_MEDIAMTX_WEBRTC_UPSTREAM` | `host.docker.internal:8889` | | Upstream for Caddy's `/media/webrtc/*` WHEP proxy (checked via `GET /api/v1/auth/check`) |
+| `ZOO_MEDIAMTX_PLAYBACK_URL` | `http://host.docker.internal:9996` | `MEDIAMTX_PLAYBACK_URL` | Upstream for clip extraction |
+| | | `MEDIAMTX_RECORDINGS_DIR` | Fixed to `/data/recordings` (`$ZOO_DATA_DIR/recordings`, mounted read-only) |
+
+### Upgrading from Phase 3
+
+- **MediaMTX path names are owned by the API:** MediaMTX creates and manages `zv_<cameraId>` and `zv_<cameraId>_sub`
+  automatically via the Control API. Rename any manual test paths in `mediamtx.yml` to `feed_*` (e.g. `feed_gate`,
+  `feed_cashier`).
+- **Old recordings under previous manual paths are not served:** The API derives recording paths as `zv_<cameraId>`
+  (or `_sub`). Clips recorded under legacy path names before Phase 4a will return `RECORDING_NOT_AVAILABLE`.
+- **WHEP WebRTC playback:** The browser connects to MediaMTX's WebRTC HTTP endpoint through Caddy at
+  `/media/webrtc/<path>/whep`. Ensure UDP port 8189 (or your configured WebRTC ICE UDP port) is open on the LAN firewall.
 
 ## The demo stack
 

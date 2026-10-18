@@ -30,7 +30,15 @@ const camera: Camera = {
   updatedAt: new Date('2026-01-02T00:00:00.000Z'),
 };
 
-const USER_KEYS = ['activeVersion', 'area', 'enabled', 'id', 'name', 'useCase'];
+const USER_KEYS = [
+  'activeVersion',
+  'area',
+  'enabled',
+  'id',
+  'liveUrls',
+  'name',
+  'useCase',
+];
 const MANAGER_KEYS = [
   ...USER_KEYS,
   'auditCamera',
@@ -47,13 +55,13 @@ const MANAGER_KEYS = [
 
 describe('toCameraView', () => {
   it('USER sees only the basic keys', () => {
-    expect(Object.keys(toCameraView(camera, 'USER', cipher)).sort()).toEqual(
-      USER_KEYS,
-    );
+    expect(
+      Object.keys(toCameraView(camera, 'USER', cipher, true)).sort(),
+    ).toEqual(USER_KEYS);
   });
 
   it('MANAGER adds the config keys but no URLs', () => {
-    const view = toCameraView(camera, 'MANAGER', cipher);
+    const view = toCameraView(camera, 'MANAGER', cipher, true);
     expect(Object.keys(view).sort()).toEqual(MANAGER_KEYS);
     const recording = (view as { recording: Record<string, unknown> })
       .recording;
@@ -68,7 +76,7 @@ describe('toCameraView', () => {
   });
 
   it('SUPERADMIN adds both URLs, decrypted', () => {
-    const view = toCameraView(camera, 'SUPERADMIN', cipher);
+    const view = toCameraView(camera, 'SUPERADMIN', cipher, true);
     expect(Object.keys(view).sort()).toEqual(
       [...MANAGER_KEYS, 'mainStreamUrl', 'subStreamUrl'].sort(),
     );
@@ -83,7 +91,46 @@ describe('toCameraView', () => {
       { ...camera, subStreamUrlEnc: null },
       'SUPERADMIN',
       cipher,
+      true,
     );
     expect(view).toMatchObject({ subStreamUrl: null });
+  });
+
+  it('liveUrls: main and sub WHEP paths for every role; null for FILE, disabled, or without MediaMTX', () => {
+    const live = {
+      main: '/media/webrtc/zv_cam_a/whep',
+      sub: '/media/webrtc/zv_cam_a_sub/whep',
+    };
+    for (const role of ['USER', 'MANAGER', 'SUPERADMIN'] as const) {
+      expect(toCameraView(camera, role, cipher, true)).toMatchObject({
+        liveUrls: live,
+      });
+    }
+    const noSub = { ...camera, subStreamUrlEnc: null };
+    expect(toCameraView(noSub, 'USER', cipher, true)).toMatchObject({
+      liveUrls: { main: live.main, sub: null },
+    });
+    for (const [c, isLive] of [
+      [{ ...camera, sourceType: 'FILE' as const }, true],
+      [{ ...camera, enabled: false }, true],
+      [camera, false],
+    ] as const) {
+      expect(toCameraView(c, 'USER', cipher, isLive)).toMatchObject({
+        liveUrls: null,
+      });
+    }
+  });
+
+  it('recordingPath is derived: zv_<id>, the sub path when SUB records, null with recording off or FILE', () => {
+    const path = (c: Camera) =>
+      (
+        toCameraView(c, 'MANAGER', cipher, true) as {
+          recordingPath: string | null;
+        }
+      ).recordingPath;
+    expect(path(camera)).toBe('zv_cam_a');
+    expect(path({ ...camera, recordingStream: 'SUB' })).toBe('zv_cam_a_sub');
+    expect(path({ ...camera, recordingEnabled: false })).toBeNull();
+    expect(path({ ...camera, sourceType: 'FILE' })).toBeNull();
   });
 });

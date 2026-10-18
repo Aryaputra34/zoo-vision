@@ -7,7 +7,7 @@ export interface Subscribe {
   /**
    * @minItems 1
    */
-  rooms: ["status", ..."status"[]];
+  rooms: ["status" | string, ...("status" | string)[]];
 }
 
 /**
@@ -17,7 +17,7 @@ export interface Unsubscribe {
   /**
    * @minItems 1
    */
-  rooms: ["status", ..."status"[]];
+  rooms: ["status" | string, ...("status" | string)[]];
 }
 
 /**
@@ -29,6 +29,38 @@ export interface AuditNotice {
   actorName: string;
   action: string;
   time: string;
+}
+
+/**
+ * Bounding boxes relayed to the camera:<id> WebSocket room.
+ */
+export interface BoxesMessage {
+  cameraId: string;
+  /**
+   * Epoch ms at frame grab time.
+   */
+  t: number;
+  /**
+   * Epoch ms at API send time.
+   */
+  sentAt: number;
+  /**
+   * @maxItems 300
+   */
+  boxes: Box[];
+}
+/**
+ * This interface was referenced by `BoxesMessage`'s JSON-Schema
+ * via the `definition` "Box".
+ */
+export interface Box {
+  trackId: number | null;
+  cls: number;
+  label: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
 }
 
 /**

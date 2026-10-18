@@ -19,7 +19,8 @@ import { authorizeHandshake, type SocketUser } from './handshake';
 
 const RECHECK_MS = 60_000;
 
-type Ack = { ok: true } | { ok: false; code: 'VALIDATION_FAILED' };
+type Ack =
+  { ok: true } | { ok: false; code: 'VALIDATION_FAILED' | 'NOT_FOUND' };
 
 /**
  * The dashboard's socket.io endpoint at `/ws` (WebSocket transport only). It says "something
@@ -103,6 +104,20 @@ export class LiveGateway
   ): Promise<Ack> {
     const rooms = this.rooms('subscribe', body);
     if (!rooms) return { ok: false, code: 'VALIDATION_FAILED' };
+    const cameraRooms = rooms.filter((r) => r.startsWith('camera:'));
+    if (cameraRooms.length > 0) {
+      const ids = cameraRooms.map((r) => r.slice('camera:'.length));
+      const found = await this.prisma.camera.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      });
+      if (found.length !== ids.length) {
+        return { ok: false, code: 'NOT_FOUND' };
+      }
+    }
+    if (socket.disconnected) {
+      return { ok: true };
+    }
     await socket.join(rooms);
     return { ok: true };
   }

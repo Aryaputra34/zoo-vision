@@ -22,6 +22,8 @@ export const Optional = () => ValidateIf((_o, v) => v !== undefined);
 const Nullable = () => ValidateIf((_o, v) => v !== undefined && v !== null);
 
 export const CAMERA_ID_PATTERN = /^[a-z][a-z0-9_]{2,63}$/;
+/** Camera `gate_sub`'s main MediaMTX path would be camera `gate`'s sub path. */
+export const CAMERA_ID_NOT_SUB = /^(?!.*_sub$)/;
 
 export class RecordingDto {
   @ApiPropertyOptional()
@@ -82,7 +84,14 @@ export class CameraFieldsDto {
   @MaxLength(2000)
   subStreamUrl?: string | null;
 
-  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 500,
+    deprecated: true,
+    description:
+      'Ignored: the recorded MediaMTX path is derived from the recording settings.',
+  })
   @Nullable()
   @IsString()
   @MinLength(1)

@@ -18,27 +18,27 @@ export type Polygon = [Point, Point, Point, ...Point[]];
  * @minItems 2
  * @maxItems 2
  */
-export type Point = [unknown, unknown];
+export type Point = [number, number];
 /**
  * @minItems 2
  * @maxItems 2
  */
-export type Point1 = [unknown, unknown];
+export type Point1 = [number, number];
 /**
  * @minItems 2
  * @maxItems 2
  */
-export type Point2 = [unknown, unknown];
+export type Point2 = [number, number];
 /**
  * @minItems 2
  * @maxItems 2
  */
-export type Point3 = [unknown, unknown];
+export type Point3 = [number, number];
 /**
  * @minItems 2
  * @maxItems 2
  */
-export type Point4 = [unknown, unknown];
+export type Point4 = [number, number];
 export type ConfidenceThreshold1 = number;
 /**
  * @minItems 3
@@ -48,7 +48,7 @@ export type Polygon1 = [Point5, Point5, Point5, ...Point5[]];
  * @minItems 2
  * @maxItems 2
  */
-export type Point5 = [unknown, unknown];
+export type Point5 = [number, number];
 export type ConfidenceThreshold2 = number;
 export type TableList = Table[];
 

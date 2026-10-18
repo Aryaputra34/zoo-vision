@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { UrlCipher } from '../cameras/url-cipher';
+import type { Camera } from '../generated/prisma/client';
+import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
+import { mediamtxPaths } from '../mediamtx/paths';
 import { ModelsService } from '../models/models.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -14,7 +17,7 @@ export type EngineCamera = {
   schemaVersion: number;
   /** The active version's settings with schema defaults filled in. */
   settings: Record<string, unknown>;
-  /** Decrypted. Never log it. */
+  /** Contains credentials (the camera's or MediaMTX's). Never log it. */
   sourceUrl: string;
   targetFps: number;
   nxCameraId: string | null;
@@ -29,7 +32,26 @@ export class EngineCamerasService {
     private readonly contracts: ContractsService,
     private readonly cipher: UrlCipher,
     private readonly models: ModelsService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
+
+  /**
+   * With MediaMTX configured the engine reads every non-FILE camera through it (one connection
+   * per camera, recording and live view share it). The engine runs on the MediaMTX host (host
+   * network or from source), so 127.0.0.1:8554 is fixed. The password may hold `@ : / #`: it is
+   * percent-encoded, the camera's own URL never appears here.
+   */
+  private sourceUrl(camera: Camera): string {
+    const paths = mediamtxPaths(camera);
+    const { MEDIAMTX_API_URL, MEDIAMTX_PASSWORD } = this.env;
+    if (paths && MEDIAMTX_API_URL && MEDIAMTX_PASSWORD) {
+      return `rtsp://zoo:${encodeURIComponent(MEDIAMTX_PASSWORD)}@127.0.0.1:8554/${paths.engine}`;
+    }
+    const useSub = camera.inferenceStream === 'SUB' && camera.subStreamUrlEnc;
+    return this.cipher.decrypt(
+      useSub ? camera.subStreamUrlEnc! : camera.mainStreamUrlEnc,
+    );
+  }
 
   /** The enabled cameras of an engine group, sorted by id. */
   async snapshot(group: string): Promise<EngineCamera[]> {
@@ -57,7 +79,6 @@ export class EngineCamerasService {
       const registryFile = modelId
         ? await this.models.resolvePath(modelId)
         : null;
-      const useSub = camera.inferenceStream === 'SUB' && camera.subStreamUrlEnc;
       out.push({
         id: camera.id,
         name: camera.name,
@@ -65,9 +86,7 @@ export class EngineCamerasService {
         version: camera.activeVersion,
         schemaVersion: active.schemaVersion,
         settings,
-        sourceUrl: this.cipher.decrypt(
-          useSub ? camera.subStreamUrlEnc! : camera.mainStreamUrlEnc,
-        ),
+        sourceUrl: this.sourceUrl(camera),
         targetFps: camera.targetFps,
         nxCameraId: camera.nxCameraId,
         model: {

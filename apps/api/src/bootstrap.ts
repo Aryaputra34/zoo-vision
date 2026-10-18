@@ -8,6 +8,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import type { Express } from 'express';
 import { ActorResolver } from './auth/actor-resolver';
+import { TrustedProxy } from './auth/trusted-proxy';
 import { validationException } from './common/errors';
 import { ENV, type Env } from './config/env';
 import { DOCS_PATHS, docsAccess } from './openapi/docs-access';
@@ -37,8 +38,13 @@ export function configureApp(app: INestApplication): void {
   const env = app.get<Env>(ENV);
 
   // Exactly one proxy (Caddy) sits in front: req.ip is the client's address from X-Forwarded-For,
-  // so the login throttle, the lockout log and LoginLog see the client, not the proxy.
-  (app.getHttpAdapter().getInstance() as Express).set('trust proxy', 1);
+  // so the login throttle, the lockout log and LoginLog see the client, not the proxy. Only the
+  // address Caddy resolves to may say so: anyone who reaches the API directly is just a socket
+  // address (a forged X-Forwarded-For would let them pick the IP the throttle counts).
+  (app.getHttpAdapter().getInstance() as Express).set(
+    'trust proxy',
+    app.get(TrustedProxy).trustHop,
+  );
   app.use(cookieParser());
   configureRoutes(app);
   app.useGlobalPipes(

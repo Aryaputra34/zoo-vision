@@ -1,4 +1,5 @@
 import type { Event, Interval } from '../generated/prisma/client';
+import { mediamtxPaths } from '../mediamtx/paths';
 
 export type EventRow = {
   id: string;
@@ -30,13 +31,10 @@ export type IntervalRow = {
 
 export type Page<T> = { rows: T[]; nextCursor: string | null };
 
-/** What {@link eventRow} reads: the event and the three camera columns the clip link needs. */
+/** What {@link eventRow} reads: the event and the camera columns the clip link needs. */
 export type EventWithCamera = Event & {
-  camera: {
-    name: string;
-    recordingPath: string | null;
-    recordingEnabled: boolean;
-  } | null;
+  camera:
+    ({ name: string } & Omit<Parameters<typeof mediamtxPaths>[0], 'id'>) | null;
 };
 
 export type IntervalWithCamera = Interval & { camera: { name: string } };
@@ -44,7 +42,14 @@ export type IntervalWithCamera = Interval & { camera: { name: string } };
 /** The camera columns {@link EventWithCamera} needs, for Prisma's `include`. */
 export const EVENT_CAMERA = {
   camera: {
-    select: { name: true, recordingPath: true, recordingEnabled: true },
+    select: {
+      name: true,
+      sourceType: true,
+      subStreamUrlEnc: true,
+      recordingEnabled: true,
+      recordingStream: true,
+      inferenceStream: true,
+    },
   },
 } as const;
 
@@ -70,7 +75,9 @@ export function eventRow(e: EventWithCamera): EventRow {
       : null,
     // the clip itself can still be gone: /media/clips/:id answers RECORDING_NOT_AVAILABLE then
     clipUrl:
-      e.camera?.recordingPath && e.camera.recordingEnabled
+      e.camera &&
+      e.cameraId &&
+      mediamtxPaths({ ...e.camera, id: e.cameraId })?.recorded
         ? `/media/clips/${encodeURIComponent(e.id)}`
         : null,
   };

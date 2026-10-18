@@ -250,6 +250,7 @@ class HorseRidingPipeline(BasePipeline):
         detections = self.tracker.update_with_detections(detections)
         if len(detections) > 0:
             detections = self.smoother.update_with_detections(detections)
+        self.publish_boxes(detections)
 
         # Update tracking stats
         self.active_horse_count = len(detections)

@@ -1,6 +1,6 @@
 """
 Event Snapshot Store.
-Saves one annotated JPEG per dashboard event; core/api_server.py serves them at /snapshots/<path>.
+Saves one annotated JPEG per dashboard event; the API serves them from the shared snapshot folder.
 Layout: <root>/<camera_id>/<YYYY-MM-DD>/<event_id>.jpg (server-local date). A background thread
 deletes day folders older than retention_days.
 """
