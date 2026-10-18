@@ -109,7 +109,12 @@ class StreamManager:
         if self._stop_event.is_set():
             return
         logger.info(f"[{self.camera_id}] Connecting to stream source...")
-        self.cap = cv2.VideoCapture(self.source)
+        if self.live and isinstance(self.source, str):
+            # One decode thread: FFmpeg's frame threading holds one frame per thread (12 threads ~ 0.7 s at 15 fps
+            # on the dev laptop), so every frame, and the boxes stamped on it, would trail the live video by that much
+            self.cap = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, 1])
+        else:
+            self.cap = cv2.VideoCapture(self.source)
         if not self.cap.isOpened():
             logger.warning(f"[{self.camera_id}] Failed to open stream source: {mask_url(self.source)}")
         elif not self.live:

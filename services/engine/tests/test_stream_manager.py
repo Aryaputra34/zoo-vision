@@ -184,6 +184,20 @@ def test_a_stopped_manager_never_connects_again(recording_capture):
     assert len(recording_capture) == 1
 
 
+def test_a_live_url_decodes_on_one_thread_a_file_keeps_the_defaults(monkeypatch):
+    calls = []
+
+    class _ArgsCapture(_RecordingCapture):
+        def __init__(self, *args, **_kwargs):
+            calls.append(args)
+
+    monkeypatch.setattr(sm.cv2, "VideoCapture", _ArgsCapture)
+    StreamManager("rtsp://10.0.0.5/main", "cam_x", 5)._connect()
+    StreamManager("clips/gate.mp4", "cam_y", 5)._connect()
+    assert calls[0] == ("rtsp://10.0.0.5/main", sm.cv2.CAP_FFMPEG, [sm.cv2.CAP_PROP_N_THREADS, 1])
+    assert calls[1] == ("clips/gate.mp4",)
+
+
 def test_backoff_resets_after_a_successful_read(flaky_capture, sleeps):
     flaky_capture.script = [(False, None), (False, None), (True, object()), (False, None)]
     mgr = StreamManager("rtsp://10.0.0.5/main", "cam_x", 5)
