@@ -59,6 +59,15 @@ export class SiteSettingsService implements OnModuleInit {
     return this.loading;
   }
 
+  /**
+   * The real settings, or a rejection while the database has not answered. For callers that act
+   * on the values (path sync pushes a delete-after to MediaMTX; retention deletes files): the
+   * defaults in {@link current} are only good enough to read.
+   */
+  loaded(): Promise<SiteSettings> {
+    return this.copy ? Promise.resolve(this.copy) : this.load();
+  }
+
   get current(): SiteSettings {
     if (!this.copy) void this.load().catch(() => undefined);
     return this.copy ?? DEFAULTS;

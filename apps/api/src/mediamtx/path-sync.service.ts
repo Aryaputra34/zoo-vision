@@ -103,11 +103,14 @@ export class PathSync implements OnApplicationBootstrap, OnModuleDestroy {
   private async once(client: MediamtxClient): Promise<void> {
     // List MediaMTX first so anything committed in the DB while listing is seen in wanted
     const existing = await client.listConfigs();
+    // not the defaults: a wrong delete-after would let MediaMTX delete recordings. Throws (the
+    // pass is skipped and logged) while the database is down
+    const { recordingRetentionDays } = await this.settings.loaded();
     const failedCameras = new Set<string>();
     const wanted = wantedPaths(
       await this.prisma.camera.findMany(),
       this.cipher,
-      this.settings.current.recordingRetentionDays,
+      recordingRetentionDays,
       (cameraId, err) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.log.warn(
