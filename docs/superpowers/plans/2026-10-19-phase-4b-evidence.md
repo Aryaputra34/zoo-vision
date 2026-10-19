@@ -27,8 +27,9 @@ is `D:\WORK\zoo-analytics-web\docs\superpowers\plans\2026-10-19-phase-4b-evidenc
   Push the branch and the tag only after the user says yes.
 - No Claude attribution: no `Co-Authored-By` trailer, no "Generated with Claude Code" line, in commits or pull
   requests. Put this rule in every reviewer prompt too.
-- No test-first steps (memory `no-tdd-in-plans`): implement, then the focused test the task names. Verification
-  runs stay.
+- No test-first steps (memory `no-tdd-in-plans`): implement, then only the tests the task names. Tests are
+  risk-based: only where a bug loses or leaks data, or fails silently. The existing suite still runs at every
+  "Run everything" step. While fixing, run only the test file you work on.
 - The Acer laptop (memory `dev-laptop-constraints`): Docker Desktop must be running for Testcontainers and compose;
   ports 80/443/5432 are taken (Caddy on 8080); never build the engine image; MediaMTX runs natively
   (`.\mediamtx.exe deploy\mediamtx.yml` from the repo root). Never run a bare `docker compose up`.
@@ -135,13 +136,13 @@ contract polish items left for `contract-v1.0`.
 1. **A pin for an id that is not a plain name** (`../x`, `a/b`, `a\b`, an empty camera id). Expected: no file is
    written or deleted outside `EVIDENCE_DIR`; the row becomes `FAILED` with `invalid id`. Test in Task 3.
 2. **A camera switched from MAIN to SUB recording after the event** (I5). Expected: playback 404 on `zv_<id>_sub`,
-   then the clip from `zv_<id>`, for both the live route and the pin. Test in Task 3.
+   then the clip from `zv_<id>`, for both the live route and the pin. Checked by the Session A Opus review and the laptop run.
 3. **A snapshot folder holding both kept and unkept events, next to a folder named `tmp`.** Expected: the unkept
    JPEGs go, the kept ones and the folder stay; `tmp` is untouched. Test in Task 5.
 4. **`GET /exports/jobs/<not-a-uuid>/file`, or another user's job.** Expected: 404, never a 500 from Postgres's
    uuid cast. Test in Task 9.
 5. **The disk goes from 80% straight to 97%, then back to 94%, then 96%.** Expected: one `critical` (no extra
-   `warning`), nothing at 94%, nothing at 96% (not re-armed until below 93%). Test in Task 6.
+   `warning`), nothing at 94%, nothing at 96% (not re-armed until below 93%). Checked by the Session B Opus review.
 
 ## Execution sessions
 
@@ -293,7 +294,7 @@ git commit -m "feat(api): site settings in the database replace SITE_TIMEZONE; 4
   `apps/api/src/reports/lists.service.ts`, `apps/api/src/exports/exports.service.ts`, `apps/api/src/live/ingest-push.ts`,
   `apps/api/src/cameras/{cameras.service.ts,camera-view.ts}`, `apps/api/src/cameras/dto/{camera-fields.dto.ts,camera-view.dto.ts}`,
   `apps/api/src/mediamtx/stream-info.service.ts`, `apps/api/src/mediamtx/dto/stream-info.dto.ts`, `apps/api/src/app.module.ts`
-- Test: extend `apps/api/test/ingest.e2e-spec.ts`; create `apps/api/test/evidence.e2e-spec.ts`
+- Test: extend `apps/api/test/ingest.e2e-spec.ts`
 
 **Interfaces:**
 - Ingest: `knownCameras(tx, parsed): Promise<Map<string, { auditCamera: boolean; clipAfterSec: number }>>` (one
@@ -324,22 +325,10 @@ git commit -m "feat(api): site settings in the database replace SITE_TIMEZONE; 4
 
 - [ ] **Step 1: Implement**
 
-- [ ] **Step 2: Write the focused tests**
+- [ ] **Step 2: Write the one test** (`ingest.e2e-spec.ts`)
 
-`ingest.e2e-spec.ts`:
 ```ts
-it('a warning event → one Evidence row SEVERITY QUEUED, runAt = time + clipAfterSec + 60 s')
-it('an info event on an auditCamera camera → one row AUDIT_CAMERA; an info event elsewhere → none')
-it('a warning system event (cameraId null) → no row')
-it('the same warning message delivered twice → still one row')   // spec test
-```
-`evidence.e2e-spec.ts`:
-```ts
-it('POST as a USER → 403; as a MANAGER on an info event → 200 USER QUEUED; again → 200, still one row')
-it('a FAILED row → POST → 200 QUEUED, attempts 0, error null')
-it('an unknown event → 404 NOT_FOUND; a system event → 404 RECORDING_NOT_AVAILABLE')
-it('GET /events shows evidence {status, reason} on that row and null on others')
-it('PATCH recording.evidenceRetentionDays as a MANAGER → 403; as a SUPERADMIN → saved, audit before/after')
+it('the same warning message delivered twice → one Evidence row')   // spec test: a duplicate corrupts data silently
 ```
 
 - [ ] **Step 3: Run everything** (`cd apps/api && npm run lint && npm run build && npm test && npm run test:e2e`), expect pass.
@@ -359,8 +348,7 @@ git commit -m "feat(api): evidence rows for warning, critical and audit-camera e
 - Create: `apps/api/src/media/playback.service.ts`, `apps/api/src/evidence/pin.job.ts`
 - Modify: `apps/api/src/media/{clips.service.ts,media.module.ts}` (export `PlaybackService`),
   `apps/api/src/evidence/evidence.module.ts`
-- Test: create `apps/api/test/pin.e2e-spec.ts` (a local `http.createServer` as the fake playback); extend
-  `test/media.e2e-spec.ts`
+- Test: create `apps/api/test/pin.e2e-spec.ts` (a local `http.createServer` as the fake playback)
 
 **Interfaces:**
 - `PlaybackService` (moves today's fetch out of `ClipsService`, unchanged in behaviour: basic auth, `redirect:
@@ -391,19 +379,13 @@ git commit -m "feat(api): evidence rows for warning, critical and audit-camera e
 
 - [ ] **Step 1: Implement**
 
-- [ ] **Step 2: Write the focused tests**
+- [ ] **Step 2: Write the two tests** (`pin.e2e-spec.ts`: an app with `MEDIAMTX_PLAYBACK_URL` = a local
+`http.createServer` fake, `EVIDENCE_DIR` a temp folder; rows inserted with `runAt` in the past; call `tick()`)
 
-`pin.e2e-spec.ts` (an app with `MEDIAMTX_PLAYBACK_URL` = the fake, `EVIDENCE_DIR` a temp folder; rows inserted with
-`runAt` in the past; call `tick()` directly):
 ```ts
-it('fake answers 200 with bytes → KEPT, file at <cam>/<date>/<evt>.mp4 with those bytes, sizeBytes, no .part left')   // spec test
-it('404 on both zv_<id> and zv_<id>_sub → NO_RECORDING, no file')                                                    // spec test
-it('camera now records SUB: 404 on zv_<id>_sub, 200 on zv_<id> → KEPT')                                               // Review Focus 2
-it('500 → attempts 1, runAt +1 min; after the 9th 500 → FAILED')                                                      // spec test
-it('a row with cameraId "../x" → FAILED "invalid id", nothing written outside EVIDENCE_DIR')                          // Review Focus 1
-it('no MEDIAMTX_PLAYBACK_URL → NO_RECORDING')
+it('a row with cameraId "../x" → FAILED "invalid id", nothing written outside EVIDENCE_DIR')   // Review Focus 1
+it('500 → attempts 1, runAt +1 min; after the 9th 500 → FAILED')                              // the laptop run never exercises it
 ```
-`media.e2e-spec.ts`: `it('GET /media/clips/:id for a camera that switched to SUB plays from zv_<id> (I5)')`.
 
 - [ ] **Step 3: Run everything** (`cd apps/api && npm run lint && npm run build && npm test && npm run test:e2e`), expect pass.
 
@@ -421,7 +403,6 @@ git commit -m "feat(api): pin tick copies event clips into the evidence folder; 
 **Files:**
 - Modify: `apps/api/src/media/clips.service.ts`, `apps/api/src/media/media.controller.ts` (OpenAPI: 206 and
   `Accept-Ranges` documented)
-- Test: extend `apps/api/test/media.e2e-spec.ts`
 
 **Interfaces:**
 - `ClipsService.stream`: after the event lookup, a `KEPT` row with a `filePath` that `stat`s as a file answers
@@ -433,14 +414,7 @@ git commit -m "feat(api): pin tick copies event clips into the evidence folder; 
 
 - [ ] **Step 1: Implement**
 
-- [ ] **Step 2: Write the focused tests**
-
-```ts
-it('a KEPT clip with Range: bytes=0-99 → 206, Content-Range bytes 0-99/<size>, 100 bytes')      // spec test
-it('a KEPT clip without Range → 200, Accept-Ranges: bytes, Cache-Control private, max-age=3600')
-it('a KEPT row whose file is gone → the playback stream as before')
-it('no KEPT row → playback stream unchanged, no Accept-Ranges header')                            // spec test
-```
+- [ ] **Step 2: No new test** (risk-based: nothing here loses or leaks data; the laptop run in Task 12 covers it)
 
 - [ ] **Step 3: Run everything** (`cd apps/api && npm run lint && npm run build && npm test && npm run test:e2e`), expect pass.
 
@@ -452,7 +426,7 @@ git commit -m "feat(api): kept clips play from the evidence file with byte range
 ```
 
 > **Session A ends here.** Opus reviews Tasks 3 and 4 (path building and the id check, the `.part`/rename order,
-> the retry arithmetic, nothing of the playback URL in logs or `error`, `sendFile`'s root).
+> the retry arithmetic, nothing of the playback URL in logs or `error`, `sendFile`'s root, the I5 fallback name rule).
 
 ---
 
@@ -487,15 +461,12 @@ git commit -m "feat(api): kept clips play from the evidence file with byte range
 
 - [ ] **Step 1: Implement**
 
-- [ ] **Step 2: Write the focused tests**
+- [ ] **Step 2: Write the three tests**
 
 ```ts
-it('snapshot folders older than 90 days go; a kept event\'s JPEG and its folder stay; a folder "tmp" stays')   // Review Focus 3, spec test
-it('an auditCamera camera keeps a 100-day-old folder (365 days)')
-it('a camera with evidenceRetentionDays 30 loses its 31-day-old clip file and row; another camera keeps it')    // spec test
-it('an EXPORTS row DONE 8 days ago → EXPIRED, file gone; 6 days ago → untouched')
-it('zv_gone/ (no camera) old segment deleted, folder removed; zv_<existing>/ and feed_x/ untouched')           // spec test
-it('a second tick deletes nothing more')
+it('snapshot folders older than 90 days go; a kept event's JPEG and its folder stay; a folder "tmp" stays')   // Review Focus 3
+it('a camera with evidenceRetentionDays 30 loses its 31-day-old clip file and row; another camera keeps it')
+it('zv_gone/ (no camera) old segment deleted, folder removed; zv_<existing>/ and feed_x/ untouched')
 ```
 Set `mtime` with `utimes`; dates relative to a fixed `now` passed to `tick`.
 
@@ -513,7 +484,7 @@ git commit -m "feat(api): hourly retention for snapshots, kept clips, export fil
 ### Task 6: `DiskJob`, `disk_low` and `disk.warning`
 
 **Files:**
-- Create: `apps/api/src/jobs/{disk.job.ts,disk-levels.ts,disk-levels.spec.ts}`
+- Create: `apps/api/src/jobs/{disk.job.ts,disk-levels.ts}`
 - Modify: `apps/api/src/jobs/jobs.module.ts` (imports `LiveModule` for `LiveGateway`),
   `packages/contracts/usecases/system/events.schema.json` (+ `disk_low`), `packages/contracts/usecases/system/examples/`,
   `packages/contracts/ws/server/disk.warning.schema.json` (new), `packages/contracts/ws/examples/disk.warning/` (new),
@@ -540,13 +511,7 @@ git commit -m "feat(api): hourly retention for snapshots, kept clips, export fil
 
 - [ ] **Step 1: Implement; regenerate** (`cd packages/contracts && npm run generate`)
 
-- [ ] **Step 2: Write the focused test** (`disk-levels.spec.ts`)
-
-```ts
-it('80 → 86 crosses warning; 86 → 96 crosses critical; 96 → 94 nothing; 94 → 96 nothing; 92 → 96 crosses critical again')
-it('80 → 97 crosses critical only')                                          // Review Focus 5
-it('warning holds at 84, re-arms at 82.9, crosses again at 85')
-```
+- [ ] **Step 2: No new test** (risk-based: nothing here loses or leaks data; the laptop run in Task 12 covers it)
 
 - [ ] **Step 3: Run everything**
 
@@ -604,7 +569,8 @@ git commit -m "perf(api): interval stats bound by end; indexes kept by EXPLAIN o
 ```
 
 > **Session B ends here.** Opus reviews Task 5 (nothing outside the four folders is deleted, the evidence check
-> before deleting a JPEG, the date arithmetic in the site zone, a camera id that is not a plain name).
+> before deleting a JPEG, the date arithmetic in the site zone, a camera id that is not a plain name) and Task 6's
+> level rules (Review Focus 5).
 
 ---
 
@@ -613,7 +579,7 @@ git commit -m "perf(api): interval stats bound by end; indexes kept by EXPLAIN o
 ### Task 8: The PDF page: range and HTML
 
 **Files:**
-- Create: `apps/api/src/exports/pdf/{report-range.ts,report-range.spec.ts,report-html.ts,report-html.spec.ts}`
+- Create: `apps/api/src/exports/pdf/{report-range.ts,report-html.ts,report-html.spec.ts}`
 - Modify: `apps/api/src/exports/exports.service.ts` (the summary rows become one public method)
 
 **Interfaces:**
@@ -638,16 +604,10 @@ git commit -m "perf(api): interval stats bound by end; indexes kept by EXPLAIN o
 
 - [ ] **Step 1: Implement**
 
-- [ ] **Step 2: Write the focused tests**
+- [ ] **Step 2: Write the one test** (`report-html.spec.ts`)
 
 ```ts
-// report-range.spec.ts
-it('month of 2026-10-19 in Asia/Jakarta → 2026-09-30T17:00Z to 2026-10-31T17:00Z, day buckets')
-it('week of 2026-10-01 → 7 days; day → 24 hour buckets range')
-// report-html.spec.ts
-it('a camera named <script>alert(1)</script> appears only as &lt;script&gt;…')        // spec test
-it('no rows → the "Tidak ada data" line and no <svg>')
-it('the page has no "http" outside the SVG xmlns and no <script>')
+it('a camera named <script>alert(1)</script> appears only as &lt;script&gt;…')   // spec test
 ```
 
 - [ ] **Step 3: Run everything** (`cd apps/api && npm run lint && npm run build && npm test`), expect pass.
@@ -699,16 +659,11 @@ git commit -m "feat(api): PDF report page built from the summary query, escaped,
 
 - [ ] **Step 1: Implement**
 
-- [ ] **Step 2: Write the focused tests**
+- [ ] **Step 2: Write the one test** (`export-jobs.e2e-spec.ts`, a `DONE` row inserted for user A with a file in a
+temp `EXPORTS_DIR`)
 
 ```ts
-it('POST without GOTENBERG_URL → 503 UNAVAILABLE')
-it('POST {period: "week", cameraIds: ["nope"]} → 400 at /cameraIds; a good one → 202 QUEUED and an export.pdf audit row')
-it('tick with the fake answering %PDF bytes → DONE; GET file as the owner → 200 application/pdf, the name report-week-<date>.pdf')   // spec test
-it('another user → 404; /exports/jobs/not-a-uuid/file → 404 NOT_FOUND, not 500')                                                    // Review Focus 4, spec test
-it('the fake answers 503 four times → FAILED "PDF service unavailable"')
-it('the HTML the fake received escapes a camera named <script>')
-it('GET /exports/jobs lists only the caller\'s jobs, newest first')
+it('user B → 404 on A's file; /exports/jobs/not-a-uuid/file → 404 NOT_FOUND, not 500')   // Review Focus 4
 ```
 
 - [ ] **Step 3: Run everything** (`cd apps/api && npm run lint && npm run build && npm test && npm run test:e2e`),
@@ -728,9 +683,8 @@ git commit -m "feat(api): PDF export jobs printed by Gotenberg, listed and downl
 ### Task 10: I8 trusted proxy re-resolve; CSV close race and file name
 
 **Files:**
-- Modify: `apps/api/src/auth/trusted-proxy.ts` (+ `trusted-proxy.spec.ts`), `apps/api/src/exports/csv-responder.ts`,
+- Modify: `apps/api/src/auth/trusted-proxy.ts`, `apps/api/src/exports/csv-responder.ts`,
   `apps/api/src/exports/exports.service.ts` (`filename`)
-- Test: extend `apps/api/test/exports.e2e-spec.ts`
 
 **Interfaces:**
 - `trustedProxy(host, lookup, now = Date.now)`: `trust(addr)` that returns false for a string address also starts
@@ -742,15 +696,7 @@ git commit -m "feat(api): PDF export jobs printed by Gotenberg, listed and downl
 
 - [ ] **Step 1: Implement**
 
-- [ ] **Step 2: Write the focused tests**
-
-```ts
-// trusted-proxy.spec.ts (fake lookup, injected clock)
-it('an untrusted peer triggers one lookup; another within 10 s none; after 10 s one more')
-it('after the lookup returns the new address, that peer is trusted')
-// exports.e2e-spec.ts
-it('from 2026-10-01T00:00+07:00 to 2026-10-08T00:00+07:00 → events-2026-10-01-2026-10-07.csv')   // spec text
-```
+- [ ] **Step 2: No new test** (risk-based: nothing here loses or leaks data; the laptop run in Task 12 covers it)
 
 - [ ] **Step 3: Run everything** (`cd apps/api && npm run lint && npm run build && npm test && npm run test:e2e`), expect pass.
 
