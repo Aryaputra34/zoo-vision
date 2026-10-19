@@ -9,6 +9,7 @@ import { ENV, type Env } from './config/env';
 import { CamerasModule } from './cameras/cameras.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { EngineInternalModule } from './engine-internal/engine-internal.module';
+import { EvidenceModule } from './evidence/evidence.module';
 import { ExportsModule } from './exports/exports.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
@@ -44,6 +45,7 @@ export class AppModule {
         ApiTokensModule,
         CamerasModule,
         EngineInternalModule,
+        EvidenceModule,
         IngestModule,
         JobsModule,
         LiveModule,

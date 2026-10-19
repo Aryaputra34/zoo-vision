@@ -26,6 +26,7 @@ const camera = (over: Partial<Camera> = {}): Camera => ({
   recordingEnabled: true,
   recordingStream: 'MAIN',
   retentionDays: null,
+  evidenceRetentionDays: null,
   clipBeforeSec: 15,
   clipAfterSec: 15,
   nxCameraId: null,

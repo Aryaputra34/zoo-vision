@@ -1,4 +1,5 @@
 import type { Event, Interval } from '../generated/prisma/client';
+import type { EvidenceReason, EvidenceStatus } from '../generated/prisma/enums';
 import { mediamtxPaths } from '../mediamtx/paths';
 
 export type EventRow = {
@@ -13,6 +14,7 @@ export type EventRow = {
   data: object;
   snapshotUrl: string | null;
   clipUrl: string | null;
+  evidence: { status: EvidenceStatus; reason: EvidenceReason } | null;
 };
 
 export type IntervalRow = {
@@ -31,16 +33,17 @@ export type IntervalRow = {
 
 export type Page<T> = { rows: T[]; nextCursor: string | null };
 
-/** What {@link eventRow} reads: the event and the camera columns the clip link needs. */
+/** What {@link eventRow} reads: the event, the camera columns the clip link needs, and its evidence row. */
 export type EventWithCamera = Event & {
   camera:
     ({ name: string } & Omit<Parameters<typeof mediamtxPaths>[0], 'id'>) | null;
+  evidence: { status: EvidenceStatus; reason: EvidenceReason } | null;
 };
 
 export type IntervalWithCamera = Interval & { camera: { name: string } };
 
-/** The camera columns {@link EventWithCamera} needs, for Prisma's `include`. */
-export const EVENT_CAMERA = {
+/** The relations {@link EventWithCamera} needs, for Prisma's `include`. */
+export const EVENT_INCLUDE = {
   camera: {
     select: {
       name: true,
@@ -51,6 +54,7 @@ export const EVENT_CAMERA = {
       inferenceStream: true,
     },
   },
+  evidence: { select: { status: true, reason: true } },
 } as const;
 
 export const INTERVAL_CAMERA = { camera: { select: { name: true } } } as const;
@@ -75,11 +79,13 @@ export function eventRow(e: EventWithCamera): EventRow {
       : null,
     // the clip itself can still be gone: /media/clips/:id answers RECORDING_NOT_AVAILABLE then
     clipUrl:
-      e.camera &&
-      e.cameraId &&
-      mediamtxPaths({ ...e.camera, id: e.cameraId })?.recorded
+      e.evidence?.status === 'KEPT' ||
+      (e.camera &&
+        e.cameraId &&
+        mediamtxPaths({ ...e.camera, id: e.cameraId })?.recorded)
         ? `/media/clips/${encodeURIComponent(e.id)}`
         : null,
+    evidence: e.evidence,
   };
 }
 

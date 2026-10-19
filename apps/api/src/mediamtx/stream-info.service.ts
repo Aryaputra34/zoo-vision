@@ -9,6 +9,7 @@ import {
   type MediamtxClient,
   MediamtxError,
 } from './mediamtx-client';
+import { PrismaService } from '../prisma/prisma.service';
 import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { mediamtxPaths } from './paths';
 
@@ -40,13 +41,17 @@ export class StreamInfoService {
   constructor(
     @Inject(ENV) private readonly env: Env,
     private readonly settings: SiteSettingsService,
+    private readonly prisma: PrismaService,
     @Inject(MEDIAMTX) private readonly client: MediamtxClient | null,
   ) {}
 
   async info(camera: Camera): Promise<StreamInfoDto> {
-    const disk = await this.disk();
+    const [disk, evidence] = await Promise.all([
+      this.disk(),
+      this.evidenceUsage(camera.id),
+    ]);
     const names = mediamtxPaths(camera);
-    if (!names) return { paths: [], disk }; // FILE: the engine reads the file itself
+    if (!names) return { paths: [], disk, ...evidence }; // FILE: the engine reads the file itself
     if (!this.client) {
       throw apiError(503, 'UNAVAILABLE', 'MediaMTX is not configured');
     }
@@ -89,7 +94,7 @@ export class StreamInfoService {
             : null,
       });
     }
-    return { paths, disk };
+    return { paths, disk, ...evidence };
   }
 
   /** bits/s from this `bytesReceived` and the last one, 1-120 s apart; else null. */
@@ -109,6 +114,16 @@ export class StreamInfoService {
         : null;
     this.readings.set(name, { at, bytes, bps });
     return bps;
+  }
+
+  private async evidenceUsage(
+    cameraId: string,
+  ): Promise<{ evidenceBytes: number; evidenceCount: number }> {
+    const [row] = await this.prisma.$queryRaw<
+      { bytes: bigint; count: number }[]
+    >`SELECT COALESCE(SUM("sizeBytes"), 0)::bigint AS bytes, count(*)::int AS count
+        FROM "Evidence" WHERE "cameraId" = ${cameraId} AND "status" = 'KEPT'`;
+    return { evidenceBytes: Number(row.bytes), evidenceCount: row.count };
   }
 
   private async disk(): Promise<{

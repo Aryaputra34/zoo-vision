@@ -15,7 +15,7 @@ import { parseWhere, wantsSystem } from './fields';
 import { keysetAfter } from './keyset';
 import { parseRange, splitList } from './report-query';
 import {
-  EVENT_CAMERA,
+  EVENT_INCLUDE,
   eventRow,
   INTERVAL_CAMERA,
   intervalRow,
@@ -110,7 +110,7 @@ export class ListsService {
         : where,
       orderBy: [{ time: 'desc' }, { id: 'desc' }],
       take: limit + 1,
-      include: EVENT_CAMERA,
+      include: EVENT_INCLUDE,
     });
     const page = found.slice(0, limit);
     const last = page[page.length - 1];

@@ -21,6 +21,7 @@ const camera: Camera = {
   recordingEnabled: true,
   recordingStream: 'MAIN',
   retentionDays: null,
+  evidenceRetentionDays: null,
   clipBeforeSec: 15,
   clipAfterSec: 15,
   nxCameraId: null,
@@ -68,6 +69,7 @@ describe('toCameraView', () => {
       enabled: true,
       stream: 'MAIN',
       retentionDays: null,
+      evidenceRetentionDays: null,
       clipBeforeSec: 15,
       clipAfterSec: 15,
     });

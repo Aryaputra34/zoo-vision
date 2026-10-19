@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { EvidenceReason, EvidenceStatus } from '../../generated/prisma/enums';
 import { RangeQueryDto } from '../report-query';
 
 export const DEFAULT_LIMIT = 100;
@@ -85,6 +86,14 @@ export class IntervalListQueryDto extends IntervalFilterDto {
   limit?: number;
 }
 
+export class EventEvidenceDto {
+  @ApiProperty({ enum: EvidenceStatus, enumName: 'EvidenceStatus' })
+  status!: EvidenceStatus;
+
+  @ApiProperty({ enum: EvidenceReason, enumName: 'EvidenceReason' })
+  reason!: EvidenceReason;
+}
+
 export class EventRowDto {
   id!: string;
 
@@ -124,9 +133,17 @@ export class EventRowDto {
     type: String,
     nullable: true,
     description:
-      'A /media/clips URL; null when the camera has no recording path or recording is off. The clip itself can still be gone',
+      'A /media/clips URL; null when the camera has no recording path or recording is off, unless the clip is kept. The clip itself can still be gone',
   })
   clipUrl!: string | null;
+
+  @ApiProperty({
+    type: EventEvidenceDto,
+    nullable: true,
+    description:
+      'The kept-clip row of this event; null when the clip is not (to be) kept',
+  })
+  evidence!: EventEvidenceDto | null;
 }
 
 export class IntervalRowDto {

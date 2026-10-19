@@ -49,6 +49,19 @@ export class RecordingDto {
   @Max(3650)
   retentionDays?: number | null;
 
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: 1,
+    maximum: 3650,
+    description: 'How long kept clips of this camera live; null = site default',
+  })
+  @Nullable()
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  evidenceRetentionDays?: number | null;
+
   @ApiPropertyOptional({ minimum: 0, maximum: 300 })
   @Optional()
   @IsInt()

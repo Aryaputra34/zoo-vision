@@ -143,6 +143,7 @@ export class CamerasService {
             recordingStream: dto.recording.stream,
           }),
           retentionDays: dto.recording?.retentionDays ?? null,
+          evidenceRetentionDays: dto.recording?.evidenceRetentionDays ?? null,
           ...(dto.recording?.clipBeforeSec !== undefined && {
             clipBeforeSec: dto.recording.clipBeforeSec,
           }),
@@ -252,6 +253,14 @@ export class CamerasService {
           'retentionDays',
           rec.retentionDays,
           before.retentionDays,
+        );
+      }
+      if (rec.evidenceRetentionDays !== undefined) {
+        set(
+          'recording.evidenceRetentionDays',
+          'evidenceRetentionDays',
+          rec.evidenceRetentionDays,
+          before.evidenceRetentionDays,
         );
       }
       if (rec.clipBeforeSec !== undefined) {

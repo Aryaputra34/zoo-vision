@@ -21,7 +21,7 @@ import {
   type RangeQueryDto,
 } from '../reports/report-query';
 import {
-  EVENT_CAMERA,
+  EVENT_INCLUDE,
   eventRow,
   INTERVAL_CAMERA,
   intervalRow,
@@ -158,7 +158,7 @@ export class ExportsService {
           : where,
         orderBy: [{ time: 'asc' }, { id: 'asc' }],
         take: BATCH,
-        include: EVENT_CAMERA,
+        include: EVENT_INCLUDE,
       });
       if (rows.length > 0)
         yield rows.map((e) => this.eventCells(e, fields, local));

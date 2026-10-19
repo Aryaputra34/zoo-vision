@@ -6,6 +6,7 @@ export class CameraRecordingDto {
   @ApiProperty({ enum: StreamChoice, enumName: 'StreamChoice' })
   stream!: StreamChoice;
   retentionDays!: number | null;
+  evidenceRetentionDays!: number | null;
   clipBeforeSec!: number;
   clipAfterSec!: number;
 }

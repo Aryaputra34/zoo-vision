@@ -28,6 +28,7 @@ export type ManagerCameraView = UserCameraView & {
     enabled: boolean;
     stream: Camera['recordingStream'];
     retentionDays: number | null;
+    evidenceRetentionDays: number | null;
     clipBeforeSec: number;
     clipAfterSec: number;
   };
@@ -85,6 +86,7 @@ export function toCameraView(
       enabled: camera.recordingEnabled,
       stream: camera.recordingStream,
       retentionDays: camera.retentionDays,
+      evidenceRetentionDays: camera.evidenceRetentionDays,
       clipBeforeSec: camera.clipBeforeSec,
       clipAfterSec: camera.clipAfterSec,
     },
