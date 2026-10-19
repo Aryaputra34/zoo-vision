@@ -1,6 +1,6 @@
 # Zoo Vision Phase 4b (Evidence and Exports), Backend Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (native: the session implements every task itself, no per-task subagents) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Important events keep their clip after the continuous recording rolls over, and a kept clip plays with
 byte ranges (Safari). Snapshots, kept clips, export files and the recordings of deleted cameras are cleaned on
@@ -26,7 +26,7 @@ is `D:\WORK\zoo-analytics-web\docs\superpowers\plans\2026-10-19-phase-4b-evidenc
 - Work in `D:\WORK\zoo-vision` on branch `phase-4b-evidence` (it holds the spec commit). Never commit to `main`.
   Push the branch and the tag only after the user says yes.
 - No Claude attribution: no `Co-Authored-By` trailer, no "Generated with Claude Code" line, in commits or pull
-  requests. Put this rule in every implementer prompt.
+  requests. Put this rule in every reviewer prompt too.
 - No test-first steps (memory `no-tdd-in-plans`): implement, then the focused test the task names. Verification
   runs stay.
 - The Acer laptop (memory `dev-laptop-constraints`): Docker Desktop must be running for Testcontainers and compose;
@@ -156,13 +156,16 @@ spec, and `git log --oneline main..` (trust git, not the checkboxes).
 | **D: contract and close** | 11–12 | contract files, `fe-contract.md` v0.6, API-level laptop checks, Opus whole-branch review, tag (after the user's yes) |
 | then the frontend plan | W1–W6 | in `zoo-analytics-web`, sessions E and F |
 
-## Models for subagent-driven execution
+## Models (native execution)
 
-| Task | Implementer | Reviewer |
-|---|---|---|
-| 3 pin tick, 4 kept clip serving, 5 retention, 9 export jobs, 10 trusted proxy | Sonnet | Opus |
-| all others | Sonnet | Sonnet |
-| whole branch (Task 12) | n/a | Opus |
+| What | Model |
+|---|---|
+| Each session (implements its tasks itself, `superpowers:executing-plans`) | Sonnet (`/model sonnet` before starting) |
+| Per-task review | none: each task's tests and the "Run everything" step are the gate |
+| End-of-session review (sessions A, B, C: the tasks named in the session table) | one Opus reviewer subagent over that session's commits |
+| Whole branch (Task 12) | one Opus reviewer subagent |
+
+Escalate a task to Opus (`/model opus`) only when Sonnet is stuck after 2–3 fix rounds.
 
 ## Target layout at the end of this plan
 
