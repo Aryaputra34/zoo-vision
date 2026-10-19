@@ -40,6 +40,8 @@ export class IntervalStatsService {
     const where: Prisma.Sql[] = [
       Prisma.sql`i."kind" = ${q.kind}`,
       Prisma.sql`i."start" < ${to}`,
+      // bounds the scan from below; `>=` (not `>`) keeps a zero-length interval that starts at `from`
+      Prisma.sql`(i."end" IS NULL OR i."end" >= ${from})`,
       ...scopeFilters('i', range),
     ];
     const keys =
