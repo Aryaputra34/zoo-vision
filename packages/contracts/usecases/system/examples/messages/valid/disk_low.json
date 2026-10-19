@@ -1,0 +1,17 @@
+{
+  "message": "event",
+  "cameraId": null,
+  "useCase": "system",
+  "schemaVersion": 1,
+  "configVersion": null,
+  "time": "2026-10-19T10:00:00.000Z",
+  "id": "evt_0000000000000000000000000000000a",
+  "type": "disk_low",
+  "severity": "critical",
+  "snapshotPath": null,
+  "data": {
+    "path": "/data/recordings",
+    "usedPercent": 95.2,
+    "freeBytes": 52428800000
+  }
+}

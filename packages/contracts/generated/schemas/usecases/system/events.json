@@ -82,6 +82,32 @@
         "error"
       ],
       "additionalProperties": false
+    },
+    "disk_low": {
+      "title": "DiskLow",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "usedPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "freeBytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "usedPercent",
+        "freeBytes"
+      ],
+      "additionalProperties": false
     }
   }
 }

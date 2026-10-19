@@ -19,7 +19,7 @@ from contracts.restaurant_counter.intervals import RestaurantCounterTableSession
 from contracts.restaurant_table.settings import RestaurantTableSettings
 from contracts.restaurant_table.live import RestaurantTableLive
 from contracts.restaurant_table.intervals import RestaurantTableSession
-from contracts.system.events import EngineStarted, EventsDropped, ConfigRejected, ModelValidationFailed
+from contracts.system.events import EngineStarted, EventsDropped, ConfigRejected, ModelValidationFailed, DiskLow
 from contracts.system.intervals import CameraOffline
 from contracts.vehicle_gate.settings import VehicleGateSettings
 from contracts.vehicle_gate.live import VehicleGateLive
@@ -85,7 +85,7 @@ REGISTRY: dict[str, UseCaseContract] = {
         settings=None,
         live=None,
         unique_id_lists=(),
-        events={"engine_started": EngineStarted, "events_dropped": EventsDropped, "config_rejected": ConfigRejected, "model_validation_failed": ModelValidationFailed},
+        events={"engine_started": EngineStarted, "events_dropped": EventsDropped, "config_rejected": ConfigRejected, "model_validation_failed": ModelValidationFailed, "disk_low": DiskLow},
         intervals={"camera_offline": CameraOffline},
         metrics={},
     ),

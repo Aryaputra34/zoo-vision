@@ -96,7 +96,7 @@ for (const id of useCases) {
   writeText(join(tsOut, `${id}.d.ts`), `${TS_BANNER}\n\n${useCaseTs.get(id)}`);
 }
 
-// WebSocket messages: the server's five and the client's two, named by their schema titles.
+// WebSocket messages: the server's messages and the client's two, named by their schema titles.
 const wsSources = sources.filter((rel) => rel.startsWith('ws/'));
 const wsTs = [];
 for (const rel of wsSources) wsTs.push(await toTs(bundled.get(rel), bundled.get(rel).title));
