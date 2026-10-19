@@ -178,6 +178,26 @@ describe('RetentionJob: what it deletes and what it leaves', () => {
     ]);
   });
 
+  it('a .pdf.part over 1 hour old goes, a fresh one stays; a folder or other file with that name stays', async () => {
+    const hours = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
+    for (const [name, h] of [
+      ['old.pdf.part', 2],
+      ['fresh.pdf.part', 0.5],
+      ['other.txt', 5],
+    ] as const) {
+      await put(at('exports', name));
+      await utimes(at('exports', name), hours(h), hours(h));
+    }
+    await mkdir(at('exports/dir.pdf.part'));
+    await utimes(at('exports/dir.pdf.part'), hours(5), hours(5));
+    await tick();
+    expect((await readdir(at('exports'))).sort()).toEqual([
+      'dir.pdf.part',
+      'fresh.pdf.part',
+      'other.txt',
+    ]);
+  });
+
   it('zv_gone/ (no camera) old segment deleted, folder removed; zv_<existing>/ and feed_x/ untouched', async () => {
     await addCamera('live');
     await put(at('recordings/zv_gone/a.mp4'), 10);

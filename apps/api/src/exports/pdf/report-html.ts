@@ -68,8 +68,20 @@ export function columnLabels(
 
 type Column = { key: string; index: number };
 
+/** The columns of `columns` that say something in `rows`: a count or seconds that is not all zero, a metric that is not all empty. */
+function used(columns: Column[], rows: unknown[][]): Column[] {
+  return columns.filter((c) =>
+    rows.some((r) =>
+      isSum(c.key) ? num(r[c.index]) !== 0 : r[c.index] != null,
+    ),
+  );
+}
+
 const isSum = (key: string) => /^(events|intervals)\./.test(key);
-const when = (v: unknown) => text(v).slice(0, 16);
+const when = (v: unknown) => {
+  const t = text(v).slice(0, 16);
+  return t.endsWith(' 00:00') ? t.slice(0, 10) : t; // a day bucket starts at midnight
+};
 const num = (v: unknown) => (typeof v === 'number' ? v : 0);
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
@@ -103,15 +115,16 @@ function chart(title: string, buckets: string[], values: number[]): string {
   const max = Math.max(0, ...values);
   if (max <= 0) return '';
   const W = 680;
-  const H = 110;
+  const H = 80;
   const slot = W / values.length;
   const hourly = new Set(buckets.map((b) => b.slice(0, 10))).size === 1;
   const step = Math.max(1, Math.ceil(values.length / 12));
+  const width = Math.min(slot * 0.7, 28);
   const bars = values
     .map((v, i) => {
       if (v <= 0) return '';
       const h = Math.max(1, (v / max) * (H - 24));
-      return `<rect x="${(i * slot + slot * 0.15).toFixed(1)}" y="${(H - 14 - h).toFixed(1)}" width="${(slot * 0.7).toFixed(1)}" height="${h.toFixed(1)}" fill="#2f6f4f"/>`;
+      return `<rect x="${(i * slot + (slot - width) / 2).toFixed(1)}" y="${(H - 14 - h).toFixed(1)}" width="${width.toFixed(1)}" height="${h.toFixed(1)}" fill="#2f6f4f"/>`;
     })
     .join('');
   const ticks = buckets
@@ -132,9 +145,9 @@ h1 { font-size: 20px; margin: 0 0 4px }
 h2 { font-size: 14px; margin: 18px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 2px }
 h2 small { font-weight: normal; color: #666 }
 .meta { color: #555; margin-bottom: 8px }
-table { border-collapse: collapse; width: 100%; margin: 6px 0 }
+table { border-collapse: collapse; width: 100%; margin: 6px 0; table-layout: auto }
 tr { page-break-inside: avoid }
-th, td { border: 1px solid #ccc; padding: 2px 5px; text-align: left; font-size: 9px }
+th, td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; font-size: 8px; overflow-wrap: anywhere }
 th { background: #eef3f0 }
 td.n { text-align: right }
 tr.sum td { font-weight: bold; background: #f6f6f6 }
@@ -150,7 +163,6 @@ export function reportHtml(input: ReportInput): string {
   const columns: Column[] = header
     .map((key, index) => ({ key, index }))
     .slice(KEYS);
-  const sums = columns.filter((c) => isSum(c.key));
   const head = `<h1>${escapeHtml(input.siteName)}</h1>
 <div class="meta">Laporan ${PERIOD[input.period]} · ${escapeHtml(input.rangeLabel)}<br>Dibuat ${escapeHtml(input.generatedAt)} oleh ${escapeHtml(input.generatedBy)}</div>`;
 
@@ -164,15 +176,21 @@ export function reportHtml(input: ReportInput): string {
       const key = String(r[0]);
       const sum =
         byBucket.get(key) ?? header.map((_, i) => (i === 0 ? key : 0));
-      for (const c of sums) sum[c.index] = num(sum[c.index]) + num(r[c.index]);
+      for (const c of columns)
+        if (isSum(c.key)) sum[c.index] = num(sum[c.index]) + num(r[c.index]);
       byBucket.set(key, sum);
     }
     const totalRows = [...byBucket.values()];
+    const sums = used(
+      columns.filter((c) => isSum(c.key)),
+      totalRows,
+    );
     const grand = sums.map((c) =>
       totalRows.reduce((s, r) => s + num(r[c.index]), 0),
     );
-    const charts = (list: unknown[][]) =>
-      sums
+    const charts = (list: unknown[][], cols: Column[]) =>
+      cols
+        .filter((c) => isSum(c.key))
         .map((c) =>
           chart(
             labels[c.key] ?? c.key,
@@ -181,7 +199,7 @@ export function reportHtml(input: ReportInput): string {
           ),
         )
         .join('');
-    body = `<section><h2>Total semua kamera</h2>${table(sums, totalRows, labels, grand)}${charts(totalRows)}</section>`;
+    body = `<section><h2>Total semua kamera</h2>${table(sums, totalRows, labels, grand)}${charts(totalRows, sums)}</section>`;
 
     const cameras = new Map<string, unknown[][]>();
     for (const r of rows) {
@@ -189,7 +207,8 @@ export function reportHtml(input: ReportInput): string {
       cameras.set(id, [...(cameras.get(id) ?? []), r]);
     }
     for (const [id, list] of cameras) {
-      body += `<section><h2>${escapeHtml(list[0][2] ?? id)} <small>${escapeHtml(id)}</small></h2>${table(columns, list, labels)}${charts(list)}</section>`;
+      const cols = used(columns, list);
+      body += `<section><h2>${escapeHtml(list[0][2] ?? id)} <small>${escapeHtml(id)}</small></h2>${table(cols, list, labels)}${charts(list, cols)}</section>`;
     }
   }
 

@@ -77,6 +77,7 @@ services:
       RECORDINGS_DIR: /data/recordings # stream-info free space; retention sweeps the recordings of deleted cameras
       EVIDENCE_DIR: /data/evidence # kept clips
       EXPORTS_DIR: /data/exports # finished PDF exports
+      GOTENBERG_URL: ${ZOO_GOTENBERG_URL-http://gotenberg:3000} # prints the PDF reports; empty = PDF export answers 503
       # MediaMTX's playback server (the engine profile runs it on the host network, port 9996)
       MEDIAMTX_PLAYBACK_URL: ${ZOO_MEDIAMTX_PLAYBACK_URL-http://host.docker.internal:9996} # empty = no clips
       # MediaMTX's Control API: the API keeps one zv_* path per camera in sync (empty = no sync, no live video)
@@ -106,6 +107,12 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  # Prints the HTML pages the API builds into PDF reports. Internal network only, no host port.
+  gotenberg:
+    image: gotenberg/gotenberg:8.38.1
+    command: ["gotenberg", "--api-timeout=70s"]
+    restart: unless-stopped
 
   # The only service with public ports: /api, /media and /ws go to the API, /internal/* is a 404,
   # everything else goes to the dashboard. Inside the container Caddy listens on the same port numbers as

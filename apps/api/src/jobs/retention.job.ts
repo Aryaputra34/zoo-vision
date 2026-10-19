@@ -24,7 +24,7 @@ const DAY_MS = 24 * HOUR_MS;
 const BATCH = 500;
 /** Export files live this long after they are made. */
 const EXPORT_DAYS = 7;
-/** A download takes at most 2 minutes, so a `.part` this old belongs to no running pin. */
+/** A download takes at most 2 minutes and a PDF call 1, so a `.part` this old belongs to no running job. */
 const PART_STALE_MS = HOUR_MS;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** `zv_<id>` and `zv_<id>_sub`, the MediaMTX paths the API creates; `feed_*` and the rest never match. */
@@ -246,7 +246,24 @@ export class RetentionJob implements OnModuleInit, OnModuleDestroy {
       });
       c.deleted++;
     }
+    await this.exportParts(now, c);
     return c;
+  }
+
+  /** `<id>.pdf.part` left by a crashed PDF tick (the retry rewrites it); only regular files directly in EXPORTS_DIR. */
+  private async exportParts(now: Date, c: Counts): Promise<void> {
+    try {
+      const root = this.env.EXPORTS_DIR;
+      for (const f of await readdir(root, { withFileTypes: true })) {
+        if (!f.isFile() || !f.name.endsWith('.pdf.part')) continue;
+        const path = join(root, f.name);
+        if ((await stat(path)).mtimeMs > now.getTime() - PART_STALE_MS)
+          continue;
+        if (await this.remove(path, c)) c.deleted++;
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') this.fail(c, err);
+    }
   }
 
   /** I6: `zv_<id>[_sub]` folders whose camera is gone: files past the recording retention, then the folder. */
