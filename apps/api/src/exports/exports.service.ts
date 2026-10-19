@@ -1,8 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { ENV, type Env } from '../config/env';
+import { Injectable } from '@nestjs/common';
 import { ContractsService } from '../contracts/contracts.service';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import type {
   EventFilterDto,
   IntervalFilterDto,
@@ -69,8 +69,6 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
  */
 @Injectable()
 export class ExportsService {
-  private readonly local: (at: Date) => string;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly lists: ListsService,
@@ -78,10 +76,8 @@ export class ExportsService {
     private readonly eventStats: EventStatsService,
     private readonly intervalStats: IntervalStatsService,
     private readonly metricSeries: MetricSeriesService,
-    @Inject(ENV) env: Env,
-  ) {
-    this.local = localDateTime(env.SITE_TIMEZONE);
-  }
+    private readonly settings: SiteSettingsService,
+  ) {}
 
   events(q: EventFilterDto): CsvExport {
     const where = this.lists.eventWhere(q);
@@ -135,7 +131,8 @@ export class ExportsService {
 
   /** `<kind>-<from date>-<to date>.csv`, the dates on the site's wall clock. */
   filename(kind: string, range: Range): string {
-    const day = (at: Date) => this.local(at).slice(0, 10);
+    const local = localDateTime(this.settings.timeZone);
+    const day = (at: Date) => local(at).slice(0, 10);
     return `${kind}-${day(range.from)}-${day(range.to)}.csv`;
   }
 
@@ -143,6 +140,7 @@ export class ExportsService {
     where: Prisma.EventWhereInput,
     fields: string[] | null,
   ): AsyncGenerator<unknown[][]> {
+    const local = localDateTime(this.settings.timeZone);
     let after: { time: Date; id: string } | undefined;
     for (;;) {
       const rows: EventWithCamera[] = await this.prisma.event.findMany({
@@ -162,18 +160,23 @@ export class ExportsService {
         take: BATCH,
         include: EVENT_CAMERA,
       });
-      if (rows.length > 0) yield rows.map((e) => this.eventCells(e, fields));
+      if (rows.length > 0)
+        yield rows.map((e) => this.eventCells(e, fields, local));
       if (rows.length < BATCH) return;
       const last = rows[rows.length - 1];
       after = { time: last.time, id: last.id };
     }
   }
 
-  private eventCells(e: EventWithCamera, fields: string[] | null): unknown[] {
+  private eventCells(
+    e: EventWithCamera,
+    fields: string[] | null,
+    local: (at: Date) => string,
+  ): unknown[] {
     const row = eventRow(e);
     const data = e.data as Record<string, unknown>;
     return [
-      this.local(e.time),
+      local(e.time),
       e.id,
       e.cameraId,
       row.cameraName,
@@ -189,6 +192,7 @@ export class ExportsService {
   private async *intervalBatches(
     where: Prisma.IntervalWhereInput,
   ): AsyncGenerator<unknown[][]> {
+    const local = localDateTime(this.settings.timeZone);
     let after: { start: Date; id: string } | undefined;
     for (;;) {
       const rows: IntervalWithCamera[] = await this.prisma.interval.findMany({
@@ -212,8 +216,8 @@ export class ExportsService {
         yield rows.map((i) => {
           const row = intervalRow(i);
           return [
-            this.local(i.start),
-            i.end ? this.local(i.end) : null,
+            local(i.start),
+            i.end ? local(i.end) : null,
             row.durationSec,
             i.id,
             i.cameraId,
@@ -234,6 +238,7 @@ export class ExportsService {
 
   /** In primary key order (camera, name, minute), so every batch is an index range scan. */
   private async *metricBatches(range: Range): AsyncGenerator<unknown[][]> {
+    const local = localDateTime(this.settings.timeZone);
     const base = [
       Prisma.sql`m."minute" >= ${range.from.toISOString()}::timestamptz`,
       Prisma.sql`m."minute" < ${range.to.toISOString()}::timestamptz`,
@@ -257,7 +262,7 @@ export class ExportsService {
          LIMIT ${BATCH}`);
       if (rows.length > 0) {
         yield rows.map((r) => [
-          this.local(r.minute),
+          local(r.minute),
           r.cameraId,
           r.cameraName,
           r.useCase,
@@ -279,6 +284,7 @@ export class ExportsService {
     q: SummaryQueryDto,
     header: string[],
   ): AsyncGenerator<unknown[][]> {
+    const local = localDateTime(this.settings.timeZone);
     const base = {
       from: q.from,
       to: q.to,
@@ -362,7 +368,7 @@ export class ExportsService {
       .map((row) => {
         const camera = byId.get(row[1] as string);
         const bucketStart = row[0] as string;
-        row[0] = this.local(new Date(bucketStart));
+        row[0] = local(new Date(bucketStart));
         row[2] = camera?.name ?? null;
         row[3] = camera?.useCase ?? null;
         return row;

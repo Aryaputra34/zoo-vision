@@ -1,8 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { ENV, type Env } from '../config/env';
+import { Injectable } from '@nestjs/common';
 import { ContractsService } from '../contracts/contracts.service';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { bucketStart } from './buckets';
 import type { EventStatsDto, EventStatsQueryDto } from './dto/event-stats.dto';
 import { allowedDataField, notAllowed, wantsSystem } from './fields';
@@ -38,7 +38,7 @@ export class EventStatsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contracts: ContractsService,
-    @Inject(ENV) private readonly env: Env,
+    private readonly settings: SiteSettingsService,
   ) {}
 
   async stats(q: EventStatsQueryDto): Promise<EventStatsDto> {
@@ -98,7 +98,7 @@ export class EventStatsService {
     if (!withSystem) where.push(Prisma.sql`e."useCase" <> 'system'`);
 
     const columns: Prisma.Sql[] = [
-      Prisma.sql`${bucketStart(q.bucket, this.env.SITE_TIMEZONE, Prisma.sql`e."time"`)} AS "bucketStart"`,
+      Prisma.sql`${bucketStart(q.bucket, this.settings.timeZone, Prisma.sql`e."time"`)} AS "bucketStart"`,
       ...groups.map(
         (g, i) => Prisma.sql`${g.expr} AS ${Prisma.raw(`"g${i}"`)}`,
       ),

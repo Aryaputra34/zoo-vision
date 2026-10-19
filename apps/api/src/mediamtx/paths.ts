@@ -29,9 +29,6 @@ type PathCamera = Pick<
   | 'inferenceStream'
 >;
 
-/** Retention of a camera that has none of its own, until SiteSettings (4b). */
-const DEFAULT_RETENTION_DAYS = 7;
-
 /** The API owns every MediaMTX path with this prefix and touches no other. */
 export const isManaged = (name: string): boolean => name.startsWith('zv_');
 
@@ -60,13 +57,14 @@ export function mediamtxPaths(c: PathCamera): CameraPaths | null {
 export function wantedPaths(
   cameras: Camera[],
   cipher: UrlCipher,
+  defaultRetentionDays: number,
   onDecryptError?: (cameraId: string, error: unknown) => void,
 ): Map<string, PathConf> {
   const wanted = new Map<string, PathConf>();
   for (const camera of cameras) {
     const paths = mediamtxPaths(camera);
     if (!paths) continue;
-    const recordDeleteAfter = `${camera.retentionDays ?? DEFAULT_RETENTION_DAYS}d`;
+    const recordDeleteAfter = `${camera.retentionDays ?? defaultRetentionDays}d`;
     try {
       const conf = (name: string, encryptedUrl: string): PathConf =>
         camera.enabled

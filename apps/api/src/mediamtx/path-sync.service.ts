@@ -8,6 +8,7 @@ import {
 import { UrlCipher } from '../cameras/url-cipher';
 import { ENV, type Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { MEDIAMTX, MediamtxClient, MediamtxError } from './mediamtx-client';
 import {
   durationSeconds,
@@ -48,6 +49,7 @@ export class PathSync implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(ENV) private readonly env: Env,
     private readonly prisma: PrismaService,
     private readonly cipher: UrlCipher,
+    private readonly settings: SiteSettingsService,
     @Inject(MEDIAMTX) private readonly client: MediamtxClient | null,
   ) {}
 
@@ -105,6 +107,7 @@ export class PathSync implements OnApplicationBootstrap, OnModuleDestroy {
     const wanted = wantedPaths(
       await this.prisma.camera.findMany(),
       this.cipher,
+      this.settings.current.recordingRetentionDays,
       (cameraId, err) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.log.warn(

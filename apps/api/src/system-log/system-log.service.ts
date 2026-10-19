@@ -1,7 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { Actor } from '../auth/actor';
 import { localDateTime } from '../exports/csv';
-import { ENV, type Env } from '../config/env';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import {
   type CsvExport,
   BATCH,
@@ -67,16 +67,12 @@ function filtersOf(q: object): Record<string, string> {
  */
 @Injectable()
 export class SystemLogService {
-  private readonly local: (at: Date) => string;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly lists: ListsService,
     private readonly exports: ExportsService,
-    @Inject(ENV) env: Env,
-  ) {
-    this.local = localDateTime(env.SITE_TIMEZONE);
-  }
+    private readonly settings: SiteSettingsService,
+  ) {}
 
   /**
    * The ids a MANAGER may not read about: SUPERADMIN users and SUPERADMIN API tokens (what they
@@ -207,6 +203,7 @@ export class SystemLogService {
 
   async auditCsv(actor: Actor, q: AuditFilterDto): Promise<CsvExport> {
     const where = this.auditWhere(q, await this.hiddenIds(actor));
+    const local = localDateTime(this.settings.timeZone);
     return {
       kind: 'audit',
       filename: this.exports.filename('audit', parseRange(q)),
@@ -233,7 +230,7 @@ export class SystemLogService {
           }),
         (r: AuditRow) => [
           String(r.id),
-          this.local(r.time),
+          local(r.time),
           r.actorType,
           r.actorName,
           r.action,
@@ -250,6 +247,7 @@ export class SystemLogService {
 
   async loginsCsv(actor: Actor, q: LoginFilterDto): Promise<CsvExport> {
     const where = this.loginWhere(q, await this.hiddenIds(actor));
+    const local = localDateTime(this.settings.timeZone);
     return {
       kind: 'logins',
       filename: this.exports.filename('logins', parseRange(q)),
@@ -272,7 +270,7 @@ export class SystemLogService {
           }),
         (r: LoginRow) => [
           String(r.id),
-          this.local(r.time),
+          local(r.time),
           r.username,
           r.userId,
           r.result,

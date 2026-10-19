@@ -20,6 +20,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsecasesModule } from './usecases/usecases.module';
+import { SiteSettingsModule } from './site-settings/site-settings.module';
 import { SystemLogModule } from './system-log/system-log.module';
 import { UsersModule } from './users/users.module';
 
@@ -34,6 +35,7 @@ export class AppModule {
         PrismaModule,
         RedisModule,
         ContractsModule,
+        SiteSettingsModule,
         TerminusModule,
         AuthModule,
         AuditModule,

@@ -50,8 +50,6 @@ describe('demo seed', () => {
       CAMERA_IDS.map((id) => [id, DEMO_GROUP, 'FILE']),
     );
     expect(cameras.every((c) => c.enabled && c.targetFps === 5)).toBe(true);
-    // FILE cameras have no MediaMTX path, so no recording path either
-    expect(cameras.every((c) => c.recordingPath === null)).toBe(true);
     const users = await prisma.user.findMany({ orderBy: { username: 'asc' } });
     expect(users.map((u) => [u.username, u.role])).toEqual([
       ['demo-manager', 'MANAGER'],

@@ -9,12 +9,12 @@ import {
   type MediamtxClient,
   MediamtxError,
 } from './mediamtx-client';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { mediamtxPaths } from './paths';
 
 const MIN_GAP_MS = 1000;
 const MAX_GAP_MS = 120_000;
 const DAY_SECONDS = 86400;
-const DEFAULT_RETENTION_DAYS = 7;
 
 type Reading = { at: number; bytes: number; bps: number | null };
 
@@ -39,6 +39,7 @@ export class StreamInfoService {
 
   constructor(
     @Inject(ENV) private readonly env: Env,
+    private readonly settings: SiteSettingsService,
     @Inject(MEDIAMTX) private readonly client: MediamtxClient | null,
   ) {}
 
@@ -82,7 +83,8 @@ export class StreamInfoService {
             ? Math.round(
                 (bitrateBps / 8) *
                   DAY_SECONDS *
-                  (camera.retentionDays ?? DEFAULT_RETENTION_DAYS),
+                  (camera.retentionDays ??
+                    this.settings.current.recordingRetentionDays),
               )
             : null,
       });

@@ -1,8 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { apiError } from '../common/errors';
-import { ENV, type Env } from '../config/env';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { bucketStart } from './buckets';
 import type {
   MetricSeriesDto,
@@ -16,7 +16,7 @@ type Row = { bucketStart: Date; cameraId: string; value: number };
 export class MetricSeriesService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(ENV) private readonly env: Env,
+    private readonly settings: SiteSettingsService,
   ) {}
 
   /** One value per camera and bucket: an aggregate of the minute rows, or the minutes at or above a threshold. */
@@ -42,7 +42,7 @@ export class MetricSeriesService {
     ];
 
     const rows = await this.prisma.$queryRaw<Row[]>(Prisma.sql`
-      SELECT ${bucketStart(q.bucket, this.env.SITE_TIMEZONE, Prisma.sql`m."minute"`)} AS "bucketStart",
+      SELECT ${bucketStart(q.bucket, this.settings.timeZone, Prisma.sql`m."minute"`)} AS "bucketStart",
              m."cameraId", ${value} AS "value"
         FROM "Metric" m
        WHERE ${Prisma.join(where, ' AND ')}

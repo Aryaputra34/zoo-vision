@@ -113,8 +113,8 @@ async function demoSeedCommand(env: NodeJS.ProcessEnv): Promise<number> {
 
 /**
  * Plays the engine for the demo cameras until SIGINT or SIGTERM: history once per Redis volume,
- * then live messages, status and frames. Reads REDIS_URL, API_URL, ENGINE_TOKEN, SNAPSHOT_DIR,
- * SITE_TIMEZONE and DEMO_SEED from the environment.
+ * then live messages, status and frames. Reads REDIS_URL, API_URL, ENGINE_TOKEN, SNAPSHOT_DIR
+ * and DEMO_SEED from the environment.
  */
 async function demoFeedCommand(
   args: string[],
@@ -148,7 +148,8 @@ async function demoFeedCommand(
       framesDir: join(__dirname, '..', 'demo', 'frames'),
       backfillDays: days,
       seed: Number(env.DEMO_SEED ?? 42),
-      tz: env.SITE_TIMEZONE || 'Asia/Jakarta',
+      // shortcut: the demo's fake opening hours stay in Jakarta time; read site settings if a demo needs another zone
+      tz: 'Asia/Jakarta',
       signal: controller.signal,
     });
     return 0;
