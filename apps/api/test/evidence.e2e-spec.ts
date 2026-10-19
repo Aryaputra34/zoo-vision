@@ -76,6 +76,22 @@ describe('evidence: keep by hand', () => {
     ]);
   });
 
+  it('keeping an event that has just happened waits until its clip window has ended (event + clipAfterSec + 60 s)', async () => {
+    const recent = await addEvent({
+      time: new Date(Date.now() - 10_000).toISOString(),
+      cameraId: 'ev_cam',
+      useCase: 'cashier_presence',
+      type: 'customer_waiting',
+    });
+    await keep(recent).expect(200);
+    const [row] = (await ownerQuery(
+      `SELECT EXTRACT(EPOCH FROM "runAt" - now()) AS wait FROM "Evidence" WHERE "eventId" = '${recent}'`,
+    )) as { wait: string }[];
+    // clipAfterSec is 15: 15 + 60 s after the event, 10 s are gone, so about 65 s from now
+    expect(Number(row.wait)).toBeGreaterThan(55);
+    expect(Number(row.wait)).toBeLessThan(70);
+  });
+
   it('an unknown event → 404 NOT_FOUND; a system event → 404 RECORDING_NOT_AVAILABLE', async () => {
     const unknown = await keep('evt_nope').expect(404);
     expect(unknown.body).toMatchObject({ code: 'NOT_FOUND' });

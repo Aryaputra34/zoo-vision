@@ -83,7 +83,7 @@ services:
       # MediaMTX's Control API: the API keeps one zv_* path per camera in sync (empty = no sync, no live video)
       MEDIAMTX_API_URL: ${ZOO_MEDIAMTX_API_URL-http://host.docker.internal:9997}
       MEDIAMTX_PASSWORD: ${MEDIAMTX_PASSWORD:-}
-      JOBS: "on" # offline check every 5 s; "off" on a second API replica
+      JOBS: "on" # offline check, pins, retention, disk and PDF jobs; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models
       - ${ZOO_DATA_DIR:-./data}/snapshots:/data/snapshots # written by the engine or the demo feed; retention deletes here

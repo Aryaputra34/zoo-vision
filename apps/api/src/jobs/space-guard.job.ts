@@ -18,7 +18,7 @@ const TICK_MS = 5 * 60_000;
 const TRIGGER = 95;
 /** … and stops below this one. */
 const TARGET = 90;
-/** The segment MediaMTX is writing and the footage a pending pin still needs are younger than this. */
+/** The segment MediaMTX is writing and the footage of a pin about to run (not one retrying for hours) are younger than this. */
 const MIN_AGE_MS = 3_600_000;
 /** The disk is read again after this many deleted files. */
 const RECHECK_EVERY = 20;

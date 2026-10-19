@@ -8,7 +8,7 @@ command from this folder.
 | `postgres` | Postgres 17. Creates the `zoo_api` role on first start (`postgres/init`). No host port |
 | `redis` | Redis 7.4 with a password and AOF persistence. Published on `127.0.0.1:${ZOO_REDIS_PORT:-6379}` for the host-networked engine |
 | `api-migrate` | One-shot: `prisma migrate deploy` as `zoo_owner`, then exits |
-| `api` | The NestJS API on `127.0.0.1:${ZOO_API_PORT}` (Swagger at `/api/docs`, see `ZOO_SWAGGER`). Serves the engine its cameras and runs the offline check |
+| `api` | The NestJS API on `127.0.0.1:${ZOO_API_PORT}` (Swagger at `/api/docs`, see `ZOO_SWAGGER`). Serves the engine its cameras and runs the background jobs (offline check, evidence pins, retention, disk checks, PDF reports) |
 | `caddy` | The only service with public ports. `/api`, `/media` and `/ws` go to the API, `/internal/*` is a 404, everything else goes to the dashboard |
 | `web` | Profile `web`: the dashboard (Next.js), built from the frontend checkout `ZOO_WEB_DIR` |
 | `mediamtx` | Profile `engine`: pulls each camera once, records it, re-serves RTSP to the engine, serves event clips on :9996 |
@@ -67,7 +67,7 @@ Set in `.env` (see `.env.example`); Compose passes them to the API as the variab
 | `ZOO_SWAGGER` | `off` | `SWAGGER` | `off`, `superadmin` or `public` (development only) |
 | `ZOO_MEDIAMTX_PLAYBACK_URL` | `http://host.docker.internal:9996` | `MEDIAMTX_PLAYBACK_URL` | Where the API asks MediaMTX for event clips. Set but empty: clips answer `RECORDING_NOT_AVAILABLE`. The API logs a warning when playback is unreachable |
 | `ZOO_DEMO`, `DEMO_PASSWORD` | off | | Only for the demo profile (below) |
-| | | `SNAPSHOT_DIR` | Fixed to `/data/snapshots` (`$ZOO_DATA_DIR/snapshots`, mounted read-only) |
+| | | `SNAPSHOT_DIR` | Fixed to `/data/snapshots` (`$ZOO_DATA_DIR/snapshots`; read-write from Phase 4b, retention deletes there) |
 
 `INGEST` and `JOBS` (API) are unchanged and stay on in the one API container.
 
@@ -85,7 +85,7 @@ Set in `deploy/.env` for live video and MediaMTX integration:
 | `ZOO_MEDIAMTX_SERVICE_PASSWORD` | empty | `MEDIAMTX_SERVICE_PASSWORD` | Service user password (shared with MediaMTX `mediamtx.yml` and engine) |
 | `ZOO_MEDIAMTX_WEBRTC_UPSTREAM` | `host.docker.internal:8889` | | Upstream for Caddy's `/media/webrtc/*` WHEP proxy (checked via `GET /api/v1/auth/check`) |
 | `ZOO_MEDIAMTX_PLAYBACK_URL` | `http://host.docker.internal:9996` | `MEDIAMTX_PLAYBACK_URL` | Upstream for clip extraction |
-| | | `MEDIAMTX_RECORDINGS_DIR` | Fixed to `/data/recordings` (`$ZOO_DATA_DIR/recordings`, mounted read-only) |
+| | | `RECORDINGS_DIR` | Fixed to `/data/recordings` (`$ZOO_DATA_DIR/recordings`; read-write from Phase 4b, retention and the free-space guard delete there) |
 
 ### Upgrading from Phase 3
 
@@ -126,7 +126,16 @@ owned by root: once, before the first start of the new version, run
 sudo chown -R 1000:1000 "$ZOO_DATA_DIR"
 ```
 
-(`$ZOO_DATA_DIR` is `deploy/data` unless `.env` sets it.) A delete that fails with `EACCES` is counted and logged
+(`$ZOO_DATA_DIR` is `deploy/data` unless `.env` sets it.) **On a new server** the folders do not exist yet, and Docker
+creates a missing bind-mount folder as root: create them first, or MediaMTX (uid 1000) can not write its
+recordings and the engine its snapshots:
+
+```bash
+mkdir -p "$ZOO_DATA_DIR"/{models,recordings,snapshots,evidence,exports,logs}
+sudo chown -R 1000:1000 "$ZOO_DATA_DIR"
+```
+
+A delete that fails with `EACCES` is counted and logged
 once per pass, and the files stay. Docker Desktop on Windows and macOS ignores file ownership, so this step is for
 Linux servers only.
 
@@ -147,7 +156,7 @@ frontend can be built without a GPU or a camera. It needs `ZOO_DEMO=on` and `DEM
 characters) in `.env`; `.env.demo.example` is a complete file for it.
 
 ```bash
-docker compose --profile demo up -d --build postgres redis api-migrate api caddy demo-seed demo-feed
+docker compose --profile demo up -d --build postgres redis api-migrate api caddy gotenberg demo-seed demo-feed
 ```
 
 - `demo-seed` creates the five cameras and the users `demo-superadmin`, `demo-manager` and `demo-user` (all with
@@ -210,6 +219,8 @@ subscribes to `status` and waits for a `status.snapshot`.
 ```bash
 cp .env.example .env                                     # then replace every change-me (see Secrets)
 python3 ../tools/fetch_models.py --dest ./data/models    # offline: add --from /media/usb/models
+mkdir -p data/{recordings,snapshots,evidence,exports,logs}
+sudo chown -R 1000:1000 data                             # see "Data folder ownership"
 docker compose up -d --build
 ```
 
@@ -257,8 +268,9 @@ first: a rescan moves a file that is still being copied. The API also rescans wh
 
 ## Background jobs and a second engine
 
-`JOBS` (`on` by default) switches the API's background jobs on or off; the only job is the camera offline check,
-every 5 s. Keep it `on` in exactly one API process.
+`JOBS` (`on` by default) switches the API's background jobs on or off: the camera offline check, the evidence pin
+tick, retention, the disk and free-space checks and the PDF tick. Keep it `on` in exactly one API process; a
+process with `JOBS=off` accepts keep and PDF requests that nothing there will work on.
 
 The engine runs one camera group, set by `ENGINE_GROUP` (default `default`). An engine service for a second
 group sets its own `ENGINE_GROUP` and `ENGINE_MODEL_JOBS=off`, so only one engine runs model validation and
@@ -269,7 +281,7 @@ conversion jobs. It can share the models folder and `ENGINE_TOKEN`.
 Never run a bare `docker compose up`: it would also build the GPU engine and start MediaMTX. Name the services:
 
 ```bash
-docker compose up -d --build postgres redis api-migrate api
+docker compose up -d --build postgres redis api-migrate api gotenberg   # gotenberg: PDF reports
 ```
 
 Run the engine from source against it; see [docs/10_LOCAL_QUICKSTART.md](../docs/10_LOCAL_QUICKSTART.md).
@@ -290,10 +302,12 @@ Run from `deploy/` after `git pull`. Events keep queueing in Redis while the API
    In Git Bash on Windows, run `export MSYS_NO_PATHCONV=1` first; otherwise `/tmp/...` is rewritten into a
    Windows path.
 3. Rebuild the API, apply new migrations and restart it:
-   `docker compose up -d --build api-migrate api`. `api-migrate` must exit 0 (`docker compose ps -a`); if it
+   `docker compose up -d --build api-migrate api gotenberg`. `api-migrate` must exit 0 (`docker compose ps -a`); if it
    fails, the API does not start, and `docker compose logs api-migrate` says why.
 4. If the update changed the `postgres` or `redis` services, also run `docker compose up -d postgres redis`.
    The containers are recreated; the data stays in the `pgdata` and `redisdata` volumes.
+   Phase 4b only: after the `chown` step (Data folder ownership), recreate MediaMTX too, so it runs as uid 1000:
+   `docker compose up -d mediamtx` (a server with the `engine` profile).
 5. Engine: on a laptop, `cd services/engine && uv sync`, then restart it. On the GPU server,
    `docker compose up -d --build zoo-ai-engine`.
 6. Check: `docker compose ps` (all healthy) and `curl -s http://127.0.0.1:3001/api/health`.

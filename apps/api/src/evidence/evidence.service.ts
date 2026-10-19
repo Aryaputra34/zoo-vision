@@ -24,15 +24,23 @@ export class EvidenceService {
         'The recording of this event is not available',
       );
     }
-    // one statement each, so two requests at once end in one row
+    // one statement each, so two requests at once end in one row. Never earlier than ingest would
+    // have copied it (event time + clipAfterSec + 60 s): a clip of an event that has just happened
+    // is not recorded yet, and a cut-short copy would be stored as KEPT for good
     await this.prisma.$executeRaw`
       INSERT INTO "Evidence" ("eventId", "cameraId", "eventTime", "reason", "runAt")
-      VALUES (${eventId}, ${event.cameraId}, ${event.time}, 'USER', now())
+      SELECT e."id", e."cameraId", e."time", 'USER',
+             GREATEST(now(), e."time" + make_interval(secs => c."clipAfterSec" + 60))
+        FROM "Event" e JOIN "Camera" c ON c."id" = e."cameraId"
+       WHERE e."id" = ${eventId}
       ON CONFLICT DO NOTHING`;
-    await this.prisma.evidence.updateMany({
-      where: { eventId, status: { in: ['FAILED', 'NO_RECORDING'] } },
-      data: { status: 'QUEUED', attempts: 0, error: null, runAt: new Date() },
-    });
+    await this.prisma.$executeRaw`
+      UPDATE "Evidence" ev
+         SET "status" = 'QUEUED', "attempts" = 0, "error" = NULL,
+             "runAt" = GREATEST(now(), ev."eventTime" + make_interval(secs => c."clipAfterSec" + 60))
+        FROM "Camera" c
+       WHERE ev."eventId" = ${eventId} AND c."id" = ev."cameraId"
+         AND ev."status" IN ('FAILED', 'NO_RECORDING')`;
     const { status, reason } = await this.prisma.evidence.findUniqueOrThrow({
       where: { eventId },
     });

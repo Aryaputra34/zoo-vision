@@ -123,6 +123,12 @@ export class PlaybackService {
       // path that was never recorded ("not configured", no folder): our own parameters are always valid
       // (found on the laptop run: the other of MAIN/SUB answered 400, and a pin retried it for hours)
       if (upstream.status === 404 || upstream.status === 400) {
+        // a 400 is quiet but not invisible: a MediaMTX that starts refusing a parameter shows here
+        if (upstream.status === 400) {
+          this.log.debug(
+            `playback ${host} answered 400 (treated as not recorded)`,
+          );
+        }
         return { ok: false, reason: 'NOT_FOUND' };
       }
       this.log.warn(`playback ${host} answered ${upstream.status}`);
