@@ -84,6 +84,17 @@ To develop or test live WebRTC video with the dashboard:
 3. Restart the API (`docker compose up -d api`). Camera views now populate `liveUrls: {main, sub}`, and WHEP
    WebRTC video is accessible at `/media/webrtc/<path>/whep` with a valid session cookie.
 
+## PDF reports and Gotenberg in the demo
+
+`docker compose up -d --build` also starts `gotenberg`, the container that prints the PDF reports (Exports page).
+Its image, `gotenberg/gotenberg:8.38.1`, is about 1.7 GB, so the first start downloads it. Nothing is set in `.env`:
+the API finds it at `http://gotenberg:3000`. A PDF of the demo's history is made in a few seconds. If you set
+`ZOO_GOTENBERG_URL=` (empty) in `deploy/.env`, creating a PDF answers 503 `UNAVAILABLE` and the page should say the
+PDF service is off.
+
+The demo has no MediaMTX, so a warning event's kept clip becomes `NO_RECORDING` (it still keeps its snapshot). The
+time zone and retention days are in the Site settings page (`GET/PATCH /api/v1/site-settings`).
+
 ## Useful addresses
 
 | Address | What |

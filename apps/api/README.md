@@ -31,7 +31,9 @@ Checked at boot: the app refuses to start and lists every bad variable.
 | `JOBS` | `on` (default) or `off`: whether this process runs background jobs (the camera offline check, every 5 s) |
 | `MODELS_DIR` | default `/data/models`: the AI models folder (`inbox/`, `registry/`, built-ins in the root), shared with the engine |
 | `MODEL_UPLOAD_MAX_BYTES` | default 1 GiB: the largest ONNX file the web upload accepts |
-| `SITE_TIMEZONE` | default `Asia/Jakarta`: the IANA zone report buckets and CSV times use (`Region/City` form) |
+| `EVIDENCE_DIR` | default `/data/evidence`: kept clips (`<camera>/<date>/<event>.mp4`), written by the pin job |
+| `EXPORTS_DIR` | default `/data/exports`: finished PDF reports |
+| `GOTENBERG_URL` | optional http(s) URL of Gotenberg; unset: `POST /exports/jobs` answers 503 `UNAVAILABLE` |
 | `SNAPSHOT_DIR` | default `/data/snapshots`: where the engine writes event JPEGs; read-only here, served at `/media/snapshots/...` |
 | `MEDIAMTX_PLAYBACK_URL` | optional http(s) URL of MediaMTX's playback server; unset: `/media/clips/:eventId` answers `RECORDING_NOT_AVAILABLE` |
 
@@ -56,6 +58,9 @@ All under `/api/v1` unless noted; the roles are in `docs/fe-contract.md`. Every 
 | Reports | `GET /reports/events/stats`, `/reports/intervals/stats`, `/reports/metrics/series` |
 | Lists | `GET /events`, `GET /intervals` (cursor paged) |
 | CSV | `GET /exports/events.csv`, `intervals.csv`, `metrics.csv`, `summary.csv` (streamed, audited) |
+| PDF | `POST /exports/jobs`, `GET /exports/jobs`, `GET /exports/jobs/:id/file` (background jobs, own jobs only) |
+| Site settings | `GET /site-settings`, `PATCH /site-settings` (SUPERADMIN): name, time zone, retention days |
+| Evidence | `POST /events/:id/evidence` (MANAGER+): keep an event's clip |
 | System log (MANAGER+) | `GET /system-log/audit`, `/logins`, `/system-events` and their `.csv` |
 | Media (`/media`, outside `/api/v1`) | `GET /media/snapshots/<camera>/<date>/<event>.jpg`, `GET /media/clips/:eventId` |
 
@@ -117,8 +122,8 @@ node dist/cli.js demo-feed --backfill-days 14                    # plays the eng
 
 `demo-seed` refuses unless `ZOO_DEMO=on`, so known-password users cannot appear on a real site by accident, and
 refuses a `DEMO_PASSWORD` shorter than 10 characters. It is idempotent: existing users and cameras are skipped.
-`demo-feed` reads `REDIS_URL`, `API_URL`, `ENGINE_TOKEN`, `SNAPSHOT_DIR`, `SITE_TIMEZONE` and `DEMO_SEED`
-(default 42), writes the history once per Redis volume (key `demo:backfilled`) and stops cleanly on SIGINT.
+`demo-feed` reads `REDIS_URL`, `API_URL`, `ENGINE_TOKEN`, `SNAPSHOT_DIR` and `DEMO_SEED` (default 42; its fake
+opening hours use `Asia/Jakarta`), writes the history once per Redis volume (key `demo:backfilled`) and stops cleanly on SIGINT.
 
 ## Smoke check
 
