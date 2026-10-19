@@ -246,6 +246,7 @@ services:
       - DEVICE=cuda:0
       - ZOO_MODELS_DIR=/app/models
       - SNAPSHOT_DIR=/app/snapshots
+      - SNAPSHOT_RETENTION_DAYS=0 # the API's RetentionJob owns snapshot retention (kept events, audit cameras); the engine's own pruner would cap it at 30 days
 
 volumes:
   pgdata:
