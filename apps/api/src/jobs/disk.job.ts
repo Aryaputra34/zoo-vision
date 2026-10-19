@@ -12,7 +12,7 @@ import { ENV, type Env } from '../config/env';
 import { ContractsService } from '../contracts/contracts.service';
 import { LiveGateway } from '../live/live.gateway';
 import { PrismaService } from '../prisma/prisma.service';
-import { type Level, nextLevel } from './disk-levels';
+import { type Level, nextLevel, usedPercent } from './disk-levels';
 
 const INTERVAL_NAME = 'disk-job';
 const TICK_MS = 5 * 60_000;
@@ -21,8 +21,8 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
  * Warns before a disk fills: a `disk_low` system event and a `disk.warning` message for the
- * managers when a disk crosses 85% (warning) or 95% (critical). Warnings only; MediaMTX still
- * deletes recordings by age. The level per disk lives in memory, so after a restart a disk that is
+ * managers when a disk crosses 85% (warning) or 95% (critical). Warnings only: the recordings
+ * go by age (MediaMTX) or, at 95%, by {@link SpaceGuardJob}. The level per disk lives in memory, so after a restart a disk that is
  * still full warns once more.
  */
 @Injectable()
@@ -96,23 +96,18 @@ export class DiskJob implements OnModuleInit, OnModuleDestroy {
     seen.add(dev);
 
     const fs = await statfs(path);
-    const used = fs.blocks - fs.bfree;
-    const usedPercent =
-      used + fs.bavail > 0 ? round1((used / (used + fs.bavail)) * 100) : 0;
+    const percent = usedPercent(fs);
     const freeBytes = Math.round(fs.bavail * fs.bsize);
     if (!this.logged.has(dev)) {
       this.logged.add(dev);
       this.log.log(
-        `disk of ${path}: ${usedPercent}% used, ${round1(freeBytes / 1e9)} GB free`,
+        `disk of ${path}: ${percent}% used, ${round1(freeBytes / 1e9)} GB free`,
       );
     }
 
-    const { level, crossed } = nextLevel(
-      this.levels.get(dev) ?? 'ok',
-      usedPercent,
-    );
+    const { level, crossed } = nextLevel(this.levels.get(dev) ?? 'ok', percent);
     if (crossed) {
-      const data = { path, usedPercent, freeBytes };
+      const data = { path, usedPercent: percent, freeBytes };
       const time = new Date();
       await this.prisma.event.create({
         data: {

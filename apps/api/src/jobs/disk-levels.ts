@@ -27,3 +27,18 @@ export function nextLevel(
   const held = levelAt(usedPercent, HOLD);
   return { level: RANK[held] < RANK[prev] ? held : prev, crossed: null };
 }
+
+/**
+ * Share of the disk in use as `df` shows it, one decimal: `bavail` (what an unprivileged process
+ * may still write), not `bfree`, so blocks reserved for root do not count as free.
+ */
+export function usedPercent(fs: {
+  blocks: number;
+  bfree: number;
+  bavail: number;
+}): number {
+  const used = fs.blocks - fs.bfree;
+  return used + fs.bavail > 0
+    ? Math.round((used / (used + fs.bavail)) * 1000) / 10
+    : 0;
+}

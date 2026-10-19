@@ -28,7 +28,7 @@ const EXPORT_DAYS = 7;
 const PART_STALE_MS = HOUR_MS;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** `zv_<id>` and `zv_<id>_sub`, the MediaMTX paths the API creates; `feed_*` and the rest never match. */
-const RECORDED = /^zv_([A-Za-z0-9_-]+?)(_sub)?$/;
+export const RECORDED = /^zv_([A-Za-z0-9_-]+?)(_sub)?$/;
 
 type Counts = { deleted: number; failed: number; error?: string };
 
@@ -313,7 +313,7 @@ export class RetentionJob implements OnModuleInit, OnModuleDestroy {
 }
 
 /** Sub-folder names of `path`; a folder that does not exist yet has none. Symlinks are not followed. */
-async function dirs(path: string): Promise<string[]> {
+export async function dirs(path: string): Promise<string[]> {
   try {
     return (await readdir(path, { withFileTypes: true }))
       .filter((d) => d.isDirectory())
