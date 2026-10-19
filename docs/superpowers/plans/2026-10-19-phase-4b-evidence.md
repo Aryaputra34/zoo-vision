@@ -148,6 +148,8 @@ contract polish items left for `contract-v1.0`.
 
 Fresh session per block (memory `model-split-and-session-cost`). Each session starts by reading this plan, the
 spec, and `git log --oneline main..` (trust git, not the checkboxes).
+If a session's context gets long (many fix rounds), commit the finished task and continue in a new session;
+`git log --oneline main..` shows where to resume.
 
 | Session | Tasks | Ends with |
 |---|---|---|
