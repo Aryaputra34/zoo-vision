@@ -10,6 +10,8 @@ import { ENV, type Env } from '../config/env';
 const REFRESH_MS = 60_000;
 /** While no address is known (Caddy starts after the API), ask again soon: nothing is trusted meanwhile. */
 const RETRY_MS = 2_000;
+/** An untrusted peer asks for a fresh lookup at most this often (the proxy may have a new address since the last one). */
+const PEER_REFRESH_MS = 10_000;
 
 /** Every address a name resolves to. */
 export type Lookup = (host: string) => Promise<string[]>;
@@ -22,17 +24,29 @@ const plain = (addr: string): string => addr.replace(/^::ffff:/i, '');
 
 /**
  * The addresses `host` resolves to, re-resolved every minute (a container gets a new address when
- * it is recreated). A failed lookup keeps the last list; before the first success the list is
- * empty, so nothing is trusted and `req.ip` stays the socket address.
+ * it is recreated), and again, at most every 10 s, when a request comes from an address that is not
+ * in the list: that request is still untrusted, later ones see the new list. A failed lookup keeps
+ * the last list; before the first success the list is empty, so nothing is trusted and `req.ip`
+ * stays the socket address.
  */
-export function trustedProxy(host: string, lookup: Lookup = dnsLookup) {
+export function trustedProxy(
+  host: string,
+  lookup: Lookup = dnsLookup,
+  now: () => number = Date.now,
+) {
   let addresses = new Set<string>();
+  let startedAt = now(); // the first lookup is the caller's: onModuleInit
+  let inFlight = false;
 
   const refresh = async (): Promise<void> => {
+    startedAt = now();
+    inFlight = true;
     try {
       addresses = new Set((await lookup(host)).map(plain));
     } catch {
       // keep the last list
+    } finally {
+      inFlight = false;
     }
   };
   let timer: NodeJS.Timeout | undefined;
@@ -49,8 +63,12 @@ export function trustedProxy(host: string, lookup: Lookup = dnsLookup) {
 
   return {
     // A socket that already closed has no address: Express hands that over as undefined
-    trust: (addr: string | undefined): boolean =>
-      typeof addr === 'string' && addresses.has(plain(addr)),
+    trust: (addr: string | undefined): boolean => {
+      if (typeof addr !== 'string') return false;
+      if (addresses.has(plain(addr))) return true;
+      if (!inFlight && now() - startedAt >= PEER_REFRESH_MS) void refresh();
+      return false;
+    },
     refresh,
     stop: (): void => {
       stopped = true;

@@ -17,6 +17,10 @@ export class CsvResponder {
     req: Request,
     res: Response,
   ): Promise<void> {
+    // before the audit await: a client that leaves meanwhile must not miss its close event
+    const gone = new AbortController();
+    res.once('close', () => gone.abort());
+
     // the interceptor only audits writes, so an export records itself
     await this.audit.record({
       actorType: actor.type,
@@ -27,10 +31,6 @@ export class CsvResponder {
       after: { kind: csv.kind, filters: csv.filters },
       ip: req.ip,
     });
-
-    // the client closing the tab ends the response: stop reading batches at once
-    const gone = new AbortController();
-    res.once('close', () => gone.abort());
 
     await streamCsv(res, csv.header, csv.batches, gone.signal, {
       'Content-Type': 'text/csv; charset=utf-8',

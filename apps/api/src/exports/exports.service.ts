@@ -129,11 +129,11 @@ export class ExportsService {
     };
   }
 
-  /** `<kind>-<from date>-<to date>.csv`, the dates on the site's wall clock. */
+  /** `<kind>-<first day>-<last day>.csv`, the days on the site's wall clock; `to` is exclusive, so the last day is the one containing `to − 1 ms`. */
   filename(kind: string, range: Range): string {
     const local = localDateTime(this.settings.timeZone);
     const day = (at: Date) => local(at).slice(0, 10);
-    return `${kind}-${day(range.from)}-${day(range.to)}.csv`;
+    return `${kind}-${day(range.from)}-${day(new Date(range.to.getTime() - 1))}.csv`;
   }
 
   private async *eventBatches(
