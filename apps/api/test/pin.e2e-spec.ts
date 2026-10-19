@@ -134,6 +134,17 @@ describe('PinJob: kept clips', () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
+  it('404 on zv_<id> and 400 on a never-recorded zv_<id>_sub (MediaMTX 1.21) → NO_RECORDING, not a retry', async () => {
+    await start();
+    await queue('evt_400');
+    answer = (path) => (path.endsWith('_sub') ? 400 : 404);
+    await tick();
+    expect(await row('evt_400')).toMatchObject({
+      status: 'NO_RECORDING',
+      attempts: 0,
+    });
+  });
+
   it('camera now records SUB: 404 on zv_<id>_sub, 200 on zv_<id> → KEPT', async () => {
     await start();
     await ownerQuery(

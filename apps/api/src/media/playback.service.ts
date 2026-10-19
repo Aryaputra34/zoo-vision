@@ -119,8 +119,12 @@ export class PlaybackService {
     if (!upstream.ok || !upstream.body) {
       signal.removeEventListener('abort', onAbort);
       await upstream.body?.cancel().catch(() => undefined);
-      // 404 is how MediaMTX says "nothing recorded for that time": normal, not a fault
-      if (upstream.status === 404) return { ok: false, reason: 'NOT_FOUND' };
+      // 404 is how MediaMTX says "nothing recorded for that time": normal, not a fault. So is 400 for a
+      // path that was never recorded ("not configured", no folder): our own parameters are always valid
+      // (found on the laptop run: the other of MAIN/SUB answered 400, and a pin retried it for hours)
+      if (upstream.status === 404 || upstream.status === 400) {
+        return { ok: false, reason: 'NOT_FOUND' };
+      }
       this.log.warn(`playback ${host} answered ${upstream.status}`);
       return { ok: false, reason: 'UNAVAILABLE' };
     }
