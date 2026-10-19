@@ -63,6 +63,12 @@ Three fixed roles, `SUPERADMIN` > `MANAGER` > `USER`:
 | Users (not superadmins), models list | | yes | yes |
 | Camera source URLs, model, tracker tuning, `engineGroup`, use case, `auditCamera`, recording settings | | | yes |
 | Create or delete a camera; superadmin accounts; API tokens; model upload, rescan, validate, convert, delete | | | yes |
+| Read the site settings (`GET /site-settings`) | yes | yes | yes |
+| Keep the clip of an event (`POST /events/:id/evidence`) | | yes | yes |
+| Edit the site settings (`PATCH /site-settings`) | | | yes |
+
+The camera field `recording.evidenceRetentionDays` is a recording setting, so only SUPERADMIN changes it. PDF jobs
+(section 10) are open to every role; each user sees only their own.
 
 **401** means there is no session (or it ended): go to `/login`. **403** means the role is too low: show the
 `message`, and for `ROLE_REQUIRED` mark the fields named in `errors`. Hiding menu items is a convenience; the
@@ -177,6 +183,10 @@ two, for up to a minute) for the same two fields.
   whether MediaMTX paths are active, detected codecs and bitrates, any browser playback warning (e.g. H.265
   `codec_not_browser_native`), and daily disk usage estimate. 503 `UNAVAILABLE` when MediaMTX is not reachable.
 
+`stream-info` also carries `evidenceBytes` and `evidenceCount`: the size and the number of this camera's kept clips
+(section 11), for a storage line next to the recording estimate. The camera view's `recording` object gains
+`evidenceRetentionDays`: how many days this camera's kept clips live, `null` for the site default.
+
 `status` is `{state, fps, lastFrameAt, appliedVersion, configError, restarts, live, updatedAt}`; times are epoch
 **milliseconds**. `live` holds the use case's current values and is typed per use case in the types file
 (`vehicle_gate.VehicleGateLive`, `horse_riding.HorseRidingLive`, `cashier_presence.CashierPresenceLive`,
@@ -193,8 +203,9 @@ Three aggregate endpoints, any role. They share these parameters:
 | `useCase` | One use case id |
 | `bucket` | `5m`, `15m`, `hour` or `day` |
 
-**Buckets follow the site's wall clock**, not UTC: the site time zone is `SITE_TIMEZONE` (default
-`Asia/Jakarta`, until `SiteSettings` arrives in Phase 4). A `day` bucket starts at local midnight, an `hour` at local
+**Buckets follow the site's wall clock**, not UTC: the site time zone is `timeZone` of
+`GET /api/v1/site-settings` (default `Asia/Jakarta`; a SUPERADMIN changes it there, with no restart). Load it once
+after login and format every time with it. A `day` bucket starts at local midnight, an `hour` at local
 `:00`. `bucketStart` is the bucket's start as a UTC string with milliseconds: for Jakarta the day of 14 October is
 `2026-10-13T17:00:00.000Z`. Compare it with `new Date(...)`, do not slice the string.
 
@@ -300,9 +311,17 @@ reports (for intervals the range is on `start`), plus:
   `types` / `kind` names one. Camera downtime is `GET /intervals?useCase=system&kind=camera_offline`.
 
 An event row: `{id, time, cameraId, cameraName, useCase, type, severity, configVersion, data, snapshotUrl,
-clipUrl}`. `snapshotUrl` is null when the event has no snapshot (the demo's 14 days of history have none). `clipUrl`
-is null when the camera has no recording path or recording is off; the clip itself can still be gone (section 11).
-Both are paths on your own origin: use them as they are, in `<img src>` and `<video src>`.
+clipUrl, evidence}`. `snapshotUrl` is null when the event has no snapshot (the demo's 14 days of history have none).
+`clipUrl` is null when the camera has no recording path or recording is off, unless the clip is kept; the clip
+itself can still be gone (section 11). Both are paths on your own origin: use them as they are, in `<img src>` and
+`<video src>`.
+
+`evidence` is `{status, reason} | null`: the kept-clip row of the event, `null` when none exists. `status` is
+`QUEUED` (the copy is not made yet, normally within a few minutes), `KEPT` (the clip is stored and plays with byte
+ranges), `NO_RECORDING` (there was no recording to copy) or `FAILED` (the copy kept failing, for about 4 hours).
+`reason` is `SEVERITY` (warning and critical events are kept on their own), `AUDIT_CAMERA` (every event of an audit
+camera) or `USER` (someone pressed keep). A kept clip lives for the camera's `evidenceRetentionDays`, or the site's
+(365 by default); its snapshot stays as long.
 
 An interval row: `{id, cameraId, cameraName, useCase, kind, subjectId, start, end, endReason, durationSec, data}`.
 `end` and `durationSec` are null while it is open.
@@ -321,7 +340,7 @@ reports a failed download; a truncated file is never delivered as if it were com
 |---|---|
 | Encoding | UTF-8 with a byte order mark (Excel opens it correctly), lines end in CRLF |
 | Times | `YYYY-MM-DD HH:mm:ss` in the **site time zone**, not UTC |
-| File name | `<kind>-<from date>-<to date>.csv`, dates in the site time zone |
+| File name | `<kind>-<from date>-<to date>.csv`, dates in the site time zone; the last date is the last day **included** (a `to` of `2026-10-08T00:00:00+07:00` gives `...-2026-10-07.csv`) |
 | A text starting with `=`, `+`, `-`, `@` | gets a leading `'`, so a spreadsheet does not run it as a formula |
 | Audit | every export writes one audit row (`export.csv`) with the filters, before any data is sent |
 
@@ -343,6 +362,24 @@ Columns:
 - Row order: `events.csv` and `intervals.csv` oldest first; `metrics.csv` by camera, metric name, then minute.
 - A bad filter is a normal JSON error (400) before the download starts.
 
+### PDF summaries
+
+A PDF is made in the background, so it has jobs. Any role; a job belongs to the user who made it, and every call
+below sees only the caller's own jobs.
+
+| Call | Answer |
+|---|---|
+| `POST /api/v1/exports/jobs` `{period, date, cameraIds?, useCase?}` | 202 with the job. `period` is `day`, `week` or `month`; `date` is a local date `YYYY-MM-DD` on the site time zone (the day, the first day of the week, or any day of the month); `cameraIds` at most 50 |
+| `GET /api/v1/exports/jobs` | the caller's jobs, newest first, at most 50 |
+| `GET /api/v1/exports/jobs/:id/file` | the PDF as an attachment (`application/pdf`, `Cache-Control: no-store`). 404 `NOT_FOUND` when the job is not finished, not the caller's, or `id` is not a uuid |
+
+A job is `{id, params, status, error, sizeBytes, createdAt, finishedAt, fileUrl}`. `status` is `QUEUED`, `DONE`,
+`FAILED` or `EXPIRED`; `fileUrl` is set when `DONE`. A queued job is picked up within seconds and takes a few
+seconds to print: poll the list every 3 s while one is `QUEUED`. A failing job is retried after 1, 2 and 4 minutes,
+then it is `FAILED` and `error` says why in a few words. A finished file is deleted after 7 days and the job becomes
+`EXPIRED`. Without a PDF service (no Gotenberg configured), creating a job is **503 `UNAVAILABLE`**. Each created
+job writes one `export.pdf` audit row.
+
 ## 11. Media
 
 Both need the session, like every other call. They live under `/media`, outside `/api/v1`: use the URLs from the
@@ -351,7 +388,8 @@ event rows. Asking for `/api/v1/media/...` is a 404.
 | Call | Answer |
 |---|---|
 | `GET /media/snapshots/<camera>/<date>/<event>.jpg` | `image/jpeg`, `Cache-Control: private, max-age=86400`. 404 `NOT_FOUND` when the file is missing |
-| `GET /media/clips/<eventId>` | `video/mp4`, the recording from `clipBeforeSec` before the event to `clipAfterSec` after it |
+| `GET /media/clips/<eventId>` | `video/mp4`, the recording from `clipBeforeSec` before the event to `clipAfterSec` after it; for a **kept** clip the stored file, with byte ranges |
+| `POST /api/v1/events/<eventId>/evidence` | MANAGER and up: keep this event's clip. 200 `{eventId, status, reason}`; a repeat returns the same row, a `FAILED` or `NO_RECORDING` one is queued again. 404 `NOT_FOUND` for an unknown event, 404 `RECORDING_NOT_AVAILABLE` for an event without a camera |
 | `POST /media/webrtc/<path>/whep` | WHEP session setup for WebRTC live video; forwarded to MediaMTX via Caddy `forward_auth` |
 | `GET /media/debug/:id` | `multipart/x-mixed-replace`, live MJPEG stream with inference boxes, SUPERADMIN only |
 
@@ -367,9 +405,13 @@ event rows. Asking for `/api/v1/media/...` is a 404.
   unknown event id is `NOT_FOUND`.
 - While the clip's end is still in the future (`time + clipAfterSec`), the answer is `Cache-Control: no-store`;
   afterwards `private, max-age=3600`.
-- The clip is generated and streamed, without byte-range support: a `<video>` element plays it, but seeking inside
-  it is limited until it has been downloaded, and **Safari insists on byte ranges** and may refuse it. If Safari
-  must be supported, tell the backend developer.
+- An unkept clip is generated and streamed, without byte-range support: a `<video>` element plays it, but seeking
+  inside it is limited until it has been downloaded, and **Safari insists on byte ranges** and may refuse it.
+  A **kept** clip (`evidence.status` `KEPT`, section 9) is a file: it answers `Range` requests with 206 and plays
+  and seeks in every browser, Safari included. So only kept clips seek in Safari; for the rest offer "keep
+  evidence" (`POST /events/:id/evidence`). Warning and critical events and all events of audit cameras are kept on
+  their own. A kept clip is cached `private, max-age=3600`; if its file is gone the API falls back to the
+  recording, then to 404.
 - The demo stack has no recordings: every clip is `RECORDING_NOT_AVAILABLE`. Build that state in the UI.
 
 ## 12. WebSocket
@@ -388,7 +430,7 @@ const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io({
 ```
 
 `ServerToClientEvents` and `ClientToServerEvents` are in `generated/web/index.d.ts`, with every message type
-(`EventCreated`, `DataChanged`, `StatusSnapshot`, `AuditNotice`, `SessionEnded`, `Subscribe`, `Unsubscribe`).
+(`EventCreated`, `DataChanged`, `StatusSnapshot`, `AuditNotice`, `DiskWarning`, `SessionEnded`, `Subscribe`, `Unsubscribe`).
 
 **The rule:** the socket only says "something changed" or carries small live values. REST stays the source of
 truth. There is no replay: after **every** connect or reconnect, refetch what the page shows. A missed message can
@@ -411,6 +453,7 @@ never leave a page wrong.
 | `status` | on request | `status.snapshot` `{at, cameras: {<id>: status \| null}}` | every 2 s while someone is in the room; `null` is an offline camera |
 | `camera:<id>` | on request | `boxes` `{t, sentAt, boxes}` | up to 10/s while someone is in the room. Real-time inference boxes (coords 0–1, `t` capture ms, `sentAt` wall ms, `trackId` nullable) |
 | `managers` | MANAGER and SUPERADMIN, joined at connect | `audit.notice` `{auditId, cameraId, actorName, action, time}` | a camera with `auditCamera` set was changed (section 13) |
+| `managers` | MANAGER and SUPERADMIN | `disk.warning` `{path, usedPercent, freeBytes, severity, time}` | a disk used by recordings, snapshots, kept clips or exports crossed 85% (`warning`) or 95% (`critical`): once per crossing, not again until the disk falls two points below that level |
 | (own sockets) | the affected user | `session.ended` `{reason}` | just before the server disconnects the socket |
 
 Client to server: `socket.emit('subscribe', {rooms: ['status', 'camera:cam_01']}, ack)` and `unsubscribe`. Rooms
@@ -418,6 +461,9 @@ available for subscription are `status` and `camera:<id>`. The ack is `{ok: true
 Subscribing to `camera:<id>` keeps `cam:<id>:active` alive in Redis so the engine publishes boxes. Subscribe again after
 a reconnect.
 
+- `disk.warning` is for a banner: it carries the numbers, nothing to refetch. A `critical` one may be followed by
+  the API deleting the oldest recordings (older than 1 hour) until the disk is under 90%; kept clips, snapshots and
+  exports are never deleted for space. Nothing in the contract changes for that.
 - `event.created` is for alerts (a toast, the bell). Do not build tables from it: refetch on `data.changed`.
   `data.changed` says which `cameraIds`, `useCases` and `shapes` changed so a page can ignore the rest.
 - `status.snapshot` carries what `GET /cameras/:id/status` returns for every camera, so the Live tiles and
@@ -473,6 +519,10 @@ For MANAGER and SUPERADMIN. A USER gets 403 `FORBIDDEN` on every route here.
 `data {modelId, name, error}`, severity `warning`, `cameraId` null. It is **not** pushed over the WebSocket: the
 System events page loads it over REST.
 
+`disk_low` is written by the API too: `data {path, usedPercent, freeBytes}`, severity `warning` at 85% used and
+`critical` at 95%, `cameraId` null; one per disk and crossing. The `managers` room gets the same numbers as
+`disk.warning` (section 12); the event is the record that stays.
+
 ### Audit cameras
 
 A camera with `auditCamera` set is one whose changes managers want to be told about. A change to it (camera
@@ -488,6 +538,23 @@ as `audit.notice` (`AuditNotice` in the types file). Show a toast; `auditId` is 
 MANAGER and SUPERADMIN sockets are in `managers`: a USER never receives it.
 
 ## 14. Changelog
+
+### v0.6
+
+- New: `GET /api/v1/site-settings` (any role) and `PATCH /api/v1/site-settings` (SUPERADMIN): `{siteName, timeZone, recordingRetentionDays, snapshotRetentionDays, auditSnapshotRetentionDays, evidenceRetentionDays}`. The site time zone now comes from here; the `SITE_TIMEZONE` setting is gone.
+- New: `POST /api/v1/events/:id/evidence` (MANAGER): keep an event's clip (section 11).
+- Event rows: new `evidence: {status, reason} | null` (section 9); `clipUrl` stays set for a kept clip.
+- New: `POST /api/v1/exports/jobs` (202), `GET /api/v1/exports/jobs`, `GET /api/v1/exports/jobs/:id/file`: PDF summaries as background jobs, statuses `QUEUED`, `DONE`, `FAILED`, `EXPIRED`, a user's own jobs only (another user's job or an id that is not a uuid is 404), 503 `UNAVAILABLE` without a PDF service, files expire after 7 days (section 10). Operation ids `exportJobsCreate`, `exportJobsList`, `exportJobsFile`.
+- Camera view and save: new `recording.evidenceRetentionDays` (`null` = site default); SUPERADMIN only.
+- `stream-info`: new `evidenceBytes` and `evidenceCount`.
+- System events: new type `disk_low` (section 13).
+- WebSocket: new message `disk.warning` in the `managers` room (section 12).
+- `/media/clips/:eventId`: kept clips answer byte ranges (206); the Safari note in section 11 is rewritten: only kept clips seek in Safari.
+- CSV file names: **changed:** the last date is now inclusive (`events-2026-10-01-2026-10-07.csv` for a range ending at midnight after the 7th); it was the exclusive end date.
+- Debug view: the line "up to 15 frames per second" in section 11 was corrected after v0.5 went out; this tag carries the corrected text.
+- Deployment: `ZOO_SITE_TIMEZONE` is removed; new `EVIDENCE_DIR`, `EXPORTS_DIR` and `ZOO_GOTENBERG_URL` (`deploy/README.md`).
+- New migration `phase_4b` (`SiteSettings`, `Evidence`, `ExportJob`, `Camera.evidenceRetentionDays`; `Camera.recordingPath` dropped).
+- No other breaking change to v0.5.
 
 ### v0.5
 
