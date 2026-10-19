@@ -9,7 +9,7 @@ import { App } from 'supertest/types';
 import { createTestApp, listenTestApp } from './app';
 import { asRole } from './helpers/auth';
 import { addCamera, addEvent } from './helpers/analytics';
-import { flushRedis, resetDb } from './setup/db';
+import { flushRedis, ownerQuery, resetDb } from './setup/db';
 
 const JPEG = Buffer.from([
   0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0xff, 0xd9,
@@ -269,6 +269,29 @@ describe('/media', () => {
       expect(seen[0].auth).toBe(
         `Basic ${Buffer.from(`zoo:${MEDIAMTX_PASSWORD}`).toString('base64')}`,
       );
+    });
+
+    it('GET /media/clips/:id for a camera that switched to SUB plays from zv_<id> (I5)', async () => {
+      // the event was recorded on MAIN; the camera records the sub stream since
+      await ownerQuery(
+        `UPDATE "Camera" SET "subStreamUrlEnc" = 'enc', "recordingStream" = 'SUB' WHERE "id" = 'rec'`,
+      );
+      answer = (_req, res, entry) => {
+        const switched = entry.url.searchParams.get('path') === 'zv_rec_sub';
+        res.writeHead(switched ? 404 : 200, { 'Content-Type': 'video/mp4' });
+        res.end(switched ? undefined : MP4);
+      };
+      try {
+        await get('/media/clips/evt_old').expect(200);
+        expect(seen.map((r) => r.url.searchParams.get('path'))).toEqual([
+          'zv_rec_sub',
+          'zv_rec',
+        ]);
+      } finally {
+        await ownerQuery(
+          `UPDATE "Camera" SET "subStreamUrlEnc" = NULL, "recordingStream" = 'MAIN' WHERE "id" = 'rec'`,
+        );
+      }
     });
 
     it('no-store for an event whose clip end is in the future', async () => {
