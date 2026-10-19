@@ -170,7 +170,24 @@ disk counted once (by device id).
   points below it. The state is in memory: after an API restart a disk that is still full warns once more.
 - The same moment sends `disk.warning {path, usedPercent, freeBytes, severity, time}` to the `managers` WebSocket
   room, as `audit.notice` does; the web shows a banner.
-- Warnings only: MediaMTX still deletes recordings by age, not by free space.
+- The warnings only warn. The one thing that frees space by itself is the free-space guard below.
+
+### Free-space guard (recordings only)
+
+`SpaceGuardJob`, every 5 minutes, in the `JOBS=on` process. When the disk of `RECORDINGS_DIR` is **95%** used or
+more, it deletes recording segments oldest first (by modification time) until the disk is below **90%**, or until
+nothing eligible is left. Eligible: files in `zv_<id>` and `zv_<id>_sub` folders (the cameras that exist and the
+deleted ones) **older than 1 hour**. The hour keeps the segment MediaMTX is still writing and the footage a pending
+pin still needs (a pin runs at most about 4 hours after its event, but the first attempt comes within minutes).
+Never touched: kept clips, snapshots, export files, `feed_*` and any other folder, and the database. If the disk is
+still at 95% when nothing eligible is left, the job logs it once per pass; the `critical` `disk_low` event already
+told the managers.
+
+Why recordings only: they are the one thing already bounded by age and replaceable (a camera records again at once);
+kept clips are deliberate evidence, and deleting them by space would silently undo "keep". Cost: with a small disk
+or many cameras the recordings can be shorter than `recordingRetentionDays`. The guard changes no contract: the
+managers see the same `disk_low` and `disk.warning`, and the API logs how many files and bytes each pass freed.
+Thresholds are fixed in code (95 to 90), like the warning levels.
 
 ### Retention indexes (Phase 3 performance items)
 
@@ -291,6 +308,7 @@ No test-first steps: each task ends with one focused test where the logic is ris
 | Clip serving | a kept clip answers a `Range` request with 206; without one the playback stream is unchanged |
 | Retention job (temp folders) | expired snapshot folders go, evidence-protected files stay; only `zv_*` folders of deleted cameras are swept, `feed_*` never; a lowered camera retention removes that camera's older clips |
 | Disk job | the crossing and re-arm logic, as a pure function |
+| Space guard | at 96% the oldest `zv_*` segments go until under 90%; nothing at 94%; files under 1 hour old, `feed_*`, evidence, snapshots stay |
 | Site settings | a zone change shows in the next CSV without a restart; only SUPERADMIN may PATCH |
 | PDF (fake Gotenberg) | the job reaches `DONE`; a camera name with `<script>` is escaped in the HTML; another user's file is 404 |
 | Indexes | the `EXPLAIN` check in the plan |
@@ -314,6 +332,7 @@ No test-first steps: each task ends with one focused test where the logic is ris
 4. **Per-camera evidence retention** (`Camera.evidenceRetentionDays`) next to the site default; lowering it is the
    cleaning tool.
 5. **Database row retention is parked**: the API's role can not delete analytics rows, and no data is old enough.
-6. **Disk warnings are warnings only**: no deleting of recordings by free space.
+6. **Disk warnings warn; a free-space guard trims recordings only**: at 95% used it deletes the oldest recording
+   segments (older than 1 hour) down to 90%. Kept clips, snapshots and exports are never deleted by space.
 7. **Unkept clips still have no byte ranges**; keeping a clip is the way to play it in Safari.
 8. **New:** `SiteSettings` (with `siteName`), `Evidence`, `ExportJob`, `disk_low`, `disk.warning`.

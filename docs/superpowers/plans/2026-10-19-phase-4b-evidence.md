@@ -4,14 +4,14 @@
 
 **Goal:** Important events keep their clip after the continuous recording rolls over, and a kept clip plays with
 byte ranges (Safari). Snapshots, kept clips, export files and the recordings of deleted cameras are cleaned on
-schedule; the disk warns at 85% and 95%. A PDF summary is made in the background through Gotenberg. The site's
+schedule; the disk warns at 85% and 95%, and at 95% the oldest recordings go down to 90%. A PDF summary is made in the background through Gotenberg. The site's
 time zone and retention defaults live in a `SiteSettings` row edited in the web UI. Ends with tag `contract-v0.6`.
 
 **Architecture:** One migration adds `SiteSettings`, `Evidence`, `ExportJob` and `Camera.evidenceRetentionDays`.
 A global `SiteSettingsService` holds the row in memory and replaces `env.SITE_TIMEZONE` everywhere. Ingest adds an
 `Evidence` row in the event's transaction; a pin tick (10 s, `JOBS=on`) copies the clip from MediaMTX playback into
 `EVIDENCE_DIR` through one playback function shared with the live clip route. `RetentionJob` (hourly), `DiskJob`
-(5 min) and the PDF tick (5 s) follow `OfflineJob`'s pattern: Postgres rows, a `running` flag, a public `tick()`.
+(5 min), `SpaceGuardJob` (5 min) and the PDF tick (5 s) follow `OfflineJob`'s pattern: Postgres rows, a `running` flag, a public `tick()`.
 
 **Tech Stack:** as in Phase 4a (Node 22, NestJS 11, Express 5, Prisma 7, ioredis, socket.io, ajv, Jest + supertest
 + Testcontainers), MediaMTX 1.21.1 playback, Gotenberg 8 (`/forms/chromium/convert/html`). No new npm
@@ -57,6 +57,7 @@ is `D:\WORK\zoo-analytics-web\docs\superpowers\plans\2026-10-19-phase-4b-evidenc
   | PDF tick | every 5 s, one due job; Gotenberg call 60 s; retry after 1, 2, 4 min, then `FAILED` |
   | Retention | hourly, first pass 60 s after start; export files live 7 days |
   | Disk | every 5 min; warning ≥ 85%, critical ≥ 95%; a level re-arms below level − 2 points |
+| Space guard | every 5 min; recordings disk ≥ 95% used → delete `zv_*` files older than 1 h, oldest first, until < 90% |
   | Export job list | the caller's own, newest first, at most 50 |
   | Kept clip cache | `Cache-Control: private, max-age=3600` |
 
@@ -96,6 +97,11 @@ The user should confirm these when reviewing the plan.
 12. **PDF column labels** are the use case schema's `$defs[<type or kind>].title` when the loaded contract has it,
     else the key, followed by the unit (`(jumlah)`, `(detik)`, `avg`, `max`); totals cover only `events.*` and
     `intervals.*` columns (a sum of averages means nothing).
+13. **Free-space guard (added after Session B; spec section 3).** Recordings only, at 95% to 90%, files older than
+    1 hour, oldest by `mtime` first, across all `zv_*` folders. It has no database access and needs no site
+    settings. It adds no contract item, no event and no WebSocket message: the existing `critical` `disk_low` is the
+    notice. MediaMTX should tolerate segments removed under it; the "Rolled over" laptop run, which deletes segments
+    by hand, checks that.
 
 ## Follow-ups (memories `phase-4a-followups`, `phase-3-followups`)
 
@@ -113,7 +119,7 @@ The user should confirm these when reviewing the plan.
 | `fe-contract.md` debug-fps line changed after v0.5 | Task 11 (changelog) |
 
 Parked by the spec: `pubsub.ts` failure handler, `debug_frames.py` on Redis failure, one shared box geometry schema,
-database row retention, deleting recordings by free space. Still parked from earlier phases: the `StreamManager`
+database row retention, deleting anything but recordings by free space. Still parked from earlier phases: the `StreamManager`
 catch-up runaway, ANPR rebuilt synchronously, a long ONNX conversion starving workers, the orphan ONNX file, the
 contract polish items left for `contract-v1.0`.
 
@@ -129,7 +135,7 @@ contract polish items left for `contract-v1.0`.
 
 - The frontend (Exports page, Site settings page, keep button and badge, disk banner, `time.ts`): the frontend
   plan, which also holds the joint laptop run (spec section 8).
-- Pruning database rows, deleting recordings by free space, byte ranges for unkept clips, an "un-keep".
+- Pruning database rows, deleting kept clips, snapshots or exports by free space, byte ranges for unkept clips, an "un-keep".
 
 ## Review Focus
 
@@ -143,6 +149,10 @@ contract polish items left for `contract-v1.0`.
    uuid cast. Test in Task 9.
 5. **The disk goes from 80% straight to 97%, then back to 94%, then 96%.** Expected: one `critical` (no extra
    `warning`), nothing at 94%, nothing at 96% (not re-armed until below 93%). Checked by the Session B Opus review.
+6. **The space guard on a mixed folder.** Expected: only files under `zv_*` older than 1 hour go, oldest first, and
+   only while the disk is still at or above 90% (checked after every 20 files); `feed_*`, `EVIDENCE_DIR`,
+   `SNAPSHOT_DIR`, a file 59 minutes old and a symlink stay; at 94% nothing goes. Test in Task 10a; checked by the
+   Session C Opus review.
 
 ## Execution sessions
 
@@ -155,7 +165,7 @@ If a session's context gets long (many fix rounds), commit the finished task and
 |---|---|---|
 | **A: settings and evidence** | 1–4 | site settings live, events pinned, kept clips served with ranges; Opus review of Tasks 3 and 4 |
 | **B: retention and disk** | 5–7 | retention, disk warnings, the indexes decided by `EXPLAIN`; Opus review of Task 5 |
-| **C: PDF and fixes** | 8–10 | PDF jobs through Gotenberg, I8, CSV fixes; Opus review of Tasks 9 and 10 |
+| **C: PDF and fixes** | 8–10, 10a | PDF jobs through Gotenberg, I8, CSV fixes, the free-space guard; Opus review of Tasks 9, 10 and 10a |
 | **D: contract and close** | 11–12 | contract files, `fe-contract.md` v0.6, API-level laptop checks, Opus whole-branch review, tag (after the user's yes) |
 | then the frontend plan | W1–W6 | in `zoo-analytics-web`, sessions E and F |
 
@@ -177,7 +187,7 @@ apps/api/prisma/migrations/  20261019090000_phase_4b/, 20261019100000_retention_
 apps/api/src/site-settings/  site-settings.module.ts, site-settings.service.ts, site-settings.controller.ts, dto/
 apps/api/src/evidence/       evidence.module.ts, evidence.controller.ts, evidence.service.ts, pin.job.ts, safe-id.ts
 apps/api/src/media/          + playback.service.ts
-apps/api/src/jobs/           + retention.job.ts, disk.job.ts, disk-levels.ts
+apps/api/src/jobs/           + retention.job.ts, disk.job.ts, disk-levels.ts, space-guard.job.ts
 apps/api/src/exports/        + export-jobs.controller.ts, export-jobs.service.ts, pdf.job.ts, pdf/report-html.ts,
                                pdf/report-range.ts, dto/export-job.dto.ts
 packages/contracts/          usecases/system (+ disk_low), ws/server/disk.warning.schema.json, ws/examples/disk.warning/
@@ -709,8 +719,52 @@ git add apps/api
 git commit -m "fix(api): re-resolve the proxy on an untrusted peer; CSV abort before audit; inclusive last date in file names"
 ```
 
-> **Session C ends here.** Opus reviews Tasks 9 and 10 (the owner check and the uuid guard, nothing from the job's
-> params reaching the HTML unescaped, Gotenberg failures never leaving a `.part` served, the refresh rate limit).
+### Task 10a: `SpaceGuardJob`, recordings go first when the disk is nearly full
+
+Added after Session B (the user asked for a fallback when storage passes a point). Spec section 3, "Free-space
+guard". Depends on Task 5 (`RetentionJob`'s helpers) and Task 6 (the 95% level).
+
+**Files:**
+- Create: `apps/api/src/jobs/space-guard.job.ts`
+- Modify: `apps/api/src/jobs/jobs.module.ts`; `apps/api/src/jobs/retention.job.ts` (only `export` on `RECORDED` and
+  `dirs`, so the two jobs share them); `apps/api/src/jobs/{disk-levels.ts,disk.job.ts}` (the used-percent formula
+  moves to `disk-levels.ts` as `usedPercent(fs)`)
+- Test: create `apps/api/test/space-guard.e2e-spec.ts` (temp `RECORDINGS_DIR`; `node:fs/promises` `statfs` mocked
+  as in `disk.e2e-spec.ts`, but the mock derives the usage from the number of files left)
+
+**Interfaces:**
+- `SpaceGuardJob.tick(now = new Date()): Promise<void>`, every 5 min with `JOBS=on`, `running` flag, never throws,
+  scheduled like `DiskJob`. Constants `TRIGGER = 95`, `TARGET = 90`, `MIN_AGE_MS = 3_600_000`.
+- Pass: `statfs(RECORDINGS_DIR)`; below `TRIGGER` → return. Else list the files of the `zv_*` folders (`RECORDED`;
+  regular files only, through `readdir` `withFileTypes`, so symlinks are skipped) with `mtime` older than
+  `now − MIN_AGE_MS`, sort by `mtime` ascending, and delete one after another, calling `statfs` again after every
+  20 files and stopping when usage is below `TARGET`. A delete that fails (`EACCES`) is counted and skipped;
+  `ENOENT` counts as gone. Afterwards `rmdir` the emptied folders (empty only). One log line per pass that deleted
+  or failed anything: files, GiB, failures, usage before and after; if usage is still ≥ `TRIGGER` and no eligible
+  file is left, say so.
+- Nothing outside `RECORDINGS_DIR/zv_*` is read or deleted. No database access.
+
+- [ ] **Step 1: Implement**
+
+- [ ] **Step 2: Write the two tests**
+
+```ts
+it('96%: the oldest zv_* files go first until under 90%; a 59-minute-old file, feed_x/, a symlink, EVIDENCE_DIR and SNAPSHOT_DIR stay')  // Review Focus 6
+it('94% → nothing is deleted')
+```
+
+- [ ] **Step 3: Run everything** (`cd apps/api && npm run lint && npm run build && npm test && npm run test:e2e`), expect pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/api
+git commit -m "feat(api): at 95% disk the oldest recordings go first, down to 90%; kept clips and snapshots are never touched"
+```
+
+> **Session C ends here.** Opus reviews Tasks 9, 10 and 10a (the owner check and the uuid guard, nothing from the job's
+> params reaching the HTML unescaped, Gotenberg failures never leaving a `.part` served, the refresh rate limit; for
+> 10a nothing outside `zv_*` deleted, the 1-hour floor, the oldest-first order and the stop at 90%; Review Focus 6).
 
 ---
 
@@ -728,7 +782,7 @@ git commit -m "fix(api): re-resolve the proxy on an untrusted peer; CSV abort be
   section 8 the zone comes from `GET /site-settings` (load once after login); section 9 event rows' `evidence`;
   section 10 PDF jobs (create 202, list, file, statuses, 503 without Gotenberg, the 7-day expiry) and the inclusive
   last date; section 11 `POST /events/:id/evidence`, kept clips with byte ranges and the rewritten Safari note
-  (only kept clips seek in Safari); section 12 `disk.warning` in the `managers` room; section 13 `disk_low`.
+  (only kept clips seek in Safari); section 12 `disk.warning` in the `managers` room (a `critical` one may be followed by older recordings being deleted; nothing in the contract changes); section 13 `disk_low`.
   Section 14 `### v0.6`: one line per row of the spec's section 7 table, the CSV name marked **changed**, plus the
   debug-view "up to 15 per second" line.
 
@@ -755,7 +809,7 @@ git commit -m "docs(contract): v0.6 site settings, evidence, PDF jobs, disk warn
 **Files:**
 - Modify: `deploy/README.md` (section "Variables added in Phase 4b": `EVIDENCE_DIR`, `EXPORTS_DIR`,
   `ZOO_GOTENBERG_URL`, `ZOO_SITE_TIMEZONE` removed (set the zone in Site settings after upgrading); the
-  `chown -R 1000:1000 "$ZOO_DATA_DIR"` step and why; Gotenberg's image size), `docs/10_LOCAL_QUICKSTART.md`
+  `chown -R 1000:1000 "$ZOO_DATA_DIR"` step and why; Gotenberg's image size; the free-space guard: recordings older than 1 hour go from 95% used down to 90%, so they can be shorter than the retention days on a small disk), `docs/10_LOCAL_QUICKSTART.md`
   (Phase 4b laptop run), `docs/fe-dev-setup.md` (Gotenberg in the demo profile)
 
 - [ ] **Step 1: Write the docs**
