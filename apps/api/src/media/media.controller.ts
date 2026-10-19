@@ -9,7 +9,12 @@ import {
   Res,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiParam, ApiProduces } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiParam,
+  ApiProduces,
+  ApiResponse,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AccessEvents } from '../auth/access-events';
 import type { ActorRequest } from '../auth/actor';
@@ -77,7 +82,13 @@ export class MediaController {
   @ApiProduces('video/mp4')
   @ApiOkResponse({
     description:
-      'The MP4 around the event; 404 RECORDING_NOT_AVAILABLE when there is none',
+      'The MP4 around the event; 404 RECORDING_NOT_AVAILABLE when there is none. A kept clip (event row `evidence.status` KEPT) is served from a file with `Accept-Ranges: bytes`; any other clip is streamed without ranges',
+    content: { 'video/mp4': { schema: { type: 'string', format: 'binary' } } },
+  })
+  @ApiResponse({
+    status: 206,
+    description:
+      'Part of a kept clip, for a `Range` request; `Content-Range` says which bytes',
     content: { 'video/mp4': { schema: { type: 'string', format: 'binary' } } },
   })
   async clip(

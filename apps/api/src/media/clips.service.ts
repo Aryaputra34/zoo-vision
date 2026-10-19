@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Response } from 'express';
+import { stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { apiError } from '../common/errors';
+import { ENV, type Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlaybackService } from './playback.service';
 
@@ -16,9 +19,12 @@ const unavailable = () =>
 
 @Injectable()
 export class ClipsService {
+  private readonly log = new Logger(ClipsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly playback: PlaybackService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   /**
@@ -33,6 +39,7 @@ export class ClipsService {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       include: {
+        evidence: { select: { status: true, filePath: true } },
         camera: {
           select: {
             sourceType: true,
@@ -47,6 +54,8 @@ export class ClipsService {
       },
     });
     if (!event) throw apiError(404, 'NOT_FOUND', 'Event not found');
+
+    if (await this.sendKept(event, res)) return;
 
     const { camera } = event;
     if (!camera || !event.cameraId) throw unavailable();
@@ -75,5 +84,48 @@ export class ClipsService {
       // the client left, or playback died mid-clip: pipeline has cut the response, so the
       // download fails and is never taken for a whole clip
     }
+  }
+
+  /**
+   * A kept clip answers from its file with `res.sendFile`, so byte ranges work (Safari needs
+   * them, and seeking does too). False when there is no usable kept clip: the caller then streams
+   * from playback, as for any clip. A kept row whose file is gone (deleted by hand) is the same.
+   */
+  private async sendKept(
+    event: {
+      id: string;
+      evidence: { status: string; filePath: string | null } | null;
+    },
+    res: Response,
+  ): Promise<boolean> {
+    const kept = event.evidence;
+    if (kept?.status !== 'KEPT' || !kept.filePath) return false;
+    const { EVIDENCE_DIR: root } = this.env;
+    const isFile = await stat(join(root, kept.filePath))
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!isFile) {
+      this.log.warn(`kept clip of ${event.id} is missing: ${kept.filePath}`);
+      return false;
+    }
+    await new Promise<void>((resolve, reject) => {
+      res.sendFile(
+        kept.filePath as string,
+        {
+          root,
+          dotfiles: 'deny',
+          // send would add its own Cache-Control: max-age=0
+          cacheControl: false,
+          headers: {
+            'Content-Type': 'video/mp4',
+            'Cache-Control': 'private, max-age=3600',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        },
+        // after the headers went out the only error left is a client that left
+        (err) => (err && !res.headersSent ? reject(unavailable()) : resolve()),
+      );
+    });
+    return true;
   }
 }

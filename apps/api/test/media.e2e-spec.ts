@@ -14,6 +14,7 @@ import { flushRedis, ownerQuery, resetDb } from './setup/db';
 const JPEG = Buffer.from([
   0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0xff, 0xd9,
 ]);
+const KEPT = Buffer.alloc(1000, 5);
 const MP4 = Buffer.concat([
   Buffer.from([0, 0, 0, 0x18]),
   Buffer.from('ftypmp42'),
@@ -115,6 +116,7 @@ describe('/media', () => {
 
     app = await createTestApp({
       SNAPSHOT_DIR: root,
+      EVIDENCE_DIR: join(dir, 'evidence'),
       MEDIAMTX_PLAYBACK_URL: playbackUrl,
       MEDIAMTX_PASSWORD,
     });
@@ -157,6 +159,25 @@ describe('/media', () => {
     await event('evt_system', null, '2026-10-14T03:00:00.000Z');
     // the clip window (time + 20 s) is still running
     await event('evt_fresh', 'rec', new Date(Date.now() - 5_000).toISOString());
+
+    // kept clips: one with its file, one whose file was deleted by hand
+    await mkdir(join(dir, 'evidence', 'rec', '2026-10-14'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(dir, 'evidence', 'rec', '2026-10-14', 'evt_kept.mp4'),
+      KEPT,
+    );
+    for (const id of ['evt_kept', 'evt_gone']) {
+      await event(id, 'rec', '2026-10-14T03:00:00.000Z');
+      await ownerQuery(
+        `INSERT INTO "Evidence" ("eventId", "cameraId", "eventTime", "reason", "status", "runAt", "filePath", "sizeBytes")
+         VALUES ($1, 'rec', '2026-10-14T03:00:00Z', 'SEVERITY', 'KEPT', now(), $2, $3)`,
+        id,
+        `rec/2026-10-14/${id}.mp4`,
+        KEPT.length,
+      );
+    }
   });
 
   afterAll(async () => {
@@ -292,6 +313,55 @@ describe('/media', () => {
           `UPDATE "Camera" SET "subStreamUrlEnc" = NULL, "recordingStream" = 'MAIN' WHERE "id" = 'rec'`,
         );
       }
+    });
+
+    const bytes = (path: string, range?: string) => {
+      const req = get(path)
+        .buffer(true)
+        .parse((r, done) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => done(null, Buffer.concat(chunks)));
+        });
+      return range ? req.set('Range', range) : req;
+    };
+
+    it('a KEPT clip with Range: bytes=0-99 → 206, Content-Range bytes 0-99/<size>, 100 bytes', async () => {
+      const res = await bytes('/media/clips/evt_kept', 'bytes=0-99').expect(
+        206,
+      );
+      expect(res.headers['content-range']).toBe(`bytes 0-99/${KEPT.length}`);
+      expect((res.body as Buffer).length).toBe(100);
+      expect(res.headers['content-type']).toBe('video/mp4');
+      expect(seen).toHaveLength(0); // the file answered, not playback
+    });
+
+    it('a KEPT clip without Range → 200, Accept-Ranges: bytes, Cache-Control private, max-age=3600', async () => {
+      const res = await bytes('/media/clips/evt_kept').expect(200);
+      expect(res.headers['accept-ranges']).toBe('bytes');
+      expect(res.headers['cache-control']).toBe('private, max-age=3600');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(Buffer.compare(res.body as Buffer, KEPT)).toBe(0);
+    });
+
+    it('a KEPT row whose file is gone → the playback stream as before', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      try {
+        const res = await bytes('/media/clips/evt_gone').expect(200);
+        expect(Buffer.compare(res.body as Buffer, MP4)).toBe(0);
+        expect(seen).toHaveLength(1);
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('no KEPT row → playback stream unchanged, no Accept-Ranges header', async () => {
+      const res = await get('/media/clips/evt_old').expect(200);
+      expect(res.headers['accept-ranges']).toBeUndefined();
+      expect(seen).toHaveLength(1);
     });
 
     it('no-store for an event whose clip end is in the future', async () => {
