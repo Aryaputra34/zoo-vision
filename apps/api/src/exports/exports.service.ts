@@ -125,7 +125,7 @@ export class ExportsService {
       filename: this.filename('summary', range),
       header,
       filters: filtersOf(q),
-      batches: this.summaryBatches(q, header),
+      batches: this.summaryBatches(q),
     };
   }
 
@@ -275,15 +275,24 @@ export class ExportsService {
     }
   }
 
+  private async *summaryBatches(
+    q: SummaryQueryDto,
+  ): AsyncGenerator<unknown[][]> {
+    const { rows } = await this.summaryTable(q);
+    for (let i = 0; i < rows.length; i += BATCH) yield rows.slice(i, i + BATCH);
+  }
+
   /**
    * One row per camera and bucket that has any data. The numbers come from the same services as
    * the report endpoints, so a CSV and a chart agree; the range limits keep it to a few thousand
-   * rows, so it is built in memory and only written in batches.
+   * rows, so it is built in memory (and written to a CSV in batches).
    */
-  private async *summaryBatches(
+  async summaryTable(
     q: SummaryQueryDto,
-    header: string[],
-  ): AsyncGenerator<unknown[][]> {
+  ): Promise<{ header: string[]; rows: unknown[][] }> {
+    const range = parseRange(q);
+    assertRange(range, q.bucket);
+    const header = summaryColumns(this.contracts.registry, range.useCase);
     const local = localDateTime(this.settings.timeZone);
     const base = {
       from: q.from,
@@ -373,7 +382,7 @@ export class ExportsService {
         row[3] = camera?.useCase ?? null;
         return row;
       });
-    for (let i = 0; i < out.length; i += BATCH) yield out.slice(i, i + BATCH);
+    return { header, rows: out };
   }
 }
 
