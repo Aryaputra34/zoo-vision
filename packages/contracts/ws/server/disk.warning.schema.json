@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DiskWarning",
+  "description": "Room managers: a disk used by recordings, snapshots, kept clips or exports crossed 85% (warning) or 95% (critical).",
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "usedPercent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "freeBytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "severity": {
+      "enum": [
+        "warning",
+        "critical"
+      ]
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "path",
+    "usedPercent",
+    "freeBytes",
+    "severity",
+    "time"
+  ],
+  "additionalProperties": false
+}

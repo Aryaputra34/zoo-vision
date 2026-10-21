@@ -1,7 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { ENV, type Env } from '../config/env';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { bucketsBetween } from './buckets';
 import type {
   IntervalStatsDto,
@@ -23,7 +23,7 @@ type Row = {
 export class IntervalStatsService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(ENV) private readonly env: Env,
+    private readonly settings: SiteSettingsService,
   ) {}
 
   /**
@@ -40,6 +40,8 @@ export class IntervalStatsService {
     const where: Prisma.Sql[] = [
       Prisma.sql`i."kind" = ${q.kind}`,
       Prisma.sql`i."start" < ${to}`,
+      // bounds the scan from below; `>=` (not `>`) keeps a zero-length interval that starts at `from`
+      Prisma.sql`(i."end" IS NULL OR i."end" >= ${from})`,
       ...scopeFilters('i', range),
     ];
     const keys =
@@ -56,7 +58,7 @@ export class IntervalStatsService {
     );
     const buckets = bucketsBetween(
       q.bucket,
-      this.env.SITE_TIMEZONE,
+      this.settings.timeZone,
       Prisma.sql`c."lo"`,
       // the last instant inside the piece, so an interval ending on an edge opens no extra bucket
       Prisma.sql`GREATEST(c."hi" - INTERVAL '1 microsecond', c."lo")`,

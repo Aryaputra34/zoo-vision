@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { loadEnv } from './env';
+import { isTimeZone, loadEnv } from './env';
 
 const key = randomBytes(32);
 const required = {
@@ -32,8 +32,10 @@ describe('loadEnv', () => {
       JOBS: 'on',
       MODELS_DIR: '/data/models',
       MODEL_UPLOAD_MAX_BYTES: 1073741824,
-      SITE_TIMEZONE: 'Asia/Jakarta',
       SNAPSHOT_DIR: '/data/snapshots',
+      EVIDENCE_DIR: '/data/evidence',
+      EXPORTS_DIR: '/data/exports',
+      GOTENBERG_URL: undefined,
       RECORDINGS_DIR: '/data/recordings',
       TRUSTED_PROXY_HOST: 'caddy',
       MEDIAMTX_PLAYBACK_URL: undefined,
@@ -52,8 +54,9 @@ describe('loadEnv', () => {
       JOBS: 'off',
       MODELS_DIR: '/srv/models',
       MODEL_UPLOAD_MAX_BYTES: '2048',
-      SITE_TIMEZONE: 'Asia/Makassar',
       SNAPSHOT_DIR: '/srv/snapshots',
+      EVIDENCE_DIR: '/srv/evidence',
+      GOTENBERG_URL: 'http://gotenberg:3000',
       MEDIAMTX_PLAYBACK_URL: 'http://mediamtx:9996',
     });
     expect(env).toMatchObject({
@@ -64,8 +67,9 @@ describe('loadEnv', () => {
       JOBS: 'off',
       MODELS_DIR: '/srv/models',
       MODEL_UPLOAD_MAX_BYTES: 2048,
-      SITE_TIMEZONE: 'Asia/Makassar',
       SNAPSHOT_DIR: '/srv/snapshots',
+      EVIDENCE_DIR: '/srv/evidence',
+      GOTENBERG_URL: 'http://gotenberg:3000',
       MEDIAMTX_PLAYBACK_URL: 'http://mediamtx:9996',
     });
   });
@@ -106,10 +110,20 @@ describe('loadEnv', () => {
     ).toMatch(/^ {2}MEDIAMTX_API_URL: must be an http\(s\) URL/m);
   });
 
-  it('names SITE_TIMEZONE when it is not an IANA time zone', () => {
-    expect(errorOf({ ...required, SITE_TIMEZONE: 'Mars/Base' })).toMatch(
-      /^ {2}SITE_TIMEZONE: must be an IANA time zone/m,
+  it('GOTENBERG_URL must be an http(s) URL; an empty one is unset', () => {
+    expect(errorOf({ ...required, GOTENBERG_URL: 'gotenberg:3000' })).toMatch(
+      /^ {2}GOTENBERG_URL: must be an http\(s\) URL/m,
     );
+    expect(
+      loadEnv({ ...required, GOTENBERG_URL: '' }).GOTENBERG_URL,
+    ).toBeUndefined();
+  });
+
+  it('isTimeZone takes IANA Region/City names and UTC, nothing else', () => {
+    expect(isTimeZone('Asia/Makassar')).toBe(true);
+    expect(isTimeZone('UTC')).toBe(true);
+    expect(isTimeZone('Mars/Base')).toBe(false);
+    expect(isTimeZone('+07:00')).toBe(false);
   });
 
   it('treats an empty optional variable as unset', () => {

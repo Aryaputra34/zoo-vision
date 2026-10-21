@@ -66,4 +66,30 @@ describe('trustedProxy', () => {
       jest.useRealTimers();
     }
   });
+
+  it('an untrusted peer starts one re-lookup at most every 10 s; that request stays untrusted, the next sees the new address', async () => {
+    let clock = 0;
+    let release: (a: string[]) => void = () => undefined;
+    const lookup = jest
+      .fn<Promise<string[]>, [string]>()
+      .mockResolvedValueOnce(['10.0.0.1'])
+      .mockImplementation(() => new Promise((r) => (release = r)));
+    const proxy = trustedProxy('caddy', lookup, () => clock);
+    try {
+      await proxy.refresh();
+      clock = 9_999;
+      expect(proxy.trust('10.0.0.2')).toBe(false);
+      expect(lookup).toHaveBeenCalledTimes(1); // under 10 s since the last start
+      clock = 10_000;
+      expect(proxy.trust('10.0.0.2')).toBe(false); // starts the lookup, still untrusted
+      expect(proxy.trust('10.0.0.2')).toBe(false); // one in flight: no second
+      expect(lookup).toHaveBeenCalledTimes(2);
+      release(['10.0.0.2']);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(proxy.trust('10.0.0.2')).toBe(true);
+    } finally {
+      proxy.stop();
+    }
+  });
 });

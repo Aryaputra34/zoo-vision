@@ -36,6 +36,15 @@ export interface ModelValidationFailed {
   name: string;
   error: string;
 }
+/**
+ * This interface was referenced by `SystemEvents`'s JSON-Schema
+ * via the `definition` "disk_low".
+ */
+export interface DiskLow {
+  path: string;
+  usedPercent: number;
+  freeBytes: number;
+}
 
 export interface SystemIntervals {
   [k: string]: unknown;

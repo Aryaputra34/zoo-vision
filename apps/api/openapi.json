@@ -181,6 +181,127 @@
         "security": []
       }
     },
+    "/api/v1/site-settings": {
+      "get": {
+        "operationId": "siteSettingsGet",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteSettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Any role: the web needs the time zone on every page.",
+        "tags": [
+          "SiteSettings"
+        ]
+      },
+      "patch": {
+        "operationId": "siteSettingsUpdate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSiteSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteSettingsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "SiteSettings"
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "authLogin",
@@ -2757,6 +2878,87 @@
         ]
       }
     },
+    "/api/v1/events/{id}/evidence": {
+      "post": {
+        "operationId": "evidenceKeep",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: no such event. RECORDING_NOT_AVAILABLE: a system event has no camera",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Keeps the clip of an event past the continuous recording. Already kept: the same row again.",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
     "/media/snapshots/{path}": {
       "get": {
         "operationId": "mediaSnapshot",
@@ -2854,7 +3056,18 @@
         ],
         "responses": {
           "200": {
-            "description": "The MP4 around the event; 404 RECORDING_NOT_AVAILABLE when there is none",
+            "description": "The MP4 around the event; 404 RECORDING_NOT_AVAILABLE when there is none. A kept clip (event row `evidence.status` KEPT) is served from a file with `Accept-Ranges: bytes`; any other clip is streamed without ranges",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Part of a kept clip, for a `Range` request; `Content-Range` says which bytes",
             "content": {
               "video/mp4": {
                 "schema": {
@@ -4683,6 +4896,220 @@
         ]
       }
     },
+    "/api/v1/exports/jobs": {
+      "post": {
+        "operationId": "exportJobsCreate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportJobDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "UNAVAILABLE: no PDF service is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ExportJobs"
+        ]
+      },
+      "get": {
+        "operationId": "exportJobsList",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExportJobDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ExportJobs"
+        ]
+      }
+    },
+    "/api/v1/exports/jobs/{id}/file": {
+      "get": {
+        "operationId": "exportJobsFile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF as an attachment",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid (VALIDATION_FAILED, SETTINGS_INVALID, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session or token (UNAUTHENTICATED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role is too low (FORBIDDEN, ROLE_REQUIRED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: no such job, not yours, or not finished",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ExportJobs"
+        ]
+      }
+    },
     "/api/v1/usecases": {
       "get": {
         "operationId": "usecasesList",
@@ -4760,6 +5187,81 @@
       }
     },
     "schemas": {
+      "SiteSettingsDto": {
+        "type": "object",
+        "properties": {
+          "siteName": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string",
+            "example": "Asia/Jakarta",
+            "description": "IANA zone"
+          },
+          "recordingRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "snapshotRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "auditSnapshotRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "evidenceRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          }
+        },
+        "required": [
+          "siteName",
+          "timeZone",
+          "recordingRetentionDays",
+          "snapshotRetentionDays",
+          "auditSnapshotRetentionDays",
+          "evidenceRetentionDays"
+        ]
+      },
+      "UpdateSiteSettingsDto": {
+        "type": "object",
+        "properties": {
+          "siteName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "timeZone": {
+            "type": "string",
+            "example": "Asia/Jakarta"
+          },
+          "recordingRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "snapshotRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "auditSnapshotRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "evidenceRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3650
+          }
+        }
+      },
       "LoginDto": {
         "type": "object",
         "properties": {
@@ -5099,6 +5601,46 @@
           "critical"
         ]
       },
+      "EvidenceStatus": {
+        "type": "string",
+        "enum": [
+          "QUEUED",
+          "KEPT",
+          "NO_RECORDING",
+          "FAILED"
+        ]
+      },
+      "EvidenceReason": {
+        "type": "string",
+        "enum": [
+          "SEVERITY",
+          "AUDIT_CAMERA",
+          "USER"
+        ]
+      },
+      "EventEvidenceDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceStatus"
+              }
+            ]
+          },
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceReason"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "reason"
+        ]
+      },
       "EventRowDto": {
         "type": "object",
         "properties": {
@@ -5138,7 +5680,17 @@
           "clipUrl": {
             "type": "string",
             "nullable": true,
-            "description": "A /media/clips URL; null when the camera has no recording path or recording is off. The clip itself can still be gone"
+            "description": "A /media/clips URL; null when the camera has no recording path or recording is off, unless the clip is kept. The clip itself can still be gone"
+          },
+          "evidence": {
+            "nullable": true,
+            "description": "The kept-clip row of this event; null when the clip is not (to be) kept",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EventEvidenceDto"
+              }
+            ]
           },
           "id": {
             "type": "string"
@@ -5159,6 +5711,7 @@
           "data",
           "snapshotUrl",
           "clipUrl",
+          "evidence",
           "id",
           "useCase",
           "type"
@@ -5435,6 +5988,10 @@
             "type": "number",
             "nullable": true
           },
+          "evidenceRetentionDays": {
+            "type": "number",
+            "nullable": true
+          },
           "clipBeforeSec": {
             "type": "number"
           },
@@ -5446,6 +6003,7 @@
           "stream",
           "enabled",
           "retentionDays",
+          "evidenceRetentionDays",
           "clipBeforeSec",
           "clipAfterSec"
         ]
@@ -5628,6 +6186,14 @@
               "$ref": "#/components/schemas/StreamPathInfoDto"
             }
           },
+          "evidenceBytes": {
+            "type": "number",
+            "description": "Bytes of this camera's kept clips"
+          },
+          "evidenceCount": {
+            "type": "number",
+            "description": "Number of this camera's kept clips"
+          },
           "disk": {
             "nullable": true,
             "description": "The recordings volume; null when it cannot be read",
@@ -5641,6 +6207,8 @@
         },
         "required": [
           "paths",
+          "evidenceBytes",
+          "evidenceCount",
           "disk"
         ]
       },
@@ -5663,6 +6231,13 @@
             "minimum": 1,
             "maximum": 3650,
             "description": "null = site default"
+          },
+          "evidenceRetentionDays": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 3650,
+            "description": "How long kept clips of this camera live; null = site default"
           },
           "clipBeforeSec": {
             "type": "number",
@@ -6148,6 +6723,33 @@
           "online"
         ]
       },
+      "EvidenceDto": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceStatus"
+              }
+            ]
+          },
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceReason"
+              }
+            ]
+          }
+        },
+        "required": [
+          "eventId",
+          "status",
+          "reason"
+        ]
+      },
       "ModelFormat": {
         "type": "string",
         "enum": [
@@ -6600,6 +7202,118 @@
         "required": [
           "rows",
           "nextCursor"
+        ]
+      },
+      "CreateExportJobDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "example": "2026-10-14",
+            "description": "Local date on the site time zone: the day, the first day of the week, or any day of the month"
+          },
+          "cameraIds": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "useCase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "date"
+        ]
+      },
+      "ExportJobParamsDto": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "cameraIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "useCase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "date"
+        ]
+      },
+      "ExportJobDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "params": {
+            "$ref": "#/components/schemas/ExportJobParamsDto"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "DONE",
+              "FAILED",
+              "EXPIRED"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "sizeBytes": {
+            "type": "number",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "fileUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Set when DONE: /api/v1/exports/jobs/<id>/file"
+          }
+        },
+        "required": [
+          "id",
+          "params",
+          "status",
+          "error",
+          "sizeBytes",
+          "createdAt",
+          "finishedAt",
+          "fileUrl"
         ]
       },
       "UseCaseEventDto": {

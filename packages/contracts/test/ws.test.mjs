@@ -20,6 +20,7 @@ const NAMES = [
   'data.changed',
   'status.snapshot',
   'audit.notice',
+  'disk.warning',
   'session.ended',
   'boxes',
   'subscribe',

@@ -101,33 +101,33 @@ model LoginLog {
 }
 
 model Camera {
-  id               String                @id // slug
-  name             String
-  area             String?
-  useCase          String
-  enabled          Boolean               @default(true)
-  sourceType       SourceType
-  mainStreamUrlEnc String
-  subStreamUrlEnc  String?
-  recordingPath    String?
-  targetFps        Int                   @default(5)
-  engineGroup      String                @default("default")
-  auditCamera      Boolean               @default(false)
-  recordingEnabled Boolean               @default(true)
-  recordingStream  StreamChoice          @default(MAIN)
-  inferenceStream  StreamChoice          @default(MAIN)
-  retentionDays    Int? // null = site default
-  clipBeforeSec    Int                   @default(15)
-  clipAfterSec     Int                   @default(15)
-  nxCameraId       String?
-  activeVersion    Int
-  firstSeenAt      DateTime?             @db.Timestamptz(3) // first time the engine's status key was seen
-  createdAt        DateTime              @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime              @updatedAt @db.Timestamptz(3)
-  versions         CameraConfigVersion[]
-  events           Event[]
-  intervals        Interval[]
-  metrics          Metric[]
+  id                    String                @id // slug
+  name                  String
+  area                  String?
+  useCase               String
+  enabled               Boolean               @default(true)
+  sourceType            SourceType
+  mainStreamUrlEnc      String
+  subStreamUrlEnc       String?
+  targetFps             Int                   @default(5)
+  engineGroup           String                @default("default")
+  auditCamera           Boolean               @default(false)
+  recordingEnabled      Boolean               @default(true)
+  recordingStream       StreamChoice          @default(MAIN)
+  inferenceStream       StreamChoice          @default(MAIN)
+  retentionDays         Int? // null = site default
+  evidenceRetentionDays Int? // null = site default
+  clipBeforeSec         Int                   @default(15)
+  clipAfterSec          Int                   @default(15)
+  nxCameraId            String?
+  activeVersion         Int
+  firstSeenAt           DateTime?             @db.Timestamptz(3) // first time the engine's status key was seen
+  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime              @updatedAt @db.Timestamptz(3)
+  versions              CameraConfigVersion[]
+  events                Event[]
+  intervals             Interval[]
+  metrics               Metric[]
 }
 
 model CameraConfigVersion {
@@ -147,10 +147,10 @@ model CameraConfigVersion {
 }
 
 model Event {
-  id            String   @id // evt_…
-  time          DateTime @db.Timestamptz(3)
+  id            String    @id // evt_…
+  time          DateTime  @db.Timestamptz(3)
   cameraId      String?
-  camera        Camera?  @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  camera        Camera?   @relation(fields: [cameraId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   useCase       String
   type          String
   severity      Severity
@@ -158,7 +158,8 @@ model Event {
   schemaVersion Int
   snapshotPath  String?
   data          Json
-  ingestedAt    DateTime @default(now()) @db.Timestamptz(3)
+  ingestedAt    DateTime  @default(now()) @db.Timestamptz(3)
+  evidence      Evidence?
 
   @@index([cameraId, type, time])
   @@index([time])
@@ -239,4 +240,70 @@ model AiModel {
   notes           String?
   createdAt       DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+}
+
+/// One row (id = 1, enforced by a CHECK): the site's name, time zone and retention defaults.
+model SiteSettings {
+  id                         Int      @id @default(1)
+  siteName                   String
+  timeZone                   String
+  recordingRetentionDays     Int
+  snapshotRetentionDays      Int
+  auditSnapshotRetentionDays Int
+  evidenceRetentionDays      Int
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
+}
+
+enum EvidenceReason {
+  SEVERITY
+  AUDIT_CAMERA
+  USER
+}
+
+enum EvidenceStatus {
+  QUEUED
+  KEPT
+  NO_RECORDING
+  FAILED
+}
+
+/// A clip kept past the continuous recording; also protects the event's snapshot from retention.
+model Evidence {
+  eventId   String         @id
+  event     Event          @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  cameraId  String
+  eventTime DateTime       @db.Timestamptz(3)
+  reason    EvidenceReason
+  status    EvidenceStatus @default(QUEUED)
+  runAt     DateTime       @db.Timestamptz(3)
+  attempts  Int            @default(0)
+  error     String?
+  filePath  String? // relative to EVIDENCE_DIR
+  sizeBytes Int?
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@index([status, runAt])
+  @@index([cameraId, eventTime])
+}
+
+enum ExportStatus {
+  QUEUED
+  DONE
+  FAILED
+  EXPIRED
+}
+
+model ExportJob {
+  id            String       @id @default(uuid()) @db.Uuid
+  params        Json
+  status        ExportStatus @default(QUEUED)
+  runAt         DateTime     @default(now()) @db.Timestamptz(3)
+  attempts      Int          @default(0)
+  error         String?
+  filePath      String? // relative to EXPORTS_DIR
+  sizeBytes     Int?
+  finishedAt    DateTime?    @db.Timestamptz(3)
+  createdById   String
+  createdByName String
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
 }

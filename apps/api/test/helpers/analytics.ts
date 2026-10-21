@@ -13,20 +13,18 @@ export async function addCamera(
     name?: string;
     useCase?: string;
     sourceType?: 'FILE' | 'RTSP';
-    recordingPath?: string | null;
     recordingEnabled?: boolean;
     clipBeforeSec?: number;
     clipAfterSec?: number;
   } = {},
 ): Promise<void> {
   await ownerQuery(
-    `INSERT INTO "Camera" ("id", "name", "useCase", "sourceType", "mainStreamUrlEnc", "recordingPath",
+    `INSERT INTO "Camera" ("id", "name", "useCase", "sourceType", "mainStreamUrlEnc",
                            "recordingEnabled", "clipBeforeSec", "clipAfterSec", "activeVersion", "updatedAt")
-     VALUES ($1, $2, $3, $8::"SourceType", 'enc', $4, $5, $6, $7, 1, now())`,
+     VALUES ($1, $2, $3, $7::"SourceType", 'enc', $4, $5, $6, 1, now())`,
     id,
     opts.name ?? id,
     opts.useCase ?? 'cashier_presence',
-    opts.recordingPath ?? null,
     opts.recordingEnabled ?? true,
     opts.clipBeforeSec ?? 15,
     opts.clipAfterSec ?? 15,

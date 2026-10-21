@@ -21,10 +21,14 @@ export type Env = Readonly<{
   MODELS_DIR: string;
   /** Largest accepted model upload, in bytes. */
   MODEL_UPLOAD_MAX_BYTES: number;
-  /** IANA zone the reports bucket by and the CSV exports write local times in (until SiteSettings). */
-  SITE_TIMEZONE: string;
-  /** The folder the engine writes event JPEGs to, as `<camera>/<date>/<event>.jpg` (read-only here). */
+  /** The folder the engine writes event JPEGs to, as `<camera>/<date>/<event>.jpg`; retention deletes here. */
   SNAPSHOT_DIR: string;
+  /** Kept clips, as `<camera>/<date>/<event>.mp4`. */
+  EVIDENCE_DIR: string;
+  /** Finished PDF exports, as `<job id>.pdf`. */
+  EXPORTS_DIR: string;
+  /** Gotenberg, e.g. http://gotenberg:3000; unset: no PDF exports. */
+  GOTENBERG_URL: string | undefined;
   /** MediaMTX's playback server, e.g. http://host.docker.internal:9996; unset: clips are unavailable. */
   MEDIAMTX_PLAYBACK_URL: string | undefined;
   /**
@@ -32,7 +36,7 @@ export type Env = Readonly<{
    * addresses it resolves to may set X-Forwarded-For; from source, set it to 127.0.0.1.
    */
   TRUSTED_PROXY_HOST: string;
-  /** The recordings volume as the API sees it (read-only), for the free-space figure of stream-info. */
+  /** The recordings volume as the API sees it, for the free-space figure of stream-info and the sweep of deleted cameras. */
   RECORDINGS_DIR: string;
   /** MediaMTX's Control API, e.g. http://host.docker.internal:9997; unset: no path sync, no live video. */
   MEDIAMTX_API_URL: string | undefined;
@@ -91,17 +95,17 @@ const password12: Check<string> = (value) =>
   value.length >= 12 ? value : undefined;
 
 // Region/City names only: Intl also takes "+07:00", which Postgres reads with the sign flipped
-const timeZone: Check<string> = (value) => {
+export function isTimeZone(value: string): boolean {
   if (value !== 'UTC' && !/^[A-Za-z]+\/[A-Za-z0-9_+\-/]+$/.test(value)) {
-    return undefined;
+    return false;
   }
   try {
     new Intl.DateTimeFormat('en', { timeZone: value });
-    return value;
+    return true;
   } catch {
-    return undefined;
+    return false;
   }
-};
+}
 
 /**
  * Validates the environment. Throws one {@link EnvError} naming every bad variable (never its
@@ -163,18 +167,17 @@ export function loadEnv(source: Source = process.env): Env {
       'a positive number of bytes',
       1073741824,
     ),
-    SITE_TIMEZONE: read(
-      'SITE_TIMEZONE',
-      timeZone,
-      'an IANA time zone such as Asia/Jakarta',
-      'Asia/Jakarta',
-    ),
     SNAPSHOT_DIR: read(
       'SNAPSHOT_DIR',
       text,
       'a folder path',
       '/data/snapshots',
     ),
+    EVIDENCE_DIR: read('EVIDENCE_DIR', text, 'a folder path', '/data/evidence'),
+    EXPORTS_DIR: read('EXPORTS_DIR', text, 'a folder path', '/data/exports'),
+    GOTENBERG_URL: source.GOTENBERG_URL
+      ? read('GOTENBERG_URL', url('http:', 'https:'), 'an http(s) URL')
+      : undefined,
     MEDIAMTX_PLAYBACK_URL: source.MEDIAMTX_PLAYBACK_URL
       ? read('MEDIAMTX_PLAYBACK_URL', url('http:', 'https:'), 'an http(s) URL')
       : undefined,

@@ -287,7 +287,7 @@ docker compose logs -f mediamtx      # "[path cam_...] [RTSP source] ready" per 
 3. In the engine's environment (see [`services/engine/README.md`](../services/engine/README.md)):
    * `PREVIEW_HOST`: set to `0.0.0.0` if the dashboard runs on another host.
    * `PREVIEW_API_KEY`: set a long random key.
-   * `SNAPSHOT_RETENTION_DAYS`: how many days of event snapshots to keep.
+   * `SNAPSHOT_RETENTION_DAYS`: leave it at `0` (the default); the API deletes old snapshots and keeps those of kept events.
 4. In the dashboard's `.env.local`:
    * `AI_ENGINE_URL=http://<ai-host>:8000`
    * `AI_ENGINE_API_KEY=<same key>`

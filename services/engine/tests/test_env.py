@@ -11,7 +11,7 @@ def test_defaults():
     assert (env.engine_group, env.api_url, env.max_batch, env.model_jobs) == (
         "default", "http://127.0.0.1:3001", 1, True)
     assert (env.device, env.models_dir, env.snapshot_dir, env.snapshot_retention_days) == (
-        "cpu", "models", "snapshots", 30)
+        "cpu", "models", "snapshots", 0)
 
 
 def test_overrides():

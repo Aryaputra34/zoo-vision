@@ -67,6 +67,7 @@ export class IngestPush implements OnModuleInit, OnModuleDestroy {
           data: m.data,
           ingestedAt: new Date(),
           camera: null,
+          evidence: null,
         });
         this.gateway.toAlerts('event.created', {
           id: row.id,

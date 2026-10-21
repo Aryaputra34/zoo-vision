@@ -23,6 +23,7 @@ const DAY = {
 describe('GET /api/v1/reports/events/stats', () => {
   let app: INestApplication<App>;
   let cookie: string;
+  let superadmin: string;
 
   const get = (
     query: Record<string, string>,
@@ -53,6 +54,7 @@ describe('GET /api/v1/reports/events/stats', () => {
     await flushRedis();
     app = await createTestApp();
     cookie = (await asRole(app, 'USER')).cookie;
+    superadmin = (await asRole(app, 'SUPERADMIN')).cookie;
 
     for (const id of [
       'pony_hour',
@@ -446,22 +448,22 @@ describe('GET /api/v1/reports/events/stats', () => {
     expect(res.body).toMatchObject({ code: 'UNAUTHENTICATED' });
   });
 
-  describe('with another SITE_TIMEZONE', () => {
+  describe('with another site time zone (PATCH /site-settings)', () => {
+    const setZone = (timeZone: string) =>
+      request(app.getHttpServer())
+        .patch('/api/v1/site-settings')
+        .set('Cookie', superadmin)
+        .send({ timeZone })
+        .expect(200);
+    // the zone is shared by every suite through the database: always put it back
+    afterAll(() => setZone('Asia/Jakarta'));
     const inZone = async (
       zone: string,
       query: Record<string, string>,
     ): Promise<Row[]> => {
-      const other = await createTestApp({ SITE_TIMEZONE: zone });
-      try {
-        const res = await request(other.getHttpServer())
-          .get('/api/v1/reports/events/stats')
-          .set('Cookie', cookie)
-          .query({ cameraIds: 'tz_cam', ...query })
-          .expect(200);
-        return (res.body as Stats).rows;
-      } finally {
-        await other.close();
-      }
+      await setZone(zone);
+      const res = await get({ cameraIds: 'tz_cam', ...query }).expect(200);
+      return (res.body as Stats).rows;
     };
     const at = (time: string) =>
       addEvent({

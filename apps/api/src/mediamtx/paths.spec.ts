@@ -19,7 +19,6 @@ const camera = (over: Partial<Camera> = {}): Camera => ({
   sourceType: 'RTSP',
   mainStreamUrlEnc: cipher.encrypt('rtsp://u:p@h/main'),
   subStreamUrlEnc: cipher.encrypt('rtsp://u:p@h/sub'),
-  recordingPath: null,
   targetFps: 5,
   engineGroup: 'default',
   auditCamera: false,
@@ -27,6 +26,7 @@ const camera = (over: Partial<Camera> = {}): Camera => ({
   recordingEnabled: true,
   recordingStream: 'MAIN',
   retentionDays: null,
+  evidenceRetentionDays: null,
   clipBeforeSec: 15,
   clipAfterSec: 15,
   nxCameraId: null,
@@ -39,7 +39,7 @@ const camera = (over: Partial<Camera> = {}): Camera => ({
 
 describe('wantedPaths', () => {
   it('MAIN recording, SUB inference with a sub URL: main records, sub is the engine path, neither is on demand', () => {
-    const wanted = wantedPaths([camera({ inferenceStream: 'SUB' })], cipher);
+    const wanted = wantedPaths([camera({ inferenceStream: 'SUB' })], cipher, 7);
     expect(wanted.get('zv_gate')).toMatchObject({
       source: 'rtsp://u:p@h/main',
       record: true,
@@ -53,7 +53,11 @@ describe('wantedPaths', () => {
   });
 
   it('recording off, inference MAIN, a sub URL: the sub path is on demand, main is not', () => {
-    const wanted = wantedPaths([camera({ recordingEnabled: false })], cipher);
+    const wanted = wantedPaths(
+      [camera({ recordingEnabled: false })],
+      cipher,
+      7,
+    );
     expect(wanted.get('zv_gate')).toMatchObject({
       record: false,
       sourceOnDemand: false,
@@ -70,13 +74,13 @@ describe('wantedPaths', () => {
       sub: null,
       recorded: 'zv_gate',
     });
-    expect(wantedPaths([c], cipher).get('zv_gate')?.record).toBe(true);
+    expect(wantedPaths([c], cipher, 7).get('zv_gate')?.record).toBe(true);
   });
 
   it('FILE cameras have no paths', () => {
     expect(mediamtxPaths(camera({ sourceType: 'FILE' }))).toBeNull();
     expect([
-      ...wantedPaths([camera({ sourceType: 'FILE' })], cipher).keys(),
+      ...wantedPaths([camera({ sourceType: 'FILE' })], cipher, 7).keys(),
     ]).toEqual([]);
   });
 
@@ -84,6 +88,7 @@ describe('wantedPaths', () => {
     const wanted = wantedPaths(
       [camera({ enabled: false, retentionDays: 3 })],
       cipher,
+      7,
     );
     expect([...wanted.keys()].sort()).toEqual(['zv_gate', 'zv_gate_sub']);
     for (const conf of wanted.values()) {
@@ -98,11 +103,12 @@ describe('wantedPaths', () => {
     expect(JSON.stringify([...wanted])).not.toContain('rtsp://u:p');
   });
 
-  it('retentionDays null is 7d, 3 is 3d', () => {
-    const wanted = (c: Camera) =>
-      wantedPaths([c], cipher).get('zv_gate')?.recordDeleteAfter;
+  it('retentionDays null takes the site default, 3 is 3d', () => {
+    const wanted = (c: Camera, siteDays = 7) =>
+      wantedPaths([c], cipher, siteDays).get('zv_gate')?.recordDeleteAfter;
     expect(wanted(camera())).toBe('7d');
-    expect(wanted(camera({ retentionDays: 3 }))).toBe('3d');
+    expect(wanted(camera(), 3)).toBe('3d');
+    expect(wanted(camera({ retentionDays: 14 }), 3)).toBe('14d');
   });
 });
 

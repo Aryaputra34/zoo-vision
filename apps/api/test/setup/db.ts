@@ -19,16 +19,24 @@ export async function ownerQuery(
   }
 }
 
-/** Empties every application table (all of `public` except Prisma's migration history). */
+/**
+ * Empties every application table (all of `public` except Prisma's migration history). The
+ * one-row SiteSettings table is put back to its migration defaults instead: the app needs the row.
+ */
 export async function resetDb(): Promise<void> {
   const [{ tables }] = (await ownerQuery(
     `SELECT string_agg(format('%I.%I', schemaname, tablename), ', ') AS tables
        FROM pg_tables
-      WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`,
+      WHERE schemaname = 'public' AND tablename NOT IN ('_prisma_migrations', 'SiteSettings')`,
   )) as { tables: string | null }[];
   if (tables) {
     await ownerQuery(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE`);
   }
+  await ownerQuery(
+    `UPDATE "SiteSettings" SET "siteName" = 'Zoo Vision', "timeZone" = 'Asia/Jakarta',
+            "recordingRetentionDays" = 7, "snapshotRetentionDays" = 90,
+            "auditSnapshotRetentionDays" = 365, "evidenceRetentionDays" = 365`,
+  );
 }
 
 /** Deletes every key in the test Redis database. */

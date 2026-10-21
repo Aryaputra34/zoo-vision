@@ -49,6 +49,12 @@ export class StreamInfoDto {
   @ApiProperty({ type: [StreamPathInfoDto] })
   paths!: StreamPathInfoDto[];
 
+  @ApiProperty({ description: "Bytes of this camera's kept clips" })
+  evidenceBytes!: number;
+
+  @ApiProperty({ description: "Number of this camera's kept clips" })
+  evidenceCount!: number;
+
   @ApiProperty({
     type: DiskInfoDto,
     nullable: true,

@@ -266,7 +266,7 @@ describe('GET /api/v1/exports/*.csv', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toBe('text/csv; charset=utf-8');
     expect(res.headers['content-disposition']).toBe(
-      'attachment; filename="events-2026-10-14-2026-10-15.csv"',
+      'attachment; filename="events-2026-10-14-2026-10-14.csv"',
     );
     expect(
       text.startsWith(`${BOM}time_local,event_id,camera_id,camera_name,`),
@@ -326,7 +326,7 @@ describe('GET /api/v1/exports/*.csv', () => {
       cameraIds: 'ivdesk',
     });
     expect(res.headers['content-disposition']).toContain(
-      'intervals-2026-10-14-2026-10-15.csv',
+      'intervals-2026-10-14-2026-10-14.csv',
     );
     expect(lines(text)).toEqual([
       'start_local,end_local,duration_sec,interval_id,camera_id,camera_name,use_case,kind,subject_id,end_reason,data',
@@ -354,7 +354,7 @@ describe('GET /api/v1/exports/*.csv', () => {
       cameraIds: 'desk,desk2',
     });
     expect(res.headers['content-disposition']).toContain(
-      'summary-2026-10-14-2026-10-16.csv',
+      'summary-2026-10-14-2026-10-15.csv',
     );
     expect(lines(text)).toEqual([
       'bucket_local,camera_id,camera_name,use_case,events.cashier_unattended.count,events.customer_waiting.count,intervals.desk_unattended.total_sec,metrics.clerk_count.avg,metrics.clerk_count.max,metrics.queue_length.avg,metrics.queue_length.max',

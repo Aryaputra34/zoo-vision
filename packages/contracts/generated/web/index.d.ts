@@ -566,6 +566,15 @@ export declare namespace system {
     name: string;
     error: string;
   }
+  /**
+   * This interface was referenced by `SystemEvents`'s JSON-Schema
+   * via the `definition` "disk_low".
+   */
+  export interface DiskLow {
+    path: string;
+    usedPercent: number;
+    freeBytes: number;
+  }
 
   export interface SystemIntervals {
     [k: string]: unknown;
@@ -737,6 +746,17 @@ export interface DataChanged {
 }
 
 /**
+ * Room managers: a disk used by recordings, snapshots, kept clips or exports crossed 85% (warning) or 95% (critical).
+ */
+export interface DiskWarning {
+  path: string;
+  usedPercent: number;
+  freeBytes: number;
+  severity: "warning" | "critical";
+  time: string;
+}
+
+/**
  * Room alerts: one per new Event after an ingest commit (a commit with more than 50 sends only data.changed).
  */
 export interface EventCreated {
@@ -791,6 +811,7 @@ export interface ServerToClientEvents {
   "audit.notice": (payload: AuditNotice) => void;
   boxes: (payload: BoxesMessage) => void;
   "data.changed": (payload: DataChanged) => void;
+  "disk.warning": (payload: DiskWarning) => void;
   "event.created": (payload: EventCreated) => void;
   "session.ended": (payload: SessionEnded) => void;
   "status.snapshot": (payload: StatusSnapshot) => void;

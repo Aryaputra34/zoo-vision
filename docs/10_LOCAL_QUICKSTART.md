@@ -328,6 +328,38 @@ on localhost. The API synchronizes paths automatically whenever cameras are crea
 5. Watch live bounding boxes in the `camera:<id>` WebSocket room, and view inference debug frames at
    `http://localhost:8080/media/debug/<id>` (as SUPERADMIN).
 
+## Phase 4b: kept clips, retention and PDF reports
+
+Phase 4b needs one more container, Gotenberg (the PDF printer, a 1.7 GB image: `docker compose pull gotenberg`
+once), and the settings that used to be `ZOO_SITE_TIMEZONE` now live in the database (web UI: Site settings, or
+`PATCH /api/v1/site-settings`). Remove `ZOO_SITE_TIMEZONE` from `deploy\.env`.
+
+Run it as in the Phase 4a laptop run, with Gotenberg added:
+
+```powershell
+docker compose up -d --build postgres redis api-migrate api caddy gotenberg   # never a bare "up"
+```
+
+Add two cameras as `RTSP` on `feed_*` paths, one of them with `auditCamera`. What to check:
+
+- **Keep a clip.** A warning event, an event of the audit camera, or `POST /api/v1/events/<id>/evidence` makes an
+  `Evidence` row; within about 2 minutes its status is `KEPT` and the file is in
+  `deploy\data\evidence\<camera>\<date>\<event>.mp4`.
+- **Byte ranges.** `curl.exe -b cookie.txt -r 0-99 -o NUL -w "%{http_code}" http://localhost:8080/media/clips/<id>`
+  answers `206` for a kept clip.
+- **A kept clip outlives the recording.** Delete that camera's segment files under `deploy\data\recordings\zv_<id>\`:
+  the clip still plays. MediaMTX keeps recording after segments are removed by hand.
+- **Retention.** `PATCH /api/v1/site-settings {"snapshotRetentionDays": 1}`, restart the API and wait 60 s (the
+  first pass): old snapshot folders go, the JPEGs of kept events stay.
+- **Time zone.** `PATCH {"timeZone": "Asia/Makassar"}`: the hours in `summary.csv` move by one, with no restart.
+- **PDF.** `POST /api/v1/exports/jobs {"period":"week","date":"<a day>"}` then `GET /api/v1/exports/jobs`: `DONE`
+  within seconds, `fileUrl` downloads a PDF. The audit log has `export.pdf` and `export.csv` rows.
+- **Disk.** The API's first `DiskJob` log line lists each disk once; its used percent matches `df -h /data` inside
+  the `api` container. At 95% the space guard trims recordings older than 1 hour (see `deploy/README.md`).
+
+Docker Desktop does not enforce file ownership, so this laptop run cannot prove the `chown -R 1000:1000` step in
+`deploy/README.md`; that is checked on Linux.
+
 ## Check that it works (no cameras needed)
 
 ```powershell

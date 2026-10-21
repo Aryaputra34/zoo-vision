@@ -188,13 +188,10 @@ function isMalformedJson(err: unknown): boolean {
     const res = err.getResponse();
     if (typeof res === 'object' && res !== null) {
       // If it already has an application error code, it is a domain error, not a body-parser error
-      if ('code' in res && typeof (res as { code: unknown }).code === 'string') {
+      if ('code' in res && typeof res.code === 'string') {
         return false;
       }
-      const msg =
-        'message' in res
-          ? String((res as { message: unknown }).message)
-          : err.message;
+      const msg = 'message' in res ? String(res.message) : err.message;
       if (
         msg.includes('in JSON at position') ||
         msg.includes('JSON at position') ||

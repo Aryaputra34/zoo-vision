@@ -25,6 +25,7 @@ const MAX_ATTEMPTS = 5;
 export type StreamEntry = { id: string; msg: string | undefined };
 
 type Tx = Prisma.TransactionClient;
+type KnownCamera = { auditCamera: boolean; clipAfterSec: number };
 type Applied = { dead: DeadLetter[]; changes: Changes };
 type DeadLetter = { streamId: string; payload: string; reason: string };
 /** An entry after parsing and validation: a message to apply, or why it is dead. */
@@ -263,32 +264,37 @@ export class IngestService {
     return { entry, message: value as Message };
   }
 
-  private async knownCameras(tx: Tx, parsed: Parsed[]): Promise<Set<string>> {
+  private async knownCameras(
+    tx: Tx,
+    parsed: Parsed[],
+  ): Promise<Map<string, KnownCamera>> {
     const ids = new Set<string>();
     for (const item of parsed) {
       if ('message' in item && item.message.cameraId !== null) {
         ids.add(item.message.cameraId);
       }
     }
-    if (ids.size === 0) return ids;
-    const rows = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Camera" WHERE "id" = ANY(${[...ids]}::text[])`;
-    return new Set(rows.map((r) => r.id));
+    if (ids.size === 0) return new Map();
+    const rows = await tx.$queryRaw<({ id: string } & KnownCamera)[]>`
+      SELECT "id", "auditCamera", "clipAfterSec" FROM "Camera" WHERE "id" = ANY(${[...ids]}::text[])`;
+    return new Map(rows.map((r) => [r.id, r]));
   }
 
   /** Writes one valid message. Returns a dead-letter reason, or undefined when it applied. */
   private async applyMessage(
     tx: Tx,
     message: Message,
-    cameras: Set<string>,
+    cameras: Map<string, KnownCamera>,
     changes: Changes,
   ): Promise<string | undefined> {
-    if (message.cameraId !== null && !cameras.has(message.cameraId)) {
+    const camera =
+      message.cameraId === null ? undefined : cameras.get(message.cameraId);
+    if (message.cameraId !== null && !camera) {
       return `unknown camera ${message.cameraId}`;
     }
     switch (message.message) {
       case 'event':
-        return this.applyEvent(tx, message, changes);
+        return this.applyEvent(tx, message, camera, changes);
       case 'interval_open':
         return this.applyOpen(tx, message, changes);
       case 'interval_close':
@@ -306,6 +312,7 @@ export class IngestService {
   private async applyEvent(
     tx: Tx,
     m: EventMessage,
+    camera: KnownCamera | undefined,
     changes: Changes,
   ): Promise<undefined> {
     const inserted = await tx.$executeRaw`
@@ -318,6 +325,17 @@ export class IngestService {
     if (inserted === 1) {
       changes.events.push(m);
       changes.wrote('event', m);
+      // The clip of an important event outlives the continuous recording: the pin tick copies it
+      // once MediaMTX has written its end. Same transaction as the event, so one never exists
+      // without the other; ON CONFLICT covers a row made by hand before a redelivery.
+      if (camera && (m.severity !== 'info' || camera.auditCamera)) {
+        await tx.$executeRaw`
+          INSERT INTO "Evidence" ("eventId", "cameraId", "eventTime", "reason", "runAt")
+          VALUES (${m.id}, ${m.cameraId}, ${m.time}::timestamptz,
+                  ${camera.auditCamera ? 'AUDIT_CAMERA' : 'SEVERITY'}::"EvidenceReason",
+                  ${m.time}::timestamptz + make_interval(secs => ${camera.clipAfterSec + 60}::double precision))
+          ON CONFLICT DO NOTHING`;
+      }
     }
     // Closes the previous boot's intervals. Only a first delivery does it (a redelivered
     // engine_started must not close what the restarted engine opened since), and only intervals

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, RootModel, conint, constr
+from pydantic import BaseModel, ConfigDict, RootModel, confloat, conint, constr
 
 
 class Model(RootModel[Any]):
@@ -43,3 +43,12 @@ class ModelValidationFailed(BaseModel):
     modelId: UUID
     name: constr(min_length=1, max_length=200)
     error: constr(min_length=1, max_length=500)
+
+
+class DiskLow(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    path: constr(min_length=1, max_length=500)
+    usedPercent: confloat(ge=0.0, le=100.0)
+    freeBytes: conint(ge=0)

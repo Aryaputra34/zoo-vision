@@ -8,6 +8,7 @@ import {
 import { UrlCipher } from '../cameras/url-cipher';
 import { ENV, type Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { MEDIAMTX, MediamtxClient, MediamtxError } from './mediamtx-client';
 import {
   durationSeconds,
@@ -48,6 +49,7 @@ export class PathSync implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(ENV) private readonly env: Env,
     private readonly prisma: PrismaService,
     private readonly cipher: UrlCipher,
+    private readonly settings: SiteSettingsService,
     @Inject(MEDIAMTX) private readonly client: MediamtxClient | null,
   ) {}
 
@@ -101,10 +103,14 @@ export class PathSync implements OnApplicationBootstrap, OnModuleDestroy {
   private async once(client: MediamtxClient): Promise<void> {
     // List MediaMTX first so anything committed in the DB while listing is seen in wanted
     const existing = await client.listConfigs();
+    // not the defaults: a wrong delete-after would let MediaMTX delete recordings. Throws (the
+    // pass is skipped and logged) while the database is down
+    const { recordingRetentionDays } = await this.settings.loaded();
     const failedCameras = new Set<string>();
     const wanted = wantedPaths(
       await this.prisma.camera.findMany(),
       this.cipher,
+      recordingRetentionDays,
       (cameraId, err) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.log.warn(

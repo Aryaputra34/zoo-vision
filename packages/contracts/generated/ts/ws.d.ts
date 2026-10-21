@@ -73,6 +73,17 @@ export interface DataChanged {
 }
 
 /**
+ * Room managers: a disk used by recordings, snapshots, kept clips or exports crossed 85% (warning) or 95% (critical).
+ */
+export interface DiskWarning {
+  path: string;
+  usedPercent: number;
+  freeBytes: number;
+  severity: "warning" | "critical";
+  time: string;
+}
+
+/**
  * Room alerts: one per new Event after an ingest commit (a commit with more than 50 sends only data.changed).
  */
 export interface EventCreated {

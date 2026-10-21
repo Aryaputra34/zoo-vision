@@ -420,4 +420,68 @@ describe('ingest: the events stream into Postgres', () => {
       error.mockRestore();
     }
   });
+
+  describe('evidence rows', () => {
+    type EvidenceRow = {
+      eventId: string;
+      cameraId: string;
+      reason: string;
+      status: string;
+      secsAfterEvent: number;
+    };
+    const evidence = async () =>
+      (await ownerQuery(
+        `SELECT "eventId", "cameraId", "reason", "status",
+                EXTRACT(EPOCH FROM "runAt" - "eventTime")::int AS "secsAfterEvent"
+           FROM "Evidence" ORDER BY "eventId"`,
+      )) as EvidenceRow[];
+
+    it('a warning event → one Evidence row SEVERITY QUEUED, runAt = time + clipAfterSec + 60 s', async () => {
+      await ownerQuery(
+        `UPDATE "Camera" SET "clipAfterSec" = 20 WHERE "id" = 'cam_a'`,
+      );
+      const ingest = (await start('off')).get(IngestService);
+      const msg = eventMsg();
+      await ingest.processBatch([entry('1-1', msg)]);
+      expect(await evidence()).toEqual([
+        {
+          eventId: msg.id,
+          cameraId: 'cam_a',
+          reason: 'SEVERITY',
+          status: 'QUEUED',
+          secsAfterEvent: 80,
+        },
+      ]);
+    });
+
+    it('an info event on an auditCamera camera → one row AUDIT_CAMERA; an info event elsewhere → none', async () => {
+      await ownerQuery(
+        `UPDATE "Camera" SET "auditCamera" = true WHERE "id" = 'cam_a'`,
+      );
+      const ingest = (await start('off')).get(IngestService);
+      const audited = eventMsg({ severity: 'info' });
+      const other = eventMsg({ severity: 'info', cameraId: 'cam_b' });
+      await ingest.processBatch([entry('1-1', audited), entry('1-2', other)]);
+      expect(await evidence()).toMatchObject([
+        { eventId: audited.id, reason: 'AUDIT_CAMERA' },
+      ]);
+    });
+
+    it('a warning system event (cameraId null) → no row', async () => {
+      const ingest = (await start('off')).get(IngestService);
+      await ingest.processBatch([
+        entry('1-1', { ...engineStarted('default'), severity: 'warning' }),
+      ]);
+      expect(await count('Event')).toBe(1);
+      expect(await count('Evidence')).toBe(0);
+    });
+
+    it('the same warning message delivered twice → still one row', async () => {
+      const ingest = (await start('off')).get(IngestService);
+      const entries = [entry('1-1', eventMsg())];
+      await ingest.processBatch(entries);
+      await ingest.processBatch(entries);
+      expect(await count('Evidence')).toBe(1);
+    });
+  });
 });

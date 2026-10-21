@@ -72,20 +72,24 @@ services:
       ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
       COOKIE_SECURE: ${ZOO_COOKIE_SECURE:-true} # false only for plain http on a dev machine
       SWAGGER: ${ZOO_SWAGGER:-off} # off | superadmin | public
-      SITE_TIMEZONE: ${ZOO_SITE_TIMEZONE:-Asia/Jakarta} # reports and CSV times; an IANA name
       MODELS_DIR: /data/models
       SNAPSHOT_DIR: /data/snapshots
-      RECORDINGS_DIR: /data/recordings # read-only: only the free-space figure of stream-info
+      RECORDINGS_DIR: /data/recordings # stream-info free space; retention sweeps the recordings of deleted cameras
+      EVIDENCE_DIR: /data/evidence # kept clips
+      EXPORTS_DIR: /data/exports # finished PDF exports
+      GOTENBERG_URL: ${ZOO_GOTENBERG_URL-http://gotenberg:3000} # prints the PDF reports; empty = PDF export answers 503
       # MediaMTX's playback server (the engine profile runs it on the host network, port 9996)
       MEDIAMTX_PLAYBACK_URL: ${ZOO_MEDIAMTX_PLAYBACK_URL-http://host.docker.internal:9996} # empty = no clips
       # MediaMTX's Control API: the API keeps one zv_* path per camera in sync (empty = no sync, no live video)
       MEDIAMTX_API_URL: ${ZOO_MEDIAMTX_API_URL-http://host.docker.internal:9997}
       MEDIAMTX_PASSWORD: ${MEDIAMTX_PASSWORD:-}
-      JOBS: "on" # offline check every 5 s; "off" on a second API replica
+      JOBS: "on" # offline check, pins, retention, disk and PDF jobs; "off" on a second API replica
     volumes:
       - ${ZOO_DATA_DIR:-./data}/models:/data/models
-      - ${ZOO_DATA_DIR:-./data}/snapshots:/data/snapshots:ro # written by the engine or the demo feed
-      - ${ZOO_DATA_DIR:-./data}/recordings:/data/recordings:ro # written by MediaMTX
+      - ${ZOO_DATA_DIR:-./data}/snapshots:/data/snapshots # written by the engine or the demo feed; retention deletes here
+      - ${ZOO_DATA_DIR:-./data}/recordings:/data/recordings # written by MediaMTX; retention sweeps deleted cameras
+      - ${ZOO_DATA_DIR:-./data}/evidence:/data/evidence
+      - ${ZOO_DATA_DIR:-./data}/exports:/data/exports
     ports:
       # The loopback port is for the engine running from source and for debugging; Caddy reaches
       # the API on the compose network.
@@ -103,6 +107,12 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  # Prints the HTML pages the API builds into PDF reports. Internal network only, no host port.
+  gotenberg:
+    image: gotenberg/gotenberg:8.38.1
+    command: ["gotenberg", "--api-timeout=70s"]
+    restart: unless-stopped
 
   # The only service with public ports: /api, /media and /ws go to the API, /internal/* is a 404,
   # everything else goes to the dashboard. Inside the container Caddy listens on the same port numbers as
@@ -201,6 +211,7 @@ services:
     profiles: ["engine"]
     image: bluenviron/mediamtx:1.21.1
     restart: unless-stopped
+    user: "1000:1000" # the API (uid 1000) deletes recordings of deleted cameras: see README, data folder ownership
     network_mode: "host"
     environment:
       - MTX_PATHDEFAULTS_RECORDPATH=/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
@@ -217,6 +228,7 @@ services:
     build: ../services/engine
     image: zoo-vision-engine:${ZOO_VERSION:-dev}
     restart: unless-stopped
+    user: "1000:1000" # the API (uid 1000) deletes old snapshots: see README, data folder ownership
     network_mode: "host" # Host networking for lowest latency RTSP & REST calls
     depends_on:
       - mediamtx
@@ -241,6 +253,7 @@ services:
       - DEVICE=cuda:0
       - ZOO_MODELS_DIR=/app/models
       - SNAPSHOT_DIR=/app/snapshots
+      - SNAPSHOT_RETENTION_DAYS=0 # the API's RetentionJob owns snapshot retention (kept events, audit cameras); the engine's own pruner would cap it at 30 days
 
 volumes:
   pgdata:

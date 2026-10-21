@@ -14,7 +14,6 @@ const camera: Camera = {
   sourceType: 'RTSP',
   mainStreamUrlEnc: cipher.encrypt('rtsp://u:p@h/main'),
   subStreamUrlEnc: cipher.encrypt('rtsp://u:p@h/sub'),
-  recordingPath: 'cam_a',
   targetFps: 5,
   engineGroup: 'default',
   auditCamera: false,
@@ -22,6 +21,7 @@ const camera: Camera = {
   recordingEnabled: true,
   recordingStream: 'MAIN',
   retentionDays: null,
+  evidenceRetentionDays: null,
   clipBeforeSec: 15,
   clipAfterSec: 15,
   nxCameraId: null,
@@ -69,6 +69,7 @@ describe('toCameraView', () => {
       enabled: true,
       stream: 'MAIN',
       retentionDays: null,
+      evidenceRetentionDays: null,
       clipBeforeSec: 15,
       clipAfterSec: 15,
     });

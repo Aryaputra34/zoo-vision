@@ -9,6 +9,7 @@ import { ENV, type Env } from './config/env';
 import { CamerasModule } from './cameras/cameras.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { EngineInternalModule } from './engine-internal/engine-internal.module';
+import { EvidenceModule } from './evidence/evidence.module';
 import { ExportsModule } from './exports/exports.module';
 import { HealthController } from './health/health.controller';
 import { IngestModule } from './ingest/ingest.module';
@@ -20,6 +21,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsecasesModule } from './usecases/usecases.module';
+import { SiteSettingsModule } from './site-settings/site-settings.module';
 import { SystemLogModule } from './system-log/system-log.module';
 import { UsersModule } from './users/users.module';
 
@@ -34,6 +36,7 @@ export class AppModule {
         PrismaModule,
         RedisModule,
         ContractsModule,
+        SiteSettingsModule,
         TerminusModule,
         AuthModule,
         AuditModule,
@@ -42,6 +45,7 @@ export class AppModule {
         ApiTokensModule,
         CamerasModule,
         EngineInternalModule,
+        EvidenceModule,
         IngestModule,
         JobsModule,
         LiveModule,
