@@ -65,7 +65,7 @@ environment stops it at start and names every bad variable (never the value). En
 | `DEVICE` | `cpu` | Torch/ONNX device, e.g. `cuda:0` |
 | `ZOO_MODELS_DIR` | `models` | The models folder (same folder the API manages) |
 | `SNAPSHOT_DIR` | `snapshots` | Event JPEGs, served by the API |
-| `SNAPSHOT_RETENTION_DAYS` | `30` | Older snapshots are deleted; `0` keeps them |
+| `SNAPSHOT_RETENTION_DAYS` | `0` | `0` keeps snapshots (the API's retention job owns them, kept events and audit cameras included); a number deletes older day folders |
 | `ENGINE_MAX_BATCH` | `1` | Most frames batched into one model call, 1..16 |
 | `ENGINE_MODEL_JOBS` | `on` | `on` or `off`: whether this engine runs validation and conversion jobs. A second engine group sets `off` |
 

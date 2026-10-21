@@ -63,7 +63,7 @@ def load_env(source: Optional[Mapping[str, str]] = None) -> EngineEnv:
     if not GROUP_PATTERN.match(group):
         bad.append("ENGINE_GROUP must match ^[a-z0-9_-]{1,32}$")
 
-    retention = _int(env, "SNAPSHOT_RETENTION_DAYS", 30, 0, None, bad)
+    retention = _int(env, "SNAPSHOT_RETENTION_DAYS", 0, 0, None, bad)
     max_batch = _int(env, "ENGINE_MAX_BATCH", 1, 1, 16, bad)
 
     jobs_raw = env.get("ENGINE_MODEL_JOBS", "on").strip().lower()
