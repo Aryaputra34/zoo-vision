@@ -1,0 +1,1121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zoo Vision Project Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt "Segoe UI", sans-serif; color: #777; }
+    @bottom-left { content: "Zoo Vision: project guide"; font: 8pt "Segoe UI", sans-serif; color: #777; }
+  }
+  @page :first { @bottom-right { content: none; } @bottom-left { content: none; } }
+  :root { --ink: #1d2433; --muted: #5b6475; --line: #d9dee7; --soft: #f3f5f9; --accent: #1f6f5c; --accent-soft: #e4f2ee; --warn: #8a5a00; --warn-soft: #fdf3dc; }
+  * { box-sizing: border-box; }
+  body { font: 9.6pt/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ink); margin: 0; background: #fff; }
+  h1 { font-size: 26pt; line-height: 1.15; margin: 0 0 6pt; letter-spacing: -0.5px; }
+  h2 { font-size: 15pt; margin: 0 0 8pt; padding-bottom: 4pt; border-bottom: 2px solid var(--accent); break-after: avoid; }
+  h3 { font-size: 11pt; margin: 14pt 0 5pt; break-after: avoid; color: var(--accent); }
+  p { margin: 0 0 7pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin-bottom: 2pt; }
+  code { font: 8.6pt Consolas, "Cascadia Mono", monospace; background: var(--soft); padding: 0 2.5pt; border-radius: 2pt; }
+  pre { font: 8.4pt/1.45 Consolas, monospace; background: var(--soft); border: 1px solid var(--line); border-radius: 4pt; padding: 7pt 9pt; margin: 0 0 9pt; white-space: pre-wrap; break-inside: avoid; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 10pt; font-size: 8.8pt; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th { text-align: left; background: var(--soft); font-weight: 600; }
+  th, td { border: 1px solid var(--line); padding: 3.5pt 5pt; vertical-align: top; }
+  td code, th code { font-size: 8pt; }
+  .section { break-before: page; }
+  .lead { font-size: 11pt; color: var(--muted); }
+  .note { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 6pt 9pt; margin: 0 0 10pt; break-inside: avoid; }
+  .warn { background: var(--warn-soft); border-left: 3px solid var(--warn); padding: 6pt 9pt; margin: 0 0 10pt; break-inside: avoid; }
+  .muted { color: var(--muted); }
+  .cover { height: 245mm; display: flex; flex-direction: column; justify-content: space-between; }
+  .cover .kicker { text-transform: uppercase; letter-spacing: 2px; font-size: 9pt; color: var(--accent); font-weight: 600; margin-bottom: 10pt; }
+  .cover .meta td { border: none; padding: 2pt 10pt 2pt 0; font-size: 9.5pt; }
+  .cover .meta td:first-child { color: var(--muted); width: 90pt; }
+  .toc { columns: 2; column-gap: 24pt; font-size: 10pt; padding-left: 16pt; }
+  .toc li { margin-bottom: 4pt; break-inside: avoid; }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; margin: 4pt 0 10pt; break-inside: avoid; }
+  .flow .step { flex: 1 1 0; border: 1px solid var(--line); border-radius: 4pt; background: var(--soft); padding: 5pt 6pt; font-size: 8.3pt; line-height: 1.35; }
+  .flow .step b { display: block; color: var(--accent); font-size: 8.6pt; margin-bottom: 2pt; }
+  .flow .arrow { flex: 0 0 12pt; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11pt; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; }
+  .card { border: 1px solid var(--line); border-radius: 4pt; padding: 7pt 9pt; break-inside: avoid; }
+  .card h4 { margin: 0 0 3pt; font-size: 10pt; }
+  .card p { margin: 0; font-size: 8.8pt; }
+  .tag { display: inline-block; font-size: 7.4pt; font-weight: 600; padding: 0 4pt; border-radius: 2pt; background: var(--soft); border: 1px solid var(--line); color: var(--muted); }
+  .tag.ok { background: var(--accent-soft); color: var(--accent); border-color: #b9dcd2; }
+  .tag.old { background: var(--warn-soft); color: var(--warn); border-color: #ecd9a8; }
+  td.m { font: 600 7.8pt Consolas, monospace; white-space: nowrap; }
+  figure { margin: 4pt 0 10pt; break-inside: avoid; }
+  figcaption { font-size: 8.3pt; color: var(--muted); margin-top: 3pt; }
+  svg text { font-family: "Segoe UI", sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+  <div>
+    <div class="kicker">Magnet · Taman Safari</div>
+    <h1>Zoo Vision<br>Project guide</h1>
+    <p class="lead">How the AI video analytics backend fits together: what each part does, how data moves between
+      them, the data model, the API, and how to run it.</p>
+  </div>
+  <div>
+    <h3 style="margin-top:0">Contents</h3>
+    <ol class="toc">
+      <li>What Zoo Vision is</li>
+      <li>The system at a glance</li>
+      <li>The parts, one by one</li>
+      <li>How data moves</li>
+      <li>Data model</li>
+      <li>Database structure</li>
+      <li>Use cases</li>
+      <li>Users, roles and login</li>
+      <li>Connecting the frontend</li>
+      <li>API reference</li>
+      <li>WebSocket and engine channels</li>
+      <li>Running it</li>
+      <li>Repo map and where to read more</li>
+      <li>Glossary</li>
+    </ol>
+  </div>
+  <table class="meta">
+    <tr><td>Repository</td><td><code>Aryaputra34/zoo-vision</code> (backend); dashboard in <code>zoo-vision-fe</code></td></tr>
+    <tr><td>Written from</td><td><code>main</code> at commit <code>6b392b0</code> (Phase 4b merged), 27 October 2026</td></tr>
+    <tr><td>Sources</td><td>The production design spec, the READMEs, <code>docs/fe-contract.md</code>, <code>apps/api/openapi.json</code> and <code>packages/contracts</code></td></tr>
+    <tr><td>When in doubt</td><td>The code and <code>openapi.json</code> are right; this guide is a summary of them</td></tr>
+  </table>
+</div>
+
+<!-- ============ 1 ============ -->
+<div class="section">
+<h2>1. What Zoo Vision is</h2>
+<p>Zoo Vision is AI video analytics for one park, Taman Safari. About <b>12 cameras</b> watch cashier desks, the
+  restaurant (occupancy and tables), the vehicle gate and the pony rides. A Python vision engine runs YOLO detection and
+  ByteTrack tracking on each camera. It turns what it sees into <b>events</b> (a vehicle crossed the gate), <b>intervals</b>
+  (a desk was unattended from 10:02 to 10:09) and <b>metrics</b> (restaurant occupancy each minute). A NestJS API stores
+  them in Postgres and serves them to a web dashboard, along with live video, snapshots and clips.</p>
+
+<h3>Ground rules of the design</h3>
+<ul>
+  <li><b>One park, one on-site server.</b> No cloud, no multi-site, no tenants. Everything runs in one Docker Compose
+    stack on a GPU server at the park.</li>
+  <li><b>The database is the source of truth for config.</b> An admin adds cameras and draws zones in the web UI. A
+    change applies live, between two frames, with no stream drop and no restart of other cameras.</li>
+  <li><b>Use cases will change and grow.</b> Adding one must not need a database migration. Each use case is defined
+    once, as JSON Schemas in <code>packages/contracts</code>, and the TypeScript and Python types are generated from them.</li>
+  <li><b>Nx Witness is optional.</b> It was the centre of the prototype. Now MediaMTX records the video and Nx is kept
+    only as a possible future integration (<code>integrations/nx/plugin/</code>, frozen).</li>
+  <li><b>Small team.</b> One backend/CV developer owns this repo; a frontend team builds the dashboard against a
+    versioned contract.</li>
+</ul>
+
+<h3>Where the project stands</h3>
+<p>The rebuild from the prototype is split into phases, each ending in a working system. Each phase has a plan in
+  <code>docs/superpowers/plans/</code>, and the larger ones have a design spec in <code>docs/superpowers/specs/</code>.</p>
+<table>
+  <thead><tr><th style="width:70pt">Phase</th><th>What it delivered</th><th style="width:52pt">Status</th></tr></thead>
+  <tbody>
+    <tr><td>0 Restructure</td><td>Monorepo layout (<code>services/engine</code>, <code>apps/api</code>, <code>packages/contracts</code>, <code>deploy</code>), binaries out of git, CI</td><td><span class="tag ok">done</span></td></tr>
+    <tr><td>1 Backbone</td><td>Postgres + Prisma, Redis stream, contracts package, auth (sessions, API tokens), users, audit, cameras, event ingest</td><td><span class="tag ok">done</span></td></tr>
+    <tr><td>2 Live config</td><td>Engine supervisor, use case registry, typed settings applied live, shared model pool, status heartbeats, AI model registry</td><td><span class="tag ok">done</span></td></tr>
+    <tr><td>3 Web on the API</td><td>Dashboard moved onto the API, Caddy as the single origin, WebSocket live updates, reports, lists, CSV exports, system log</td><td><span class="tag ok">done</span></td></tr>
+    <tr><td>4a Video</td><td>MediaMTX path sync from the API, WebRTC live view with boxes drawn in the browser, superadmin debug view</td><td><span class="tag ok">done</span></td></tr>
+    <tr><td>4b Evidence</td><td>Kept clips, retention jobs, disk warnings, site settings, PDF reports through Gotenberg</td><td><span class="tag ok">done</span></td></tr>
+    <tr><td>5 Hardening</td><td>Backups, install and update scripts, offline update path, system status page, 24 h soak test, ADR-009</td><td><span class="tag">next</span></td></tr>
+  </tbody>
+</table>
+<p class="muted">Planned later, each with its own spec: fraud detection (matching camera counts against POS and
+  ticket sales) and an Nx bridge. Some hooks for fraud detection already exist: the analytics tables are append-only, and
+  config changes on audit cameras are flagged.</p>
+</div>
+
+<!-- ============ 2 ============ -->
+<div class="section">
+<h2>2. The system at a glance</h2>
+<p>Eight services in one Compose stack, plus the browser. The engine and the API never import each other's code. At
+  runtime they talk through Redis, and the engine also fetches its camera list from the API over HTTP.</p>
+
+<figure>
+<svg viewBox="0 0 850 420" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6475"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f6f5c"/></marker>
+    <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b5651d"/></marker>
+  </defs>
+  <style>
+    .box { fill: #f3f5f9; stroke: #9aa3b2; stroke-width: 1.2; }
+    .key { fill: #e4f2ee; stroke: #1f6f5c; stroke-width: 1.4; }
+    .ext { fill: #fff; stroke: #9aa3b2; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .t { font-size: 13px; font-weight: 600; fill: #1d2433; }
+    .s { font-size: 10.5px; fill: #5b6475; }
+    .l { font-size: 10px; fill: #5b6475; }
+    .ln { stroke: #5b6475; stroke-width: 1.3; fill: none; }
+    .lg { stroke: #1f6f5c; stroke-width: 1.6; fill: none; }
+    .lo { stroke: #b5651d; stroke-width: 1.3; fill: none; stroke-dasharray: 5 3; }
+  </style>
+
+  <!-- boxes -->
+  <rect class="ext" x="20" y="14" width="170" height="56" rx="6"/>
+  <text class="t" x="105" y="38" text-anchor="middle">IP cameras (~12)</text>
+  <text class="s" x="105" y="55" text-anchor="middle">RTSP, H.264, main + sub</text>
+
+  <rect class="box" x="20" y="160" width="170" height="74" rx="6"/>
+  <text class="t" x="105" y="184" text-anchor="middle">MediaMTX</text>
+  <text class="s" x="105" y="200" text-anchor="middle">records every camera,</text>
+  <text class="s" x="105" y="213" text-anchor="middle">re-serves RTSP, WebRTC,</text>
+  <text class="s" x="105" y="226" text-anchor="middle">clip playback :9996</text>
+
+  <rect class="ext" x="450" y="10" width="200" height="44" rx="6"/>
+  <text class="t" x="550" y="30" text-anchor="middle">Browser</text>
+  <text class="s" x="550" y="45" text-anchor="middle">staff and managers</text>
+
+  <rect class="box" x="450" y="86" width="200" height="50" rx="6"/>
+  <text class="t" x="550" y="106" text-anchor="middle">Caddy</text>
+  <text class="s" x="550" y="122" text-anchor="middle">the only public ports (80/443), TLS</text>
+
+  <rect class="box" x="690" y="86" width="145" height="50" rx="6"/>
+  <text class="t" x="762" y="106" text-anchor="middle">web</text>
+  <text class="s" x="762" y="122" text-anchor="middle">Next.js dashboard</text>
+
+  <rect class="key" x="450" y="176" width="200" height="66" rx="6"/>
+  <text class="t" x="550" y="198" text-anchor="middle">API (NestJS + Prisma)</text>
+  <text class="s" x="550" y="214" text-anchor="middle">REST /api/v1, WebSocket /ws,</text>
+  <text class="s" x="550" y="227" text-anchor="middle">/media, ingest, background jobs</text>
+
+  <rect class="box" x="690" y="176" width="145" height="44" rx="6"/>
+  <text class="t" x="762" y="196" text-anchor="middle">Postgres 17</text>
+  <text class="s" x="762" y="211" text-anchor="middle">config, analytics, logs</text>
+
+  <rect class="box" x="690" y="246" width="145" height="44" rx="6"/>
+  <text class="t" x="762" y="266" text-anchor="middle">Gotenberg</text>
+  <text class="s" x="762" y="281" text-anchor="middle">HTML to PDF reports</text>
+
+  <rect class="key" x="240" y="176" width="160" height="66" rx="6"/>
+  <text class="t" x="320" y="198" text-anchor="middle">Redis 7.4</text>
+  <text class="s" x="320" y="214" text-anchor="middle">event stream, live status,</text>
+  <text class="s" x="320" y="227" text-anchor="middle">config notices, job queue</text>
+
+  <rect class="key" x="240" y="320" width="160" height="70" rx="6"/>
+  <text class="t" x="320" y="342" text-anchor="middle">Engine (Python, GPU)</text>
+  <text class="s" x="320" y="358" text-anchor="middle">one worker per camera:</text>
+  <text class="s" x="320" y="371" text-anchor="middle">YOLO + ByteTrack + rules</text>
+
+  <rect class="box" x="450" y="332" width="200" height="58" rx="6"/>
+  <text class="t" x="550" y="352" text-anchor="middle">/data volumes</text>
+  <text class="s" x="550" y="367" text-anchor="middle">snapshots, evidence, recordings,</text>
+  <text class="s" x="550" y="380" text-anchor="middle">models, exports</text>
+
+  <!-- arrows -->
+  <path class="ln" d="M60,70 V160" marker-end="url(#a)"/>
+  <text class="l" x="66" y="120">pulled once</text>
+
+  <path class="ln" d="M550,54 V86" marker-end="url(#a)"/>
+  <path class="ln" d="M650,111 H690" marker-end="url(#a)"/>
+  <text class="l" x="656" y="104">pages</text>
+  <path class="ln" d="M550,136 V176" marker-end="url(#a)"/>
+  <text class="l" x="556" y="160">/api  /ws  /media</text>
+
+  <path class="lo" d="M450,124 H150 V160" marker-end="url(#o)"/>
+  <text class="l" x="210" y="118">/media/webrtc (WHEP), only with a session</text>
+
+  <path class="ln" d="M650,198 H690" marker-start="url(#a)" marker-end="url(#a)"/>
+  <path class="ln" d="M650,232 H668 V268 H690" marker-end="url(#a)"/>
+
+  <path class="lg" d="M400,200 H450" marker-start="url(#g)" marker-end="url(#g)"/>
+
+  <path class="lg" d="M300,320 V242" marker-start="url(#g)" marker-end="url(#g)"/>
+  <text class="l" x="294" y="292" text-anchor="end">events, status,</text>
+  <text class="l" x="294" y="304" text-anchor="end">frames, boxes</text>
+
+  <path class="ln" d="M105,234 V355 H240" marker-end="url(#a)"/>
+  <text class="l" x="112" y="345">RTSP re-served</text>
+
+  <path class="ln" d="M370,320 V300 H470 V242" marker-end="url(#a)"/>
+  <text class="l" x="378" y="314">HTTP /internal/engine (token)</text>
+
+  <path class="ln" d="M190,210 H218 V260 H540 V242" marker-start="url(#a)"/>
+  <text class="l" x="112" y="276">API → Control API :9997, clips :9996</text>
+
+  <path class="ln" d="M400,365 H450" marker-end="url(#a)"/>
+  <text class="l" x="404" y="358">JPEGs</text>
+  <path class="ln" d="M620,242 V332" marker-end="url(#a)"/>
+</svg>
+<figcaption>Green: the backend core. Dashed boxes: outside the stack. The dashed orange line is live video, which
+  goes from MediaMTX to the browser without passing through the API; Caddy asks the API whether the browser is
+  logged in first.</figcaption>
+</figure>
+
+<h3>The four paths through the system</h3>
+<table>
+  <thead><tr><th style="width:92pt">Path</th><th>Route</th></tr></thead>
+  <tbody>
+    <tr><td><b>Analytics</b></td><td>Camera → MediaMTX → engine → Redis stream <code>events</code> → API ingest → Postgres → REST and WebSocket → dashboard</td></tr>
+    <tr><td><b>Config</b></td><td>Dashboard → API saves a new config version → Redis <code>cfg:changed</code> → engine fetches from <code>/internal/engine/cameras</code> → worker applies it between two frames → status shows the applied version</td></tr>
+    <tr><td><b>Live video</b></td><td>Browser → Caddy <code>/media/webrtc</code> (after <code>forward_auth</code> to <code>GET /api/v1/auth/check</code>) → MediaMTX WHEP. Boxes come separately: engine → Redis <code>cam:{id}:boxes</code> → API → WebSocket room <code>camera:{id}</code> → canvas over the video</td></tr>
+    <tr><td><b>Evidence</b></td><td>Engine writes the event snapshot to <code>/data/snapshots</code>; MediaMTX records continuously; the API's pin job copies a clip window from MediaMTX playback into <code>/data/evidence</code> for events worth keeping</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ============ 3 ============ -->
+<div class="section">
+<h2>3. The parts, one by one</h2>
+
+<h3>Engine: <code>services/engine/</code> (Python 3.12, uv)</h3>
+<p>One process holds a <b>supervisor</b> and <b>one worker thread per camera</b>. Each worker owns its stream
+  (<code>core/stream_manager.py</code>) and its use case pipeline. The supervisor (<code>core/supervisor.py</code>) keeps the
+  set of workers in line with the cameras the API says this engine should run.</p>
+<ul>
+  <li><b>Config comes from the API, not files.</b> At start, and on every <code>cfg:changed</code> message, Redis reconnect,
+    or 60 s timer, the engine calls <code>GET /internal/engine/cameras?group=&lt;ENGINE_GROUP&gt;</code>. Its only static config
+    is environment variables (<code>REDIS_URL</code>, <code>ENGINE_TOKEN</code>, <code>API_URL</code>, <code>DEVICE</code>, …).</li>
+  <li><b>Use cases are plug-ins.</b> Each is a folder <code>usecases/&lt;id&gt;/pipeline.py</code> holding one
+    <code>BasePipeline</code> subclass. They are found by scanning the folder, so adding one doesn't mean editing a central list.</li>
+  <li><b>Shared model pool</b> (<code>core/model_pool.py</code>): one loaded model per (file, image size), shared by every
+    camera that uses it, with an inference thread that can batch frames (<code>ENGINE_MAX_BATCH</code>).</li>
+  <li><b>Outputs:</b> stream messages through <code>core/event_stream.py</code> (built by <code>core/messages.py</code>), a status
+    heartbeat every 5 s (<code>core/status.py</code>), a JPEG frame every 2 s, per-frame boxes, and event snapshots
+    (<code>core/snapshot_store.py</code>).</li>
+  <li><b>Model jobs:</b> the engine also validates uploaded models and converts <code>.pt</code> to ONNX, taking jobs from
+    the Redis list <code>model:jobs</code> (<code>core/model_jobs.py</code>).</li>
+  <li><b>Engine groups:</b> each camera has an <code>engineGroup</code>. A second engine process with another
+    <code>ENGINE_GROUP</code> can take some cameras, for example a crash-prone one.</li>
+</ul>
+
+<h3>API: <code>apps/api/</code> (NestJS 11, Prisma 7)</h3>
+<p>Everything the browser and the engine need from the backend. Each folder in <code>src/</code> is a Nest module:</p>
+<table>
+  <thead><tr><th style="width:140pt">Modules</th><th>Responsibility</th></tr></thead>
+  <tbody>
+    <tr><td><code>auth</code>, <code>users</code>, <code>api-tokens</code></td><td>Cookie sessions stored in Redis, the three roles, API tokens for scripts and Swagger</td></tr>
+    <tr><td><code>cameras</code>, <code>usecases</code></td><td>Cameras and their versioned config (save, history, rollback); serves the use case schemas the zone editor needs</td></tr>
+    <tr><td><code>models</code></td><td>The AI model registry: upload (ONNX only), rescan of the inbox folder, validate, convert, delete</td></tr>
+    <tr><td><code>ingest</code></td><td>Reads the Redis stream into Postgres in transactions, idempotently, and dead-letters bad entries</td></tr>
+    <tr><td><code>engine-internal</code></td><td><code>/internal/engine/*</code>: the engine's routes, guarded by <code>ENGINE_TOKEN</code>, never routed by Caddy</td></tr>
+    <tr><td><code>live</code></td><td>socket.io gateway at <code>/ws</code>: new events, data-changed pings, camera status, boxes, audit notices</td></tr>
+    <tr><td><code>reports</code>, <code>exports</code></td><td>Stats and time series; streamed CSV; PDF report jobs rendered through Gotenberg</td></tr>
+    <tr><td><code>media</code>, <code>mediamtx</code>, <code>evidence</code></td><td>Serves snapshots and clips behind the session; keeps MediaMTX paths in sync with the cameras; keeps clips</td></tr>
+    <tr><td><code>jobs</code></td><td>Background jobs: camera offline check, evidence pins, retention, disk and free-space checks</td></tr>
+    <tr><td><code>audit</code>, <code>system-log</code>, <code>site-settings</code></td><td>Audit trail of every change and export, login history, system events; park name, time zone, retention days</td></tr>
+  </tbody>
+</table>
+
+<h3>Contracts: <code>packages/contracts/</code> (JSON Schema)</h3>
+<p>The <b>single source of truth</b> for the stream messages, the per-use-case settings and live values, and the WebSocket
+  messages. <code>npm run generate</code> writes TypeScript types (for the API and one self-contained file for the
+  frontend) and Pydantic models (into <code>services/engine/contracts/</code>). CI fails if the generated files are out of
+  date, so the engine, API and dashboard can't drift apart.</p>
+
+<h3>Supporting services</h3>
+<div class="grid2">
+  <div class="card"><h4>MediaMTX</h4><p>Pulls each camera once and records it. It re-serves the stream over RTSP to the engine,
+    over WebRTC to browsers, and serves clip playback on :9996. The API adds and changes its paths at runtime through the
+    Control API (:9997), so adding a camera in the UI needs no SSH.</p></div>
+  <div class="card"><h4>Redis</h4><p>The only channel between API and engine, plus session storage. AOF persistence means the event stream
+    survives a Redis restart.</p></div>
+  <div class="card"><h4>Postgres</h4><p>Config, users, logs and the three analytics tables. The running API connects as <code>zoo_api</code>,
+    which can't update or delete analytics rows; migrations run as the owner role <code>zoo_owner</code>.</p></div>
+  <div class="card"><h4>Caddy</h4><p>One origin for everything: <code>/</code> to the dashboard; <code>/api</code>, <code>/ws</code> and <code>/media</code>
+    to the API; <code>/media/webrtc</code> to MediaMTX after an auth check; <code>/internal/*</code> answers 404. One origin
+    means plain cookies and no CORS.</p></div>
+  <div class="card"><h4>Gotenberg</h4><p>Headless Chromium that turns the dashboard's print-styled report page into a PDF summary.</p></div>
+  <div class="card"><h4>web (separate repo)</h4><p><code>zoo-vision-fe</code>, Next.js + Tailwind. UI only: it talks to the API from the
+    browser and never touches the database.</p></div>
+</div>
+</div>
+
+<!-- ============ 4 ============ -->
+<div class="section">
+<h2>4. How data moves</h2>
+
+<h3>4.1 From a camera frame to a row in Postgres</h3>
+<div class="flow">
+  <div class="step"><b>1 Detect</b>The worker runs the model and tracker, then the use case rules (zones, tripwire, timers).</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>2 Snapshot</b>For an event, it draws boxes and zones on the frame and saves a JPEG to <code>/data/snapshots</code>.</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>3 XADD</b>It appends a contract-checked message to the Redis stream <code>events</code>. Once that returns, the event is durable.</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>4 Ingest</b>The API reads batches as consumer group <code>api</code>, writes them in one transaction (idempotent on message id), then ACKs.</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>5 Push</b>After the commit: <code>event.created</code> and <code>data.changed</code> over the WebSocket.</div>
+</div>
+<p>There are four message kinds: <code>event</code>, <code>interval_open</code>, <code>interval_close</code> (the two share a
+  session id) and <code>metric</code>. Delivery is at-least-once with no double counting: if the API crashes mid-batch,
+  it re-reads its unacknowledged entries on restart and the inserts are idempotent.</p>
+<table>
+  <thead><tr><th style="width:130pt">If this fails…</th><th>…this happens</th></tr></thead>
+  <tbody>
+    <tr><td>API or Postgres down</td><td>Messages wait in the Redis stream and are processed when it comes back. The engine carries on.</td></tr>
+    <tr><td>Redis briefly down</td><td>The engine holds events in a small bounded memory buffer and reports how many it dropped (<code>events_dropped</code>).</td></tr>
+    <tr><td>A bad message</td><td>Invalid, or failed too many times: it goes to the <code>DeadEvent</code> table and is ACKed, so it never blocks the rest.</td></tr>
+    <tr><td>Engine restart</td><td>It sends <code>engine_started</code>; the API closes that group's open intervals with <code>endReason = engine_restart</code>.</td></tr>
+    <tr><td>Camera goes dark</td><td>Its status key expires after about 15 s; the API opens a <code>camera_offline</code> interval, so reports can tell "no rides" from "camera off".</td></tr>
+  </tbody>
+</table>
+
+<h3>4.2 A config change reaching a running camera</h3>
+<div class="flow">
+  <div class="step"><b>1 Edit</b>A manager draws zones on the camera's latest frame (<code>GET /cameras/:id/frame</code>).</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>2 Save</b><code>POST /cameras/:id/config</code> with <code>baseVersion</code>. The API checks the schema and role rules and stores version N+1.</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>3 Notify</b>The API publishes <code>cfg:changed {cameraId, version}</code> on Redis.</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>4 Apply</b>The engine fetches its cameras, validates the settings with Pydantic and the worker applies them between two frames.</div>
+  <div class="arrow">→</div>
+  <div class="step"><b>5 Confirm</b>Status reports <code>appliedVersion</code> = N+1, or a <code>configError</code> while it keeps running N.</div>
+</div>
+<ul>
+  <li>Every event carries the <code>configVersion</code> it was produced under, so a jump in a report can be traced to an edit.</li>
+  <li>Rollback makes an older version active again by creating a new version; history is never rewritten.</li>
+  <li>Two people editing at once: the second save gets <code>409 STALE_VERSION</code>.</li>
+  <li>What a change costs: geometry and thresholds apply on the next frame and keep tracks and counts. Tracker tuning
+    restarts track ids once. A new model loads in the background and then swaps in. A new source URL reconnects only
+    that camera. A new use case rebuilds that camera's pipeline.</li>
+</ul>
+
+<h3>4.3 Live view and evidence</h3>
+<ul>
+  <li><b>Video:</b> WebRTC (WHEP) straight from MediaMTX, H.264 passed through without re-encoding. Caddy lets the call
+    through only after <code>GET /api/v1/auth/check</code> answers 204.</li>
+  <li><b>Boxes:</b> the browser joins the WebSocket room <code>camera:{id}</code>. The API subscribes to Redis
+    <code>cam:{id}:boxes</code> only while someone is in that room, and the browser draws the boxes on a canvas over the video.</li>
+  <li><b>Use case overlays</b> (table badges, occupancy, desk state) are drawn by the dashboard from the camera's
+    status, so the engine never encodes live video.</li>
+  <li><b>Debug view</b> (superadmin only): <code>/media/debug/:id</code> shows the engine's own annotated frames as
+    MJPEG. The engine draws them only while someone is watching.</li>
+  <li><b>Clips:</b> <code>GET /media/clips/:eventId</code> serves a kept clip from <code>/data/evidence</code>, or cuts the
+    window around the event from MediaMTX's recordings while they still exist. Clips are kept automatically for
+    warning and critical events and every event on an audit camera, and by hand with <code>POST /events/:id/evidence</code>.</li>
+</ul>
+</div>
+
+<!-- ============ 5 ============ -->
+<div class="section">
+<h2>5. Data model</h2>
+<p>Postgres via Prisma (<code>apps/api/prisma/schema.prisma</code>). Times are stored in UTC; reports use the site time
+  zone (Asia/Jakarta by default, a site setting).</p>
+
+<h3>Analytics: stored by shape, not by use case</h3>
+<p>Every use case produces some mix of three shapes, so three generic tables hold all of them. A new use case adds rows,
+  not tables; its specific fields live in a <code>data</code> JSONB column checked against its contract.</p>
+<table>
+  <thead><tr><th style="width:56pt">Table</th><th style="width:120pt">Shape</th><th>Key columns</th><th style="width:130pt">Examples</th></tr></thead>
+  <tbody>
+    <tr><td><code>Event</code></td><td>Something happened at a moment</td><td>time, camera, useCase, type, severity, configVersion, schemaVersion, snapshot path, <code>data</code></td><td>vehicle crossing, pony departure, capacity alert</td></tr>
+    <tr><td><code>Interval</code></td><td>A state that lasted</td><td>camera, useCase, kind, subjectId, start, end, endReason, <code>data</code></td><td>table session, desk unattended, camera offline</td></tr>
+    <tr><td><code>Metric</code></td><td>A number over time, one row per minute</td><td>camera, useCase, name, minute, value</td><td>occupancy, queue length</td></tr>
+  </tbody>
+</table>
+<p class="muted">The pattern mirrors OpenTelemetry's logs, spans and metrics. Live state (current occupancy, fps) is never
+  stored here; it lives in Redis <code>cam:{id}:status</code>.</p>
+
+<h3>Config, people and logs</h3>
+<p class="muted">A summary; every column, key and index is in section 6.</p>
+<table>
+  <thead><tr><th style="width:120pt">Table</th><th>What it holds</th></tr></thead>
+  <tbody>
+    <tr><td><code>Camera</code></td><td>Slug id (<code>cam_gate_entry_01</code>), name, area, useCase, enabled, source type and encrypted stream URLs, <code>inferenceStream</code> (MAIN or SUB), target FPS, engineGroup, <code>auditCamera</code>, recording settings, optional <code>nxCameraId</code>, active config version</td></tr>
+    <tr><td><code>CameraConfigVersion</code></td><td>One row per saved config: the settings JSONB (zones, tripwires, tables with stable ids, thresholds), schemaVersion, author, time, note</td></tr>
+    <tr><td><code>AiModel</code></td><td>Registry entry: format, file, sha256, class names, image size, status <code>UPLOADED → VALIDATING → READY / FAILED</code>, validation report</td></tr>
+    <tr><td><code>User</code>, <code>ApiToken</code></td><td>Accounts with a role; hashed API tokens with a role, last use and revocation</td></tr>
+    <tr><td><code>AuditLog</code>, <code>LoginLog</code></td><td>Before/after of every change and every export; every login attempt and its result</td></tr>
+    <tr><td><code>SiteSettings</code></td><td>One row: park name, time zone, retention days</td></tr>
+    <tr><td><code>ExportJob</code>, <code>DeadEvent</code></td><td>PDF report jobs; stream entries that could not be stored</td></tr>
+  </tbody>
+</table>
+
+<div class="note"><b>Append-only by design.</b> The API's database role can only SELECT and INSERT on <code>Event</code>,
+  <code>AuditLog</code>, <code>LoginLog</code> and <code>DeadEvent</code>, and can update only specific columns of
+  <code>Interval</code> and <code>Metric</code>. Counts can't be quietly edited, which the future fraud module relies on.
+  <b>Every migration that adds a table must also add its <code>GRANT</code>s</b> (see <code>apps/api/README.md</code>).</div>
+
+<h3>Do I need a migration?</h3>
+<p>Usually not. A new field on a use case's events, intervals, metrics or settings is a <b>contract change</b>
+  (<code>npm run generate</code> in <code>packages/contracts</code>), not a migration. A Prisma migration is for the structural
+  tables, new tables and new indexes.</p>
+</div>
+
+<!-- ============ DB ============ -->
+<div class="section">
+<h2>6. Database structure</h2>
+<p>Fourteen tables in Postgres 17, defined in <code>apps/api/prisma/schema.prisma</code>. Migrations are in
+  <code>apps/api/prisma/migrations/</code>; some indexes, the grants and one check constraint exist only in the migration
+  SQL. All times are <code>timestamptz(3)</code> in UTC.</p>
+
+<figure>
+<svg viewBox="0 0 850 345" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .eb { fill: #f3f5f9; stroke: #9aa3b2; stroke-width: 1.2; }
+    .ek { fill: #e4f2ee; stroke: #1f6f5c; stroke-width: 1.4; }
+    .ex { fill: #fff; stroke: #9aa3b2; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .et { font-size: 13px; font-weight: 600; fill: #1d2433; }
+    .es { font-size: 10px; fill: #5b6475; }
+    .ec { font-size: 10.5px; font-weight: 600; fill: #1f6f5c; }
+    .el { stroke: #5b6475; stroke-width: 1.3; fill: none; }
+  </style>
+
+  <rect class="eb" x="20" y="20" width="140" height="52" rx="5"/>
+  <text class="et" x="90" y="42" text-anchor="middle">User</text>
+  <text class="es" x="90" y="58" text-anchor="middle">PK id (uuid)</text>
+
+  <rect class="eb" x="20" y="150" width="140" height="52" rx="5"/>
+  <text class="et" x="90" y="172" text-anchor="middle">ApiToken</text>
+  <text class="es" x="90" y="188" text-anchor="middle">FK createdById → User</text>
+
+  <path class="el" d="M90,72 V150"/>
+  <text class="ec" x="96" y="88">1</text>
+  <text class="ec" x="96" y="144">*</text>
+
+  <rect class="ek" x="335" y="20" width="170" height="56" rx="5"/>
+  <text class="et" x="420" y="42" text-anchor="middle">Camera</text>
+  <text class="es" x="420" y="58" text-anchor="middle">PK id (slug, e.g. cam_gate_entry_01)</text>
+
+  <path class="el" d="M420,76 V110 M255,110 H695 M255,110 V150 M405,110 V150 M545,110 V150 M695,110 V150"/>
+  <text class="ec" x="426" y="94">1</text>
+  <text class="ec" x="261" y="144">*</text>
+  <text class="ec" x="411" y="144">*</text>
+  <text class="ec" x="551" y="144">*</text>
+  <text class="ec" x="701" y="144">*</text>
+
+  <rect class="eb" x="185" y="150" width="140" height="52" rx="5"/>
+  <text class="et" x="255" y="172" text-anchor="middle">CameraConfigVersion</text>
+  <text class="es" x="255" y="188" text-anchor="middle">PK (cameraId, version)</text>
+
+  <rect class="ek" x="345" y="150" width="120" height="52" rx="5"/>
+  <text class="et" x="405" y="172" text-anchor="middle">Event</text>
+  <text class="es" x="405" y="188" text-anchor="middle">PK id (evt_…)</text>
+
+  <rect class="ek" x="485" y="150" width="120" height="52" rx="5"/>
+  <text class="et" x="545" y="172" text-anchor="middle">Interval</text>
+  <text class="es" x="545" y="188" text-anchor="middle">PK id (ses_…)</text>
+
+  <rect class="ek" x="620" y="150" width="150" height="52" rx="5"/>
+  <text class="et" x="695" y="172" text-anchor="middle">Metric</text>
+  <text class="es" x="695" y="188" text-anchor="middle">PK (cameraId, name, minute)</text>
+
+  <rect class="eb" x="345" y="262" width="120" height="52" rx="5"/>
+  <text class="et" x="405" y="284" text-anchor="middle">Evidence</text>
+  <text class="es" x="405" y="300" text-anchor="middle">PK/FK eventId → Event</text>
+  <path class="el" d="M405,202 V262"/>
+  <text class="ec" x="411" y="218">1</text>
+  <text class="ec" x="411" y="256">0..1</text>
+
+  <rect class="ex" x="20" y="232" width="300" height="104" rx="5"/>
+  <text class="et" x="34" y="252">No foreign keys</text>
+  <text class="es" x="34" y="270">AuditLog · LoginLog · DeadEvent</text>
+  <text class="es" x="34" y="286">AiModel · SiteSettings (one row) · ExportJob</text>
+  <text class="es" x="34" y="304">They refer to users and models by id or name only,</text>
+  <text class="es" x="34" y="320">so a log row outlives what it names.</text>
+
+  <rect class="ex" x="530" y="232" width="240" height="104" rx="5"/>
+  <text class="et" x="544" y="252">Delete rules</text>
+  <text class="es" x="544" y="270">Camera → versions: cascade</text>
+  <text class="es" x="544" y="286">Camera → Event, Interval, Metric: restrict</text>
+  <text class="es" x="544" y="302">(a camera with data can't be deleted)</text>
+  <text class="es" x="544" y="320">Event → Evidence: restrict</text>
+</svg>
+<figcaption>Relations in the schema. Green: the camera and the three analytics tables. <code>Event.cameraId</code> is
+  nullable, because system events such as <code>engine_started</code> belong to no camera.</figcaption>
+</figure>
+
+<h3>Who may do what: grants for the API's role <code>zoo_api</code></h3>
+<table>
+  <thead><tr><th style="width:250pt">Tables</th><th>Allowed</th></tr></thead>
+  <tbody>
+    <tr><td><code>User</code>, <code>ApiToken</code>, <code>Camera</code>, <code>AiModel</code>, <code>Evidence</code>, <code>ExportJob</code></td><td>SELECT, INSERT, UPDATE, DELETE</td></tr>
+    <tr><td><code>CameraConfigVersion</code></td><td>SELECT, INSERT, DELETE (no UPDATE: a version never changes)</td></tr>
+    <tr><td><code>Event</code>, <code>AuditLog</code>, <code>LoginLog</code>, <code>DeadEvent</code></td><td>SELECT, INSERT only (append-only)</td></tr>
+    <tr><td><code>Interval</code></td><td>SELECT, INSERT, and UPDATE of <code>end</code>, <code>endReason</code>, <code>data</code> only (closing an interval)</td></tr>
+    <tr><td><code>Metric</code></td><td>SELECT, INSERT, and UPDATE of <code>value</code> only (the minute's upsert)</td></tr>
+    <tr><td><code>SiteSettings</code></td><td>SELECT, UPDATE</td></tr>
+  </tbody>
+</table>
+
+<h3>Analytics tables</h3>
+<table>
+  <thead><tr><th style="width:95pt">Column</th><th style="width:95pt">Type</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><th colspan="3"><code>Event</code>: something happened at a moment</th></tr>
+    <tr><td><code>id</code></td><td>text, PK</td><td><code>evt_…</code>, made by the engine, so a redelivered message inserts nothing new</td></tr>
+    <tr><td><code>time</code></td><td>timestamptz</td><td>When it happened (engine clock)</td></tr>
+    <tr><td><code>cameraId</code></td><td>text, FK, nullable</td><td>The camera; null for system events</td></tr>
+    <tr><td><code>useCase</code>, <code>type</code></td><td>text</td><td>Which contract, which event type (<code>vehicle_crossing</code>, …)</td></tr>
+    <tr><td><code>severity</code></td><td>enum</td><td><code>info</code>, <code>warning</code>, <code>critical</code></td></tr>
+    <tr><td><code>configVersion</code></td><td>int, nullable</td><td>The camera config version that produced it</td></tr>
+    <tr><td><code>schemaVersion</code></td><td>int</td><td>The use case schema version of <code>data</code></td></tr>
+    <tr><td><code>snapshotPath</code></td><td>text, nullable</td><td>The JPEG under <code>/data/snapshots</code></td></tr>
+    <tr><td><code>data</code></td><td>jsonb</td><td>The use case's fields, as its contract defines (plate, direction, …)</td></tr>
+    <tr><td><code>ingestedAt</code></td><td>timestamptz</td><td>When the API stored it</td></tr>
+    <tr><td colspan="3" class="muted">Indexes: (cameraId, type, time), (time)</td></tr>
+
+    <tr><th colspan="3"><code>Interval</code>: a state that lasted</th></tr>
+    <tr><td><code>id</code></td><td>text, PK</td><td><code>ses_…</code>, the session id shared by the open and close messages</td></tr>
+    <tr><td><code>cameraId</code></td><td>text, FK</td><td>The camera</td></tr>
+    <tr><td><code>useCase</code>, <code>kind</code></td><td>text</td><td>Which contract; which kind (<code>table_session</code>, <code>desk_unattended</code>, <code>camera_offline</code>)</td></tr>
+    <tr><td><code>subjectId</code></td><td>text, nullable</td><td>What it is about inside the camera: a table id, a desk</td></tr>
+    <tr><td><code>start</code>, <code>end</code></td><td>timestamptz</td><td><code>end</code> is null while it is still open</td></tr>
+    <tr><td><code>endReason</code></td><td>text, nullable</td><td>Why it closed, e.g. <code>engine_restart</code></td></tr>
+    <tr><td><code>configVersion</code>, <code>schemaVersion</code>, <code>data</code></td><td>int, int, jsonb</td><td>As on <code>Event</code></td></tr>
+    <tr><td colspan="3" class="muted">Indexes: (cameraId, kind, start); a partial unique index allows only one open <code>camera_offline</code> interval per camera</td></tr>
+
+    <tr><th colspan="3"><code>Metric</code>: a number per minute</th></tr>
+    <tr><td><code>cameraId</code>, <code>name</code>, <code>minute</code></td><td>PK together</td><td>One row per camera, metric name and minute</td></tr>
+    <tr><td><code>useCase</code></td><td>text</td><td>Which contract</td></tr>
+    <tr><td><code>value</code></td><td>float</td><td>The value for that minute</td></tr>
+
+    <tr><th colspan="3"><code>Evidence</code>: a kept clip (also protects the event's snapshot from retention)</th></tr>
+    <tr><td><code>eventId</code></td><td>text, PK, FK</td><td>The event</td></tr>
+    <tr><td><code>cameraId</code>, <code>eventTime</code></td><td>text, timestamptz</td><td>Copied from the event for the job's queries</td></tr>
+    <tr><td><code>reason</code></td><td>enum</td><td><code>SEVERITY</code>, <code>AUDIT_CAMERA</code>, <code>USER</code></td></tr>
+    <tr><td><code>status</code></td><td>enum</td><td><code>QUEUED</code>, <code>KEPT</code>, <code>NO_RECORDING</code>, <code>FAILED</code></td></tr>
+    <tr><td><code>runAt</code>, <code>attempts</code>, <code>error</code></td><td>timestamptz, int, text</td><td>The pin job's retry state</td></tr>
+    <tr><td><code>filePath</code>, <code>sizeBytes</code></td><td>text, int</td><td>The clip under <code>/data/evidence</code></td></tr>
+    <tr><td colspan="3" class="muted">Indexes: (status, runAt), (cameraId, eventTime)</td></tr>
+  </tbody>
+</table>
+
+<h3>Cameras and config</h3>
+<table>
+  <thead><tr><th style="width:120pt">Column</th><th style="width:85pt">Type</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><th colspan="3"><code>Camera</code></th></tr>
+    <tr><td><code>id</code></td><td>text, PK</td><td>Slug chosen at creation, e.g. <code>cam_gate_entry_01</code></td></tr>
+    <tr><td><code>name</code>, <code>area</code></td><td>text</td><td>Display name; optional area</td></tr>
+    <tr><td><code>useCase</code></td><td>text</td><td>Which use case it runs</td></tr>
+    <tr><td><code>enabled</code></td><td>bool</td><td>Off: the engine stops it</td></tr>
+    <tr><td><code>sourceType</code></td><td>enum</td><td><code>RTSP</code>, <code>MEDIAMTX</code>, <code>NX</code>, <code>FILE</code></td></tr>
+    <tr><td><code>mainStreamUrlEnc</code>, <code>subStreamUrlEnc</code></td><td>text</td><td>Stream URLs, encrypted with <code>CAMERA_URL_KEY</code> (they contain passwords)</td></tr>
+    <tr><td><code>inferenceStream</code>, <code>recordingStream</code></td><td>enum</td><td><code>MAIN</code> or <code>SUB</code>: which stream the engine analyses, which one MediaMTX records</td></tr>
+    <tr><td><code>targetFps</code></td><td>int</td><td>Frames per second the engine analyses (default 5)</td></tr>
+    <tr><td><code>engineGroup</code></td><td>text</td><td>Which engine process runs it (default <code>default</code>)</td></tr>
+    <tr><td><code>auditCamera</code></td><td>bool</td><td>Flag changes, notify managers, keep every event's clip</td></tr>
+    <tr><td><code>recordingEnabled</code></td><td>bool</td><td>Continuous recording on or off</td></tr>
+    <tr><td><code>retentionDays</code>, <code>evidenceRetentionDays</code></td><td>int, nullable</td><td>Overrides of the site defaults; null uses the site setting</td></tr>
+    <tr><td><code>clipBeforeSec</code>, <code>clipAfterSec</code></td><td>int</td><td>Clip window around an event (default 15 + 15)</td></tr>
+    <tr><td><code>nxCameraId</code></td><td>text, nullable</td><td>For a future Nx integration</td></tr>
+    <tr><td><code>activeVersion</code></td><td>int</td><td>The config version in force</td></tr>
+    <tr><td><code>firstSeenAt</code></td><td>timestamptz, nullable</td><td>First time the engine reported this camera</td></tr>
+    <tr><td><code>createdAt</code>, <code>updatedAt</code></td><td>timestamptz</td><td></td></tr>
+
+    <tr><th colspan="3"><code>CameraConfigVersion</code>: one row per save</th></tr>
+    <tr><td><code>cameraId</code>, <code>version</code></td><td>PK together</td><td>Versions count up per camera; rollback adds a new one</td></tr>
+    <tr><td><code>useCase</code>, <code>schemaVersion</code></td><td>text, int</td><td>Which contract the settings follow</td></tr>
+    <tr><td><code>settings</code></td><td>jsonb</td><td>Zones, tripwires, tables and thresholds, checked against the use case's <code>settings.schema.json</code></td></tr>
+    <tr><td><code>authorType</code>, <code>authorId</code>, <code>authorName</code></td><td>text</td><td>Who saved it (user or token)</td></tr>
+    <tr><td><code>note</code>, <code>createdAt</code></td><td>text, timestamptz</td><td>Optional comment; when</td></tr>
+
+    <tr><th colspan="3"><code>AiModel</code>: the model registry</th></tr>
+    <tr><td><code>id</code></td><td>uuid, PK</td><td></td></tr>
+    <tr><td><code>name</code>, <code>version</code>, <code>originalName</code></td><td>text</td><td>Display name, optional version, the uploaded file's name</td></tr>
+    <tr><td><code>format</code></td><td>enum</td><td><code>ONNX</code>, <code>PT</code>, <code>ENGINE</code></td></tr>
+    <tr><td><code>source</code></td><td>enum</td><td><code>BUILTIN</code>, <code>FILESYSTEM</code> (inbox), <code>UPLOAD</code>, <code>CONVERTED</code></td></tr>
+    <tr><td><code>status</code></td><td>enum</td><td><code>UPLOADED</code>, <code>VALIDATING</code>, <code>READY</code>, <code>FAILED</code>, <code>CONVERTING</code></td></tr>
+    <tr><td><code>filePath</code>, <code>sha256</code></td><td>text, unique</td><td>Path under the models folder; checksum (null only while converting)</td></tr>
+    <tr><td><code>sizeBytes</code>, <code>classNames</code>, <code>validation</code></td><td>bigint, jsonb, jsonb</td><td>Size; class list after validation; the validation report (ok, latency, device, error)</td></tr>
+    <tr><td><code>convertedFromId</code>, <code>createdById</code>, <code>notes</code></td><td>uuid, uuid, text</td><td>Source model of a conversion; who added it</td></tr>
+
+    <tr><th colspan="3"><code>SiteSettings</code>: exactly one row (<code>CHECK id = 1</code>)</th></tr>
+    <tr><td><code>siteName</code>, <code>timeZone</code></td><td>text</td><td>Park name; IANA zone for reports (default <code>Asia/Jakarta</code>)</td></tr>
+    <tr><td><code>recordingRetentionDays</code></td><td>int</td><td>Continuous recordings (default 7)</td></tr>
+    <tr><td><code>snapshotRetentionDays</code>, <code>auditSnapshotRetentionDays</code></td><td>int</td><td>Snapshots (default 90); snapshots of audit cameras (default 365)</td></tr>
+    <tr><td><code>evidenceRetentionDays</code></td><td>int</td><td>Kept clips (default 365)</td></tr>
+  </tbody>
+</table>
+
+<h3>People, logs and jobs</h3>
+<table>
+  <thead><tr><th style="width:120pt">Column</th><th style="width:85pt">Type</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><th colspan="3"><code>User</code></th></tr>
+    <tr><td><code>id</code></td><td>uuid, PK</td><td></td></tr>
+    <tr><td><code>username</code></td><td>text, unique</td><td>Login name</td></tr>
+    <tr><td><code>name</code>, <code>passwordHash</code></td><td>text</td><td>Display name; bcrypt hash</td></tr>
+    <tr><td><code>role</code>, <code>active</code></td><td>enum, bool</td><td><code>SUPERADMIN</code>, <code>MANAGER</code>, <code>USER</code>; inactive users can't log in</td></tr>
+
+    <tr><th colspan="3"><code>ApiToken</code></th></tr>
+    <tr><td><code>id</code>, <code>name</code></td><td>uuid PK, text</td><td></td></tr>
+    <tr><td><code>prefix</code>, <code>tokenHash</code></td><td>text, unique hash</td><td>First characters shown in the UI to recognise it; the hash of the full token (the token itself is never stored)</td></tr>
+    <tr><td><code>role</code>, <code>createdById</code></td><td>enum, FK → User</td><td>What the token may do; who made it</td></tr>
+    <tr><td><code>lastUsedAt</code>, <code>revokedAt</code></td><td>timestamptz, nullable</td><td>Usage; revocation</td></tr>
+
+    <tr><th colspan="3"><code>AuditLog</code>: append-only</th></tr>
+    <tr><td><code>id</code>, <code>time</code></td><td>bigint PK, timestamptz</td><td></td></tr>
+    <tr><td><code>actorType</code>, <code>actorId</code>, <code>actorName</code></td><td>text</td><td>User or token, and who</td></tr>
+    <tr><td><code>action</code>, <code>entity</code>, <code>entityId</code></td><td>text</td><td>What was done to what</td></tr>
+    <tr><td><code>before</code>, <code>after</code></td><td>jsonb</td><td>The record before and after</td></tr>
+    <tr><td><code>ip</code>, <code>auditCamera</code></td><td>text, bool</td><td>Caller address; whether it touched an audit camera</td></tr>
+    <tr><td colspan="3" class="muted">Indexes: (entity, entityId, time), (time)</td></tr>
+
+    <tr><th colspan="3"><code>LoginLog</code>: append-only</th></tr>
+    <tr><td><code>time</code>, <code>username</code>, <code>userId</code></td><td>timestamptz, text, uuid</td><td>Username as typed; the user if it matched one</td></tr>
+    <tr><td><code>result</code></td><td>enum</td><td><code>SUCCESS</code>, <code>WRONG_PASSWORD</code>, <code>DISABLED</code>, <code>LOCKED</code>, <code>RATE_LIMITED</code>, <code>LOGOUT</code></td></tr>
+    <tr><td><code>ip</code>, <code>userAgent</code></td><td>text</td><td></td></tr>
+
+    <tr><th colspan="3"><code>DeadEvent</code>: append-only</th></tr>
+    <tr><td><code>streamId</code>, <code>payload</code>, <code>reason</code></td><td>text</td><td>The Redis stream entry id, the raw message, why it couldn't be stored</td></tr>
+
+    <tr><th colspan="3"><code>ExportJob</code>: PDF reports</th></tr>
+    <tr><td><code>id</code>, <code>params</code></td><td>uuid PK, jsonb</td><td>The filters and period asked for</td></tr>
+    <tr><td><code>status</code></td><td>enum</td><td><code>QUEUED</code>, <code>DONE</code>, <code>FAILED</code>, <code>EXPIRED</code></td></tr>
+    <tr><td><code>runAt</code>, <code>attempts</code>, <code>error</code>, <code>finishedAt</code></td><td></td><td>Job state</td></tr>
+    <tr><td><code>filePath</code>, <code>sizeBytes</code></td><td>text, int</td><td>The PDF under <code>/data/exports</code></td></tr>
+    <tr><td><code>createdById</code>, <code>createdByName</code></td><td>text</td><td>Owner; users see only their own jobs</td></tr>
+  </tbody>
+</table>
+<p class="muted">Not in Postgres: live camera state, sessions, the event stream and job queues live in Redis (section 11).
+  Files (snapshots, clips, recordings, models, PDFs) live in the <code>/data</code> volumes; the tables hold only their paths.</p>
+</div>
+
+<!-- ============ 6 ============ -->
+<div class="section">
+<h2>7. Use cases</h2>
+<p>Six use cases are defined in <code>packages/contracts/usecases/</code>. The id is the camera's <code>useCase</code>. Each folder
+  has <code>usecase.json</code>, the schemas for events, intervals, settings and live values, <code>metrics.json</code>, and
+  example payloads that <code>npm test</code> checks.</p>
+<table>
+  <thead><tr><th style="width:92pt">Use case</th><th style="width:105pt">Events</th><th style="width:85pt">Intervals</th><th style="width:95pt">Metrics</th><th>Main settings</th></tr></thead>
+  <tbody>
+    <tr><td><code>cashier_presence</code><br><span class="muted">Cashier presence</span></td><td><code>cashier_unattended</code>, <code>customer_waiting</code></td><td><code>desk_unattended</code></td><td><code>queue_length</code>, <code>clerk_count</code></td><td>clerk zone, visitor zone, absence and waiting timeouts</td></tr>
+    <tr><td><code>restaurant_counter</code><br><span class="muted">Restaurant occupancy</span></td><td><code>capacity_alert</code></td><td><code>table_session</code></td><td><code>occupancy</code>, <code>occupied_tables</code></td><td>dining zone, tripwire, shadow zone, max and warning capacity, optional table monitoring</td></tr>
+    <tr><td><code>restaurant_table</code><br><span class="muted">Restaurant tables</span></td><td>none</td><td><code>table_session</code></td><td><code>occupied_tables</code>, <code>table_occupancy_pct</code></td><td>named table polygons, dwell time</td></tr>
+    <tr><td><code>vehicle_gate</code><br><span class="muted">Vehicle gate</span></td><td><code>vehicle_crossing</code></td><td>none</td><td>none</td><td>tripwire, ROI polygon, tracker tuning, ANPR (Indonesian plates)</td></tr>
+    <tr><td><code>horse_riding</code><br><span class="muted">Pony riding</span></td><td><code>horse_crossing</code></td><td>none</td><td><code>active_horses</code></td><td>tripwire, ROI polygon, tracker tuning, display labels</td></tr>
+    <tr><td><code>system</code><br><span class="muted">System</span></td><td><code>engine_started</code>, <code>events_dropped</code>, <code>config_rejected</code>, <code>model_validation_failed</code>, <code>disk_low</code></td><td><code>camera_offline</code></td><td>none</td><td>none (not a camera use case)</td></tr>
+  </tbody>
+</table>
+<p>Every camera use case also has the model settings (<code>model_id</code>, <code>imgsz</code>,
+  <code>confidence_threshold</code>) and an optional <code>nx_bookmark</code>. Settings marked <code>x-minRole: SUPERADMIN</code>
+  in the schema (model, tracker tuning) can only be changed by a superadmin; the API checks this on save.</p>
+
+<h3>Adding or changing a use case</h3>
+<ol>
+  <li>Write the contract: <code>packages/contracts/usecases/&lt;id&gt;/</code> with its schemas and examples, then
+    <code>npm run generate</code> and <code>npm test</code>.</li>
+  <li>Write the engine pipeline: <code>services/engine/usecases/&lt;id&gt;/pipeline.py</code>, one <code>BasePipeline</code>
+    subclass, plus tests under <code>tests/</code>.</li>
+  <li>No migration and no dashboard change are needed for it to appear in the generic event, interval and metric views.
+    A custom report page in the dashboard is optional.</li>
+</ol>
+<div class="warn"><b>Change rules.</b> Only add optional fields. Never rename, remove or change the meaning of a field. A
+  breaking change bumps the use case's <code>schemaVersion</code>; old rows keep theirs and stay readable.</div>
+</div>
+
+<!-- ============ 7 ============ -->
+<div class="section">
+<h2>8. Users, roles and login</h2>
+<p>Three fixed roles, <b>SUPERADMIN &gt; MANAGER &gt; USER</b>. A superadmin is normally a Magnet engineer, a manager is
+  the customer's admin and a user is a viewer. Hiding menu items in the UI is only a convenience; the API decides.</p>
+<table>
+  <thead><tr><th>Action</th><th style="width:44pt">USER</th><th style="width:52pt">MANAGER</th><th style="width:64pt">SUPERADMIN</th></tr></thead>
+  <tbody>
+    <tr><td>Dashboards, live view, events, camera status and frames, CSV and PDF exports, reading site settings</td><td>yes</td><td>yes</td><td>yes</td></tr>
+    <tr><td>Zones, thresholds, enable or disable a camera, config history and rollback</td><td></td><td>yes</td><td>yes</td></tr>
+    <tr><td>Users (except superadmins), models list, system log, keeping an event's clip</td><td></td><td>yes</td><td>yes</td></tr>
+    <tr><td>Stream URLs, model, tracker tuning, engineGroup, use case, audit flag, recording settings</td><td></td><td></td><td>yes</td></tr>
+    <tr><td>Create or delete cameras, superadmin accounts, API tokens, model upload and jobs, editing site settings, debug view</td><td></td><td></td><td>yes</td></tr>
+  </tbody>
+</table>
+
+<h3>How login works</h3>
+<ul>
+  <li><code>POST /api/v1/auth/login</code> sets a <code>zoo_session</code> cookie (HttpOnly, SameSite=Lax). The session lives
+    in Redis and slides 12 hours from the last request, ending 7 days after login at the latest. Disabling a user or
+    changing a role takes effect on their next request.</li>
+  <li>Scripts, Postman and Swagger can use an <b>API token</b> instead: <code>Authorization: Bearer &lt;token&gt;</code>. Tokens
+    are created by a superadmin, stored hashed, carry a role and can be revoked. The WebSocket accepts only the cookie.</li>
+  <li>Protection: logins are limited to 10 a minute per address, and five wrong passwords in 15 minutes lock the account
+    (<code>423 ACCOUNT_LOCKED</code>). Every attempt goes to the login history.</li>
+  <li>The engine is a third kind of caller: it sends <code>ENGINE_TOKEN</code>, and only to <code>/internal/engine/*</code>.</li>
+</ul>
+<div class="note"><b>Errors have one shape everywhere:</b> <code>{statusCode, code, message, errors?}</code>. Switch on
+  <code>code</code> (stable) rather than <code>message</code>. The full list, with what the UI should do for each, is in
+  <code>docs/fe-contract.md</code> section 4; the codes are defined in <code>apps/api/src/common/errors.ts</code>.</div>
+</div>
+
+<!-- ============ FE ============ -->
+<div class="section">
+<h2>9. Connecting the frontend</h2>
+<p>The dashboard (<code>zoo-vision-fe</code>) reaches the backend in <b>three ways</b>, all through one address: the
+  site that serves the dashboard itself. Caddy sends each path to the right service, so the frontend needs no backend
+  URL, no CORS setup and no secret.</p>
+
+<figure>
+<svg viewBox="0 0 850 250" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6475"/></marker>
+  </defs>
+  <style>
+    .fb { fill: #f3f5f9; stroke: #9aa3b2; stroke-width: 1.2; }
+    .fk { fill: #e4f2ee; stroke: #1f6f5c; stroke-width: 1.4; }
+    .fx { fill: #fff; stroke: #9aa3b2; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .ft { font-size: 13px; font-weight: 600; fill: #1d2433; }
+    .fs { font-size: 10.5px; fill: #5b6475; }
+    .fn { font-size: 11px; font-weight: 600; fill: #1f6f5c; }
+    .fl { stroke: #5b6475; stroke-width: 1.3; fill: none; }
+  </style>
+  <rect class="fx" x="10" y="80" width="150" height="90" rx="6"/>
+  <text class="ft" x="85" y="112" text-anchor="middle">Browser</text>
+  <text class="fs" x="85" y="130" text-anchor="middle">zoo-vision-fe pages,</text>
+  <text class="fs" x="85" y="144" text-anchor="middle">session cookie</text>
+
+  <rect class="fb" x="250" y="70" width="120" height="110" rx="6"/>
+  <text class="ft" x="310" y="118" text-anchor="middle">Caddy</text>
+  <text class="fs" x="310" y="134" text-anchor="middle">one origin</text>
+
+  <path class="fl" d="M160,125 H250" marker-end="url(#fa)"/>
+
+  <rect class="fk" x="520" y="14" width="320" height="50" rx="6"/>
+  <text class="fn" x="534" y="34">1  REST over HTTP</text>
+  <text class="fs" x="534" y="52">/api/v1/…  JSON;  /media/…  snapshots, clips, debug MJPEG</text>
+
+  <rect class="fk" x="520" y="100" width="320" height="50" rx="6"/>
+  <text class="fn" x="534" y="120">2  WebSocket (socket.io)</text>
+  <text class="fs" x="534" y="138">/ws  push: new events, data changed, status, boxes</text>
+
+  <rect class="fb" x="520" y="186" width="320" height="50" rx="6"/>
+  <text class="fn" x="534" y="206">3  WebRTC live video (WHEP)</text>
+  <text class="fs" x="534" y="224">/media/webrtc/…  straight to MediaMTX after a session check</text>
+
+  <path class="fl" d="M370,100 H440 V39 H520" marker-end="url(#fa)"/>
+  <path class="fl" d="M370,125 H520" marker-end="url(#fa)"/>
+  <path class="fl" d="M370,150 H440 V211 H520" marker-end="url(#fa)"/>
+  <text class="fs" x="448" y="30">→ API</text>
+  <text class="fs" x="448" y="118">→ API</text>
+  <text class="fs" x="448" y="204">→ MediaMTX</text>
+</svg>
+<figcaption>Green: answered by the NestJS API. Live video is the one path the API doesn't serve; it only answers
+  Caddy's "is this browser logged in?" check (<code>GET /api/v1/auth/check</code>).</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th style="width:100pt">Way</th><th style="width:150pt">Paths</th><th>Use it for</th><th style="width:105pt">Described in</th></tr></thead>
+  <tbody>
+    <tr><td><b>1 REST</b></td><td><code>/api/v1/...</code></td><td>Everything you read or change: login, cameras, config, reports, lists, exports, users, models, settings</td><td><code>openapi.json</code>, <code>fe-contract.md</code> §3–10</td></tr>
+    <tr><td></td><td><code>/media/...</code></td><td>Files used straight in HTML: <code>&lt;img src={snapshotUrl}&gt;</code>, <code>&lt;video src={clipUrl}&gt;</code>, the debug stream. Use the URLs the API gives you; don't build them</td><td><code>fe-contract.md</code> §11</td></tr>
+    <tr><td><b>2 WebSocket</b></td><td><code>/ws</code></td><td>Being told that something changed, plus small live values (camera status, boxes). Never the source of truth</td><td><code>fe-contract.md</code> §12, <code>index.d.ts</code></td></tr>
+    <tr><td><b>3 WebRTC</b></td><td><code>/media/webrtc/&lt;path&gt;/whep</code></td><td>Live camera video. Take the URL from the camera's <code>liveUrls</code>; it is <code>null</code> when there is no live video (file cameras, disabled cameras, demo stack)</td><td><code>fe-contract.md</code> §11</td></tr>
+  </tbody>
+</table>
+
+<h3>Which page uses what</h3>
+<table>
+  <thead><tr><th style="width:80pt">Page</th><th>REST</th><th style="width:140pt">WebSocket</th><th style="width:80pt">WebRTC / media</th></tr></thead>
+  <tbody>
+    <tr><td>Login</td><td><code>POST /auth/login</code>, then <code>GET /auth/me</code> for name and role</td><td>connect after login</td><td></td></tr>
+    <tr><td>Dashboard</td><td><code>/reports/*</code>, <code>/camera-status</code>, <code>/site-settings</code> (time zone)</td><td><code>event.created</code> for toasts; <code>data.changed</code> → refetch</td><td>snapshots</td></tr>
+    <tr><td>Live</td><td><code>/cameras</code> (for <code>liveUrls</code>), <code>/cameras/:id/config</code> (zones to draw)</td><td>room <code>status</code>: tiles and counters; room <code>camera:{id}</code>: boxes</td><td>WebRTC video</td></tr>
+    <tr><td>Events</td><td><code>/events</code> with a cursor, <code>POST /events/:id/evidence</code></td><td><code>data.changed</code> → refetch</td><td>snapshots, clips</td></tr>
+    <tr><td>Reports</td><td><code>/reports/events/stats</code>, <code>/reports/intervals/stats</code>, <code>/reports/metrics/series</code>, <code>/intervals</code></td><td><code>data.changed</code> → refetch</td><td></td></tr>
+    <tr><td>Camera config and zone editor</td><td><code>/cameras</code>, <code>/usecases</code> (settings schemas, what to draw), <code>/cameras/:id/frame</code> (background image), <code>POST /cameras/:id/config</code>, versions, rollback</td><td>room <code>status</code>: Saved → Applied when <code>appliedVersion</code> matches</td><td>frame JPEG</td></tr>
+    <tr><td>Exports</td><td>CSV links under <code>/exports/*.csv</code>; PDF: <code>POST /exports/jobs</code>, <code>GET /exports/jobs</code>, then the file</td><td></td><td></td></tr>
+    <tr><td>Admin</td><td><code>/users</code>, <code>/api-tokens</code>, <code>/models</code>, <code>/site-settings</code>, <code>/system-log/*</code></td><td><code>audit.notice</code>, <code>disk.warning</code> (managers)</td><td>debug MJPEG (superadmin)</td></tr>
+  </tbody>
+</table>
+
+<h3>Rules the frontend must follow</h3>
+<ul>
+  <li><b>REST is the truth; the socket only nudges.</b> There is no replay: after every connect or reconnect, refetch
+    what the page shows and subscribe to rooms again. Build tables from REST, not from <code>event.created</code>.</li>
+  <li><b>Only call the API from the browser.</b> The session is a cookie in the browser; the Next.js server has none.</li>
+  <li><b>Open the app through Caddy</b> in development (<code>http://localhost:8080</code>), not the Next.js port, or
+    cookies and the socket won't work.</li>
+  <li><b>401 → login page. 403 → show the message</b> (and for <code>ROLE_REQUIRED</code>, disable the fields it names).
+    A <code>session.ended</code> message means the same as a 401, except <code>role_changed</code>: refetch
+    <code>/auth/me</code> and reconnect.</li>
+  <li><b>Switch on <code>code</code>, not <code>message</code></b>, for every error.</li>
+</ul>
+
+<h3>How the frontend stays in sync with the backend</h3>
+<p>The backend publishes a <b>contract</b>: three files at a git tag <code>contract-vX.Y</code> on the backend repo.
+  In the frontend, <code>npm run contract:pull &lt;tag&gt;</code> fetches them and runs orval, which generates a typed
+  axios client from the OpenAPI file.</p>
+<table>
+  <thead><tr><th style="width:190pt">File</th><th>Gives the frontend</th></tr></thead>
+  <tbody>
+    <tr><td><code>apps/api/openapi.json</code></td><td>Every REST endpoint with its parameters and response types → the generated hooks (<code>useCamerasList</code>, …)</td></tr>
+    <tr><td><code>packages/contracts/generated/web/index.d.ts</code></td><td>Types for every socket message (<code>ServerToClientEvents</code>, <code>ClientToServerEvents</code>) and each use case's settings, events, intervals and live values</td></tr>
+    <tr><td><code>docs/fe-contract.md</code></td><td>How it behaves: roles, error codes, paging, report parameters, media, socket rooms, and a changelog per tag</td></tr>
+  </tbody>
+</table>
+<p class="muted">Until <code>v1.0</code>, a breaking change is allowed only with a changelog entry. From <code>v1.0</code>,
+  changes to <code>/api/v1</code> are additive only.</p>
+</div>
+
+<!-- ============ 8 ============ -->
+<div class="section">
+<h2>10. API reference</h2>
+<p>All 58 operations in <code>apps/api/openapi.json</code>, grouped by area, plus the WebRTC route, which MediaMTX answers. Paths are under <code>/api/v1</code> unless shown in
+  full. For the exact parameters and response shapes, open Swagger at <code>/api/docs</code> on a running API (set
+  <code>SWAGGER=public</code> in development), or read the OpenAPI file. The minimum role is shown where it isn't USER.</p>
+
+<table>
+  <thead><tr><th style="width:52pt">Method</th><th style="width:190pt">Path</th><th>What it does</th><th style="width:60pt">Role</th></tr></thead>
+  <tbody>
+    <tr><th colspan="4">Health and auth</th></tr>
+    <tr><td class="m">GET</td><td><code>/api/health</code></td><td>Health check for Compose; 503 lists the failing dependency</td><td>public</td></tr>
+    <tr><td class="m">POST</td><td><code>/auth/login</code></td><td>Log in; sets the session cookie</td><td>public</td></tr>
+    <tr><td class="m">POST</td><td><code>/auth/logout</code></td><td>End this session</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/auth/check</code></td><td>204 or 401, no body; Caddy's gate for live video</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/auth/me</code></td><td>Who is calling: user or token, name, role</td><td></td></tr>
+    <tr><td class="m">PUT</td><td><code>/auth/password</code></td><td>Change own password; ends the user's other sessions</td><td>session only</td></tr>
+
+    <tr><th colspan="4">Cameras and config</th></tr>
+    <tr><td class="m">GET</td><td><code>/cameras</code></td><td>List cameras; fields shown depend on the role</td><td></td></tr>
+    <tr><td class="m">POST</td><td><code>/cameras</code></td><td>Create a camera (also creates its MediaMTX path)</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">GET</td><td><code>/cameras/{id}</code></td><td>One camera</td><td></td></tr>
+    <tr><td class="m">PATCH</td><td><code>/cameras/{id}</code></td><td>Edit; managers may change only name, area and enabled</td><td>MANAGER</td></tr>
+    <tr><td class="m">DELETE</td><td><code>/cameras/{id}</code></td><td>Delete; refused with <code>CAMERA_HAS_DATA</code> once it has analytics</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">GET</td><td><code>/cameras/{id}/stream-info</code></td><td>Is the stream arriving, which codec, recording disk cost</td><td>MANAGER</td></tr>
+    <tr><td class="m">GET</td><td><code>/cameras/{id}/config</code></td><td>Active config version and its settings</td><td></td></tr>
+    <tr><td class="m">POST</td><td><code>/cameras/{id}/config</code></td><td>Save a new version (send <code>baseVersion</code>); the engine applies it live</td><td>MANAGER</td></tr>
+    <tr><td class="m">GET</td><td><code>/cameras/{id}/config/versions</code></td><td>Version history</td><td>MANAGER</td></tr>
+    <tr><td class="m">GET</td><td><code>/cameras/{id}/config/versions/{version}</code></td><td>One past version</td><td>MANAGER</td></tr>
+    <tr><td class="m">POST</td><td><code>/cameras/{id}/config/rollback</code></td><td>Make an older version active (as a new version)</td><td>MANAGER</td></tr>
+    <tr><td class="m">GET</td><td><code>/usecases</code></td><td>The use case registry: labels and settings schemas for the zone editor and forms</td><td></td></tr>
+
+    <tr><th colspan="4">Live state</th></tr>
+    <tr><td class="m">GET</td><td><code>/camera-status</code></td><td>Every camera: online (reported within 15 s), state, applied version, live counters</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/cameras/{id}/status</code></td><td>The same for one camera</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/cameras/{id}/frame</code></td><td>Latest JPEG from the engine; 404 until it sends one</td><td></td></tr>
+
+    <tr><th colspan="4">Analytics: lists, reports, exports</th></tr>
+    <tr><td class="m">GET</td><td><code>/events</code></td><td>Event list, cursor paged, filterable</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/intervals</code></td><td>Interval list, cursor paged</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/reports/events/stats</code></td><td>Event counts by time bucket and grouping field</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/reports/intervals/stats</code></td><td>Interval counts and durations by bucket</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/reports/metrics/series</code></td><td>Metric time series (avg, max, …) by bucket</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/exports/events.csv</code></td><td>Streamed CSV of events; audited</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/exports/intervals.csv</code></td><td>Streamed CSV of intervals</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/exports/metrics.csv</code></td><td>Streamed CSV of metrics</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/exports/summary.csv</code></td><td>Per camera per hour or day summary</td><td></td></tr>
+    <tr><td class="m">POST</td><td><code>/exports/jobs</code></td><td>Start a PDF report job; 503 when Gotenberg isn't configured</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/exports/jobs</code></td><td>Your own PDF jobs and their progress</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/exports/jobs/{id}/file</code></td><td>Download a finished PDF</td><td>owner</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <thead><tr><th style="width:52pt">Method</th><th style="width:190pt">Path</th><th>What it does</th><th style="width:60pt">Role</th></tr></thead>
+  <tbody>
+    <tr><th colspan="4">Media and evidence</th></tr>
+    <tr><td class="m">GET</td><td><code>/media/snapshots/{path}</code></td><td>An event snapshot JPEG</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/media/clips/{eventId}</code></td><td>The event's clip (kept, or cut from recordings); <code>RECORDING_NOT_AVAILABLE</code> when gone</td><td></td></tr>
+    <tr><td class="m">GET</td><td><code>/media/debug/{id}</code></td><td>MJPEG of the engine's annotated frames</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">POST</td><td><code>/events/{id}/evidence</code></td><td>Keep this event's clip past normal recording retention</td><td>MANAGER</td></tr>
+    <tr><td class="m">POST</td><td><code>/media/webrtc/&lt;path&gt;/whep</code></td><td>Start WebRTC live video. Not in <code>openapi.json</code>: Caddy checks the session, then MediaMTX answers. Use the URL from the camera's <code>liveUrls</code></td><td></td></tr>
+
+    <tr><th colspan="4">AI models</th></tr>
+    <tr><td class="m">GET</td><td><code>/models</code>, <code>/models/{id}</code></td><td>List and read registry entries</td><td>MANAGER</td></tr>
+    <tr><td class="m">POST</td><td><code>/models</code></td><td>Upload an ONNX file (multipart); <code>.pt</code> is refused because it can run code when loaded</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">POST</td><td><code>/models/rescan</code></td><td>Register files dropped into <code>models/inbox/</code> and the built-ins</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">POST</td><td><code>/models/{id}/validate</code></td><td>Queue a test load and inference on the engine</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">POST</td><td><code>/models/{id}/convert</code></td><td>Queue a <code>.pt</code> → ONNX conversion</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">DELETE</td><td><code>/models/{id}</code></td><td>Remove; refused with <code>MODEL_IN_USE</code> while a camera uses it</td><td>SUPERADMIN</td></tr>
+
+    <tr><th colspan="4">Users, tokens, site</th></tr>
+    <tr><td class="m">GET</td><td><code>/users</code></td><td>List users</td><td>MANAGER</td></tr>
+    <tr><td class="m">POST</td><td><code>/users</code></td><td>Create a user (a superadmin account needs SUPERADMIN)</td><td>MANAGER</td></tr>
+    <tr><td class="m">PATCH</td><td><code>/users/{id}</code></td><td>Edit, disable, change role or reset password</td><td>MANAGER</td></tr>
+    <tr><td class="m">GET</td><td><code>/api-tokens</code></td><td>List API tokens</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">POST</td><td><code>/api-tokens</code></td><td>Create one; the only response that ever shows the raw token</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">DELETE</td><td><code>/api-tokens/{id}</code></td><td>Revoke</td><td>SUPERADMIN</td></tr>
+    <tr><td class="m">GET</td><td><code>/site-settings</code></td><td>Park name, time zone, retention days</td><td></td></tr>
+    <tr><td class="m">PATCH</td><td><code>/site-settings</code></td><td>Change them</td><td>SUPERADMIN</td></tr>
+
+    <tr><th colspan="4">System log</th></tr>
+    <tr><td class="m">GET</td><td><code>/system-log/audit</code> (+ <code>.csv</code>)</td><td>Who changed what, before and after</td><td>MANAGER</td></tr>
+    <tr><td class="m">GET</td><td><code>/system-log/logins</code> (+ <code>.csv</code>)</td><td>Login history and failures</td><td>MANAGER</td></tr>
+    <tr><td class="m">GET</td><td><code>/system-log/system-events</code> (+ <code>.csv</code>)</td><td>Engine starts, offline cameras, rejected config, low disk</td><td>MANAGER</td></tr>
+  </tbody>
+</table>
+
+<h3>Engine-only routes (not in Swagger, never routed by Caddy)</h3>
+<table>
+  <thead><tr><th style="width:52pt">Method</th><th style="width:230pt">Path</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td class="m">GET</td><td><code>/internal/engine/cameras?group=&lt;g&gt;</code></td><td>Enabled cameras of the group, with active settings (schema defaults filled in), decrypted source URL, target FPS and model</td></tr>
+    <tr><td class="m">POST</td><td><code>/internal/engine/models/{id}/validation</code></td><td>The engine reports a validation result</td></tr>
+    <tr><td class="m">POST</td><td><code>/internal/engine/models/{id}/conversion</code></td><td>The engine reports a conversion result</td></tr>
+  </tbody>
+</table>
+<p class="muted">Each needs <code>Authorization: Bearer &lt;ENGINE_TOKEN&gt;</code>. A user session or API token gets 401.</p>
+</div>
+
+<!-- ============ 9 ============ -->
+<div class="section">
+<h2>11. WebSocket and engine channels</h2>
+
+<h3>WebSocket for the browser: socket.io at <code>/ws</code></h3>
+<p>WebSocket transport only, session cookie only, and the <code>Origin</code> must match the host. The message types are in
+  <code>packages/contracts/ws/</code> and in the frontend's generated types file.</p>
+<table>
+  <thead><tr><th style="width:105pt">Message</th><th style="width:90pt">Room</th><th>When</th></tr></thead>
+  <tbody>
+    <tr><td><code>event.created</code></td><td><code>alerts</code> (everyone)</td><td>Each new event, after the ingest commit</td></tr>
+    <tr><td><code>data.changed</code></td><td><code>alerts</code></td><td>At most every 5 s after commits: tells pages to refetch their data</td></tr>
+    <tr><td><code>status.snapshot</code></td><td><code>status</code> (on request)</td><td>Every 2 s while anyone is in the room: all cameras' live status</td></tr>
+    <tr><td><code>boxes</code></td><td><code>camera:{id}</code></td><td>Up to 10 a second while anyone is in the room: <code>{t, sentAt, boxes}</code>, coordinates 0 to 1, track ids</td></tr>
+    <tr><td><code>audit.notice</code></td><td><code>managers</code></td><td>Someone changed an audit camera</td></tr>
+    <tr><td><code>disk.warning</code></td><td><code>managers</code></td><td>A data disk crossed 85% (warning) or 95% (critical), once per crossing</td></tr>
+    <tr><td><code>session.ended</code></td><td><code>user:{id}</code></td><td>The session was ended (logout elsewhere, disabled, role change); then disconnect</td></tr>
+    <tr><td><code>subscribe</code> / <code>unsubscribe</code></td><td>sent by the client</td><td>Join or leave <code>status</code> or a <code>camera:{id}</code> room</td></tr>
+  </tbody>
+</table>
+
+<h3>Redis: the contract between engine and API</h3>
+<table>
+  <thead><tr><th style="width:150pt">Key or channel</th><th style="width:85pt">Direction</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>stream <code>events</code></td><td>engine → API</td><td>Durable events, interval open and close, metric samples</td></tr>
+    <tr><td>pub/sub <code>cfg:changed</code></td><td>API → engine</td><td>"Camera X has a new config version"; the engine then refetches its cameras</td></tr>
+    <tr><td>hash <code>cam:{id}:status</code> (TTL ~15 s)</td><td>engine → API</td><td>Heartbeat every 5 s: fps, state, applied version, error, <code>live</code> counters. If it expires, the camera is offline</td></tr>
+    <tr><td>key <code>cam:{id}:frame</code></td><td>engine → API</td><td>Latest raw JPEG every 2 s, for the zone editor and grid thumbnails</td></tr>
+    <tr><td>pub/sub <code>cam:{id}:boxes</code>, key <code>cam:{id}:active</code></td><td>both ways</td><td>Per-frame boxes for the live overlay. The API keeps the <code>active</code> key alive while a browser is in the camera's room; only then does the engine publish boxes</td></tr>
+    <tr><td>key <code>cam:{id}:debug</code>, pub/sub <code>cam:{id}:debugframes</code></td><td>both ways</td><td>While the API keeps the key alive, the engine publishes annotated JPEGs for the debug view</td></tr>
+    <tr><td>list <code>model:jobs</code></td><td>API → engine</td><td>Model validation and conversion jobs</td></tr>
+  </tbody>
+</table>
+<p>The <code>live</code> values each pipeline puts in its status are typed per use case by
+  <code>packages/contracts/usecases/&lt;id&gt;/live.schema.json</code>. The engine test <code>tests/test_live_contract.py</code>
+  catches a renamed field before the dashboard does.</p>
+
+<p class="muted">How the frontend uses these messages, and the contract files it builds against, are in section 9.</p>
+</div>
+
+<!-- ============ 10 ============ -->
+<div class="section">
+<h2>12. Running it</h2>
+
+<h3>Three ways to run it</h3>
+<table>
+  <thead><tr><th style="width:110pt">Goal</th><th>How</th><th style="width:110pt">Guide</th></tr></thead>
+  <tbody>
+    <tr><td>Frontend work, no GPU</td><td>Compose profile <code>demo</code>: fake cameras, users and two weeks of history from <code>demo-seed</code> and <code>demo-feed</code></td><td><code>docs/fe-dev-setup.md</code></td></tr>
+    <tr><td>Backend work on a laptop</td><td>Postgres, Redis and the API in Compose; the engine from source with <code>uv run python main.py</code>; MediaMTX in Compose</td><td><code>docs/10_LOCAL_QUICKSTART.md</code></td></tr>
+    <tr><td>A park server</td><td>Everything in Compose with profiles <code>engine</code> and <code>web</code>, on a GPU server with the NVIDIA Container Toolkit</td><td><code>deploy/README.md</code></td></tr>
+  </tbody>
+</table>
+
+<h3>Compose services and profiles (<code>deploy/docker-compose.yml</code>)</h3>
+<table>
+  <thead><tr><th style="width:85pt">Service</th><th style="width:60pt">Profile</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>postgres</code></td><td>always</td><td>Postgres 17; creates the <code>zoo_api</code> role on first start. No host port</td></tr>
+    <tr><td><code>redis</code></td><td>always</td><td>Redis 7.4 with a password and AOF, on <code>127.0.0.1</code> for the host-networked engine</td></tr>
+    <tr><td><code>api-migrate</code></td><td>always</td><td>One-shot <code>prisma migrate deploy</code> as <code>zoo_owner</code>, then exits</td></tr>
+    <tr><td><code>api</code></td><td>always</td><td>The NestJS API on <code>127.0.0.1:${ZOO_API_PORT}</code></td></tr>
+    <tr><td><code>caddy</code></td><td>always</td><td>The only public ports; modes <code>dev</code>, <code>internal-tls</code> (default) or <code>custom-tls</code></td></tr>
+    <tr><td><code>gotenberg</code></td><td>always</td><td>PDF rendering, internal only</td></tr>
+    <tr><td><code>mediamtx</code>, <code>zoo-ai-engine</code></td><td><code>engine</code></td><td>Video and the Python engine (needs the GPU)</td></tr>
+    <tr><td><code>web</code></td><td><code>web</code></td><td>The dashboard, built from the <code>zoo-vision-fe</code> checkout</td></tr>
+    <tr><td><code>demo-seed</code>, <code>demo-feed</code></td><td><code>demo</code></td><td>Fake data for frontend development</td></tr>
+  </tbody>
+</table>
+
+<h3>First run, in short</h3>
+<pre><code>cp deploy/.env.example deploy/.env          # fill in the secrets (deploy/README.md, "Secrets")
+cd deploy && docker compose up -d --build   # add COMPOSE_PROFILES=engine,web on a server
+docker compose exec api node dist/cli.js create-superadmin --username admin --name "Admin"
+                                            # with ZOO_ADMIN_PASSWORD set in the environment
+python tools/fetch_models.py                # model weights are not in git</code></pre>
+<p>Then log in through Caddy (not straight to the API port), add cameras in the UI (or import a YAML list once with
+  <code>tools/import_yaml_config.py</code>), and draw their zones.</p>
+
+<h3>Secrets and the variables that matter most</h3>
+<table>
+  <thead><tr><th style="width:170pt">Variable</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>ENGINE_TOKEN</code></td><td>One value shared by API and engine, at least 32 characters</td></tr>
+    <tr><td><code>CAMERA_URL_KEY</code></td><td>Encrypts stored camera URLs, which contain passwords (base64 of 32 bytes)</td></tr>
+    <tr><td><code>POSTGRES_PASSWORD</code>, <code>ZOO_API_DB_PASSWORD</code>, <code>REDIS_PASSWORD</code></td><td>Database and Redis passwords (keep them URL-safe)</td></tr>
+    <tr><td><code>SWAGGER</code> / <code>ZOO_SWAGGER</code></td><td><code>off</code> (default), <code>superadmin</code>, or <code>public</code> (development only)</td></tr>
+    <tr><td><code>COOKIE_SECURE</code></td><td><code>false</code> only for plain HTTP in development</td></tr>
+    <tr><td><code>ENGINE_GROUP</code>, <code>DEVICE</code></td><td>Engine: which cameras this process runs; <code>cpu</code> or <code>cuda:0</code></td></tr>
+  </tbody>
+</table>
+
+<h3>Tests</h3>
+<table>
+  <thead><tr><th style="width:85pt">Part</th><th>Command</th><th style="width:150pt">Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Engine</td><td><code>cd services/engine &amp;&amp; uv run pytest</code>, <code>uv run ruff check .</code></td><td>Pipelines are tested with synthetic detections; no model needed</td></tr>
+    <tr><td>API</td><td><code>cd apps/api &amp;&amp; npm test</code>, <code>npm run test:e2e</code></td><td>e2e needs Docker: Testcontainers starts Postgres and Redis</td></tr>
+    <tr><td>Contracts</td><td><code>cd packages/contracts &amp;&amp; npm test &amp;&amp; npm run check</code></td><td>Checks the examples and that generated code is current</td></tr>
+    <tr><td>One pipeline on a video</td><td><code>uv run python test_video.py --video &lt;file&gt; --pipeline &lt;name&gt;</code></td><td>Uses a rule YAML in <code>configs/rules/</code>, not the API</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ============ 11 ============ -->
+<div class="section">
+<h2>13. Repo map and where to read more</h2>
+<table>
+  <thead><tr><th style="width:150pt">Folder</th><th>What it holds</th></tr></thead>
+  <tbody>
+    <tr><td><code>services/engine/</code></td><td>Python engine: <code>core/</code> (supervisor, worker, streams, model pool, Redis I/O), <code>usecases/</code> (one pipeline each), <code>contracts/</code> (generated), <code>tests/</code></td></tr>
+    <tr><td><code>apps/api/</code></td><td>NestJS API: <code>src/&lt;module&gt;/</code>, <code>prisma/</code> (schema and migrations), <code>test/</code> (e2e), <code>openapi.json</code></td></tr>
+    <tr><td><code>packages/contracts/</code></td><td>JSON Schemas and their generated TypeScript and Python</td></tr>
+    <tr><td><code>deploy/</code></td><td>Compose file, Caddyfile, <code>mediamtx.yml</code>, <code>.env.example</code></td></tr>
+    <tr><td><code>tools/</code></td><td><code>fetch_models.py</code>, <code>export_model.py</code>, <code>pick_coordinates.py</code>, <code>import_yaml_config.py</code></td></tr>
+    <tr><td><code>integrations/nx/plugin/</code></td><td>The frozen C++ Nx plugin from the prototype</td></tr>
+    <tr><td><code>docs/</code></td><td>Guides, ADRs, the design spec and phase plans</td></tr>
+  </tbody>
+</table>
+
+<h3>Reading order</h3>
+<table>
+  <thead><tr><th style="width:18pt">#</th><th style="width:205pt">Document</th><th>Read it for</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>README.md</code></td><td>Repo map and quick-start commands</td></tr>
+    <tr><td>2</td><td><code>docs/superpowers/specs/2026-10-08-zoo-vision-production-architecture-design.md</code></td><td>The full design and the reasons for it. Start with sections 1, 3 and 4</td></tr>
+    <tr><td>3</td><td><code>docs/adr/README.md</code> and ADR-001 to ADR-008</td><td>Individual decisions; ADR-008 explains the move away from Nx</td></tr>
+    <tr><td>4</td><td><code>services/engine/README.md</code></td><td>Engine setup, environment, adding a use case</td></tr>
+    <tr><td>5</td><td><code>apps/api/README.md</code></td><td>API modules, environment, migrations and grants, engine routes</td></tr>
+    <tr><td>6</td><td><code>packages/contracts/README.md</code></td><td>Schema layout and change rules</td></tr>
+    <tr><td>7</td><td><code>docs/fe-contract.md</code></td><td>API behaviour in detail: errors, paging, reports, media, WebSocket</td></tr>
+    <tr><td>8</td><td><code>docs/10_LOCAL_QUICKSTART.md</code>, <code>docs/fe-dev-setup.md</code>, <code>deploy/README.md</code></td><td>Running it on a laptop, for the frontend, or on a server</td></tr>
+    <tr><td>9</td><td><code>docs/superpowers/specs/</code> Phase 3, 4a and 4b designs</td><td>Details of one feature area when you need them</td></tr>
+    <tr><td>10</td><td><code>docs/02</code>, <code>03</code>, <code>05</code>, <code>08</code>, <code>09</code></td><td>Model training, hardware sizing, model export, testing with video, MediaMTX</td></tr>
+  </tbody>
+</table>
+<div class="warn"><b>Historical, read with care:</b> <code>docs/01_IMPLEMENTATION_PLAN.md</code>,
+  <code>docs/06_MAGNET_NX_PLUGIN_IMPLEMENTATION_PLAN.md</code> and <code>docs/architecture_best_practice_recommendation.md</code>
+  describe the prototype, which was built around Nx Witness. The production design replaced that. Parts of
+  <code>docs/07_INSTALLATION_GUIDE.md</code> may also date from before the rebuild.</div>
+</div>
+
+<!-- ============ 12 ============ -->
+<div class="section">
+<h2>14. Glossary</h2>
+<table>
+  <thead><tr><th style="width:110pt">Term</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>Use case</td><td>A kind of analysis a camera runs (cashier presence, vehicle gate, …). Defined by its contract; implemented by one engine pipeline</td></tr>
+    <tr><td>Pipeline</td><td>The engine class for one use case: takes detections and tracks, applies zones and timers, produces messages and live values</td></tr>
+    <tr><td>Contract</td><td>The JSON Schemas in <code>packages/contracts</code> that every part generates its types from</td></tr>
+    <tr><td>Config version</td><td>One saved set of a camera's settings. Versions only increase; rollback makes a new one</td></tr>
+    <tr><td>Event / Interval / Metric</td><td>The three shapes of analytics data: a moment, a span of time, a number per minute</td></tr>
+    <tr><td>Envelope</td><td>The common wrapper of every stream message (kind, camera, time, config version, schema version, data)</td></tr>
+    <tr><td>Engine group</td><td>The set of cameras one engine process runs (<code>ENGINE_GROUP</code>)</td></tr>
+    <tr><td>Zone, ROI, tripwire</td><td>Polygons and lines drawn on the camera image, in 0 to 1 coordinates. A tripwire counts crossings; an ROI limits where detection counts</td></tr>
+    <tr><td>Audit camera</td><td>A camera whose config changes are flagged and notified and whose evidence is kept longer, because moving a tripwire is the easiest way to hide sales</td></tr>
+    <tr><td>Evidence / kept clip</td><td>An event's video clip copied out of the continuous recording so it outlives the normal retention</td></tr>
+    <tr><td>Dead event</td><td>A stream message that could not be stored, parked in <code>DeadEvent</code> so it doesn't block the rest</td></tr>
+    <tr><td>WHEP</td><td>The WebRTC playback protocol MediaMTX uses for live video in the browser</td></tr>
+    <tr><td>ANPR</td><td>Automatic number plate recognition, used at the vehicle gate (ADR-005)</td></tr>
+    <tr><td>ByteTrack</td><td>The multi-object tracker that gives each detection a stable id across frames (ADR-007)</td></tr>
+    <tr><td><code>x-minRole</code></td><td>A schema annotation on a settings field: the lowest role allowed to change it</td></tr>
+  </tbody>
+</table>
+</div>
+
+</body>
+</html>
