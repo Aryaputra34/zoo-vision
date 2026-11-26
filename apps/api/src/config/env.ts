@@ -10,6 +10,8 @@ export type Env = Readonly<{
   /** Shared secret of the Python engine for /internal/engine/* (Authorization: Bearer). */
   ENGINE_TOKEN: string;
   COOKIE_SECURE: boolean;
+  /** Public product name used in Swagger and default site branding. */
+  APP_NAME: string;
   /** `superadmin`: the docs answer 404 unless a SUPERADMIN session or API token asks. */
   SWAGGER: 'public' | 'superadmin' | 'off';
   PORT: number;
@@ -91,6 +93,11 @@ const positiveInt: Check<number> = (value) => {
 
 const text: Check<string> = (value) => value;
 
+const appName: Check<string> = (value) => {
+  const trimmed = value.trim();
+  return trimmed.length >= 1 && trimmed.length <= 100 ? trimmed : undefined;
+};
+
 const password12: Check<string> = (value) =>
   value.length >= 12 ? value : undefined;
 
@@ -151,6 +158,12 @@ export function loadEnv(source: Source = process.env): Env {
     COOKIE_SECURE:
       read('COOKIE_SECURE', oneOf('true', 'false'), 'true or false', 'true') ===
       'true',
+    APP_NAME: read(
+      'APP_NAME',
+      appName,
+      '1 to 100 non-whitespace characters',
+      'MagniVision',
+    ),
     SWAGGER: read(
       'SWAGGER',
       oneOf('public', 'superadmin', 'off'),

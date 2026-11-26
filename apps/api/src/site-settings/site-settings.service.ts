@@ -1,8 +1,20 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
+import { ENV, type Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
 
-export type SiteSettings = {
+export type SiteBranding = {
   siteName: string;
+  brandSubtitle: string | null;
+  brandLogoUrl: string | null;
+};
+
+export type SiteSettings = SiteBranding & {
   timeZone: string;
   recordingRetentionDays: number;
   snapshotRetentionDays: number;
@@ -12,6 +24,8 @@ export type SiteSettings = {
 
 const FIELDS = {
   siteName: true,
+  brandSubtitle: true,
+  brandLogoUrl: true,
   timeZone: true,
   recordingRetentionDays: true,
   snapshotRetentionDays: true,
@@ -21,7 +35,9 @@ const FIELDS = {
 
 /** The migration's row; used only while the database has not answered yet. */
 const DEFAULTS: SiteSettings = {
-  siteName: 'Zoo Vision',
+  siteName: 'MagniVision',
+  brandSubtitle: null,
+  brandLogoUrl: null,
   timeZone: 'Asia/Jakarta',
   recordingRetentionDays: 7,
   snapshotRetentionDays: 90,
@@ -40,8 +56,17 @@ export class SiteSettingsService implements OnModuleInit {
   // shortcut: a second API process would not see a PATCH; compose runs one api
   private copy: SiteSettings | undefined;
   private loading: Promise<SiteSettings> | undefined;
+  private readonly defaults: SiteSettings;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() @Inject(ENV) env?: Env,
+  ) {
+    this.defaults = {
+      ...DEFAULTS,
+      siteName: env?.APP_NAME ?? DEFAULTS.siteName,
+    };
+  }
 
   async onModuleInit(): Promise<void> {
     await this.load().catch(() =>
@@ -70,7 +95,12 @@ export class SiteSettingsService implements OnModuleInit {
 
   get current(): SiteSettings {
     if (!this.copy) void this.load().catch(() => undefined);
-    return this.copy ?? DEFAULTS;
+    return this.copy ?? this.defaults;
+  }
+
+  get branding(): SiteBranding {
+    const { siteName, brandSubtitle, brandLogoUrl } = this.current;
+    return { siteName, brandSubtitle, brandLogoUrl };
   }
 
   get timeZone(): string {

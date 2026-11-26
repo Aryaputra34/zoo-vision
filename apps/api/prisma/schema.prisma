@@ -242,10 +242,12 @@ model AiModel {
   updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
 }
 
-/// One row (id = 1, enforced by a CHECK): the site's name, time zone and retention defaults.
+/// One row (id = 1, enforced by a CHECK): the site's branding, time zone and retention defaults.
 model SiteSettings {
   id                         Int      @id @default(1)
   siteName                   String
+  brandSubtitle              String?
+  brandLogoUrl               String?
   timeZone                   String
   recordingRetentionDays     Int
   snapshotRetentionDays      Int

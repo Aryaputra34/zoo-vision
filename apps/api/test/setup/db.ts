@@ -33,8 +33,8 @@ export async function resetDb(): Promise<void> {
     await ownerQuery(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE`);
   }
   await ownerQuery(
-    `UPDATE "SiteSettings" SET "siteName" = 'Zoo Vision', "timeZone" = 'Asia/Jakarta',
-            "recordingRetentionDays" = 7, "snapshotRetentionDays" = 90,
+    `UPDATE "SiteSettings" SET "siteName" = 'MagniVision', "brandSubtitle" = NULL, "brandLogoUrl" = NULL,
+            "timeZone" = 'Asia/Jakarta', "recordingRetentionDays" = 7, "snapshotRetentionDays" = 90,
             "auditSnapshotRetentionDays" = 365, "evidenceRetentionDays" = 365`,
   );
 }

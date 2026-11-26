@@ -28,13 +28,24 @@ describe('/api/v1/site-settings', () => {
     await app.close();
   });
 
-  it('GET as a USER → the six defaults', async () => {
+  it('GET /branding anonymously → public branding defaults without retention fields', async () => {
+    const res = await http().get('/api/v1/site-settings/branding').expect(200);
+    expect(res.body).toEqual({
+      siteName: 'MagniVision',
+      brandSubtitle: null,
+      brandLogoUrl: null,
+    });
+  });
+
+  it('GET as a USER → the defaults', async () => {
     const res = await http()
       .get('/api/v1/site-settings')
       .set('Cookie', user)
       .expect(200);
     expect(res.body).toEqual({
-      siteName: 'Zoo Vision',
+      siteName: 'MagniVision',
+      brandSubtitle: null,
+      brandLogoUrl: null,
       timeZone: 'Asia/Jakarta',
       recordingRetentionDays: 7,
       snapshotRetentionDays: 90,
@@ -43,7 +54,7 @@ describe('/api/v1/site-settings', () => {
     });
   });
 
-  it('PATCH as a MANAGER → 403; bad zone → 400 at /timeZone; 0 days → 400', async () => {
+  it('PATCH as a MANAGER → 403; bad zone → 400 at /timeZone; 0 days → 400; bad logo URL → 400', async () => {
     await patch({ siteName: 'X' }, manager).expect(403);
     const zone = await patch({ timeZone: 'Mars/Base' }).expect(400);
     expect(zone.body).toMatchObject({
@@ -53,6 +64,12 @@ describe('/api/v1/site-settings', () => {
     const days = await patch({ snapshotRetentionDays: 0 }).expect(400);
     expect(days.body).toMatchObject({
       errors: [{ path: '/snapshotRetentionDays' }],
+    });
+    const logo = await patch({ brandLogoUrl: 'javascript:alert(1)' }).expect(
+      400,
+    );
+    expect(logo.body).toMatchObject({
+      errors: [{ path: '/brandLogoUrl' }],
     });
   });
 
@@ -94,7 +111,7 @@ describe('/api/v1/site-settings', () => {
     await ownerQuery(
       `DELETE FROM "AuditLog" WHERE "action" = 'site_settings.update'`,
     );
-    await patch({ snapshotRetentionDays: 30, siteName: 'Zoo Vision' }).expect(
+    await patch({ snapshotRetentionDays: 30, siteName: 'MagniVision' }).expect(
       200,
     );
     const rows = (await ownerQuery(

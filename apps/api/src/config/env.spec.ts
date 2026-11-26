@@ -26,6 +26,7 @@ describe('loadEnv', () => {
       CAMERA_URL_KEY: key,
       ENGINE_TOKEN: required.ENGINE_TOKEN,
       COOKIE_SECURE: true,
+      APP_NAME: 'MagniVision',
       SWAGGER: 'off',
       PORT: 3001,
       INGEST: 'on',
@@ -48,6 +49,7 @@ describe('loadEnv', () => {
     const env = loadEnv({
       ...required,
       COOKIE_SECURE: 'false',
+      APP_NAME: 'Acme Vision',
       SWAGGER: 'public',
       PORT: '8080',
       INGEST: 'off',
@@ -61,6 +63,7 @@ describe('loadEnv', () => {
     });
     expect(env).toMatchObject({
       COOKIE_SECURE: false,
+      APP_NAME: 'Acme Vision',
       SWAGGER: 'public',
       PORT: 8080,
       INGEST: 'off',

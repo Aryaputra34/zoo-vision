@@ -124,7 +124,7 @@ function chart(title: string, buckets: string[], values: number[]): string {
     .map((v, i) => {
       if (v <= 0) return '';
       const h = Math.max(1, (v / max) * (H - 24));
-      return `<rect x="${(i * slot + (slot - width) / 2).toFixed(1)}" y="${(H - 14 - h).toFixed(1)}" width="${width.toFixed(1)}" height="${h.toFixed(1)}" fill="#2f6f4f"/>`;
+      return `<rect x="${(i * slot + (slot - width) / 2).toFixed(1)}" y="${(H - 14 - h).toFixed(1)}" width="${width.toFixed(1)}" height="${h.toFixed(1)}" fill="#2563eb"/>`;
     })
     .join('');
   const ticks = buckets
@@ -148,7 +148,7 @@ h2 small { font-weight: normal; color: #666 }
 table { border-collapse: collapse; width: 100%; margin: 6px 0; table-layout: auto }
 tr { page-break-inside: avoid }
 th, td { border: 1px solid #ccc; padding: 2px 4px; text-align: left; font-size: 8px; overflow-wrap: anywhere }
-th { background: #eef3f0 }
+th { background: #f1f5f9 }
 td.n { text-align: right }
 tr.sum td { font-weight: bold; background: #f6f6f6 }
 figure { margin: 6px 0; page-break-inside: avoid }

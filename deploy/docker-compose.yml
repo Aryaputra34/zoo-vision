@@ -71,6 +71,7 @@ services:
       CAMERA_URL_KEY: ${CAMERA_URL_KEY:?set CAMERA_URL_KEY in .env}
       ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN in .env}
       COOKIE_SECURE: ${ZOO_COOKIE_SECURE:-true} # false only for plain http on a dev machine
+      APP_NAME: ${APP_NAME:-MagniVision}
       SWAGGER: ${ZOO_SWAGGER:-off} # off | superadmin | public
       MODELS_DIR: /data/models
       SNAPSHOT_DIR: /data/snapshots
@@ -254,6 +255,7 @@ services:
       - ZOO_MODELS_DIR=/app/models
       - SNAPSHOT_DIR=/app/snapshots
       - SNAPSHOT_RETENTION_DAYS=0 # the API's RetentionJob owns snapshot retention (kept events, audit cameras); the engine's own pruner would cap it at 30 days
+      - PUBLISH_BOXES=${PUBLISH_BOXES:-false} # off by default: live view is clean WebRTC; debug view uses /media/debug
 
 volumes:
   pgdata:

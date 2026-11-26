@@ -26,6 +26,7 @@ class EngineEnv:
     snapshot_retention_days: int
     max_batch: int
     model_jobs: bool
+    publish_boxes: bool = False
 
 
 def _int(source: Mapping[str, str], name: str, default: int, low: int, high: Optional[int], bad: list) -> int:
@@ -70,6 +71,10 @@ def load_env(source: Optional[Mapping[str, str]] = None) -> EngineEnv:
     if jobs_raw not in ("on", "off"):
         bad.append("ENGINE_MODEL_JOBS must be on or off")
 
+    boxes_raw = env.get("PUBLISH_BOXES", "false").strip().lower()
+    if boxes_raw not in ("true", "false"):
+        bad.append("PUBLISH_BOXES must be true or false")
+
     if bad:
         raise EnvError("invalid engine environment: " + "; ".join(bad))
 
@@ -84,4 +89,5 @@ def load_env(source: Optional[Mapping[str, str]] = None) -> EngineEnv:
         snapshot_retention_days=retention,
         max_batch=max_batch,
         model_jobs=jobs_raw == "on",
+        publish_boxes=boxes_raw == "true",
     )
