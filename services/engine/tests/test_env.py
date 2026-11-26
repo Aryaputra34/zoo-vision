@@ -8,17 +8,17 @@ BASE = {"REDIS_URL": "redis://localhost:6379/0", "ENGINE_TOKEN": "x" * 32}
 def test_defaults():
     env = load_env(BASE)
     assert isinstance(env, EngineEnv)
-    assert (env.engine_group, env.api_url, env.max_batch, env.model_jobs) == (
-        "default", "http://127.0.0.1:3001", 1, True)
+    assert (env.engine_group, env.api_url, env.max_batch, env.model_jobs, env.publish_boxes) == (
+        "default", "http://127.0.0.1:3001", 1, True, False)
     assert (env.device, env.models_dir, env.snapshot_dir, env.snapshot_retention_days) == (
         "cpu", "models", "snapshots", 0)
 
 
 def test_overrides():
     env = load_env({**BASE, "REDIS_URL": "rediss://h:1", "ENGINE_GROUP": "north_1", "ENGINE_MAX_BATCH": "16",
-                    "ENGINE_MODEL_JOBS": "off", "SNAPSHOT_RETENTION_DAYS": "0"})
-    assert (env.engine_group, env.max_batch, env.model_jobs,
-            env.snapshot_retention_days) == ("north_1", 16, False, 0)
+                    "ENGINE_MODEL_JOBS": "off", "PUBLISH_BOXES": "true", "SNAPSHOT_RETENTION_DAYS": "0"})
+    assert (env.engine_group, env.max_batch, env.model_jobs, env.publish_boxes,
+            env.snapshot_retention_days) == ("north_1", 16, False, True, 0)
 
 
 def test_every_bad_variable_is_named_without_its_value():
@@ -40,7 +40,7 @@ def test_missing_required_variables_are_named():
 @pytest.mark.parametrize("name, value", [
     ("ENGINE_MAX_BATCH", "17"), ("ENGINE_MAX_BATCH", "abc"),
     ("SNAPSHOT_RETENTION_DAYS", "-1"), ("ENGINE_MODEL_JOBS", "maybe"),
-    ("ENGINE_GROUP", ""),
+    ("PUBLISH_BOXES", "yes"), ("ENGINE_GROUP", ""),
 ])
 def test_out_of_range_values_rejected(name, value):
     with pytest.raises(EnvError) as e:

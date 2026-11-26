@@ -48,7 +48,7 @@ Berdasarkan hasil **MoM TSI**, produk berevolusi menjadi platform video analytic
 ### 2.2 Tema General / White-Label (MoM #7)
 - **Backend (`apps/api`):**
   - Tambah env `APP_NAME` (default `"MagniVision"`) untuk title OpenAPI (`swagger.ts`, misal `"MagniVision API"`) dan default `SiteSettings.siteName`.
-  - Tambah kolom opsional pada `SiteSettings`: `brandSubtitle String?` dan `brandLogoPath String?` (upload logo oleh `SUPERADMIN`/`MANAGER` disimpan di volume `/data/branding/`).
+  - Tambah kolom opsional pada `SiteSettings`: `brandSubtitle String?` dan `brandLogoUrl String?` (URL `http(s)://` atau relative path `/...`, diakses publik lewat `GET /api/v1/site-settings/branding` untuk halaman login).
   - *Catatan:* nama internal repo/package/cookie teknis tidak wajib di-rename sekarang agar tidak menimbulkan churn; seluruh teks yang tampil ke user menggunakan branding **MagniVision** / konfigurasi `SiteSettings`.
 - **Frontend (`zoo-vision-fe`):**
   - Ganti palette warna dan ilustrasi bertema safari menjadi palette enterprise VMS netral (slate/zinc + warna aksen profesional).
@@ -142,7 +142,7 @@ Perubahan pendukung pada tabel lain:
    ```prisma
    maxUseCasesPerCamera Int     @default(4)
    brandSubtitle        String?
-   brandLogoPath        String?
+   brandLogoUrl         String?
    ```
 
 #### Strategi Migrasi Data (Zero Data Loss)

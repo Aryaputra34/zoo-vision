@@ -7,6 +7,7 @@ import {
 } from '@nestjs/swagger';
 import { IS_PUBLIC_KEY } from '../auth/decorators';
 import { ApiErrorBody } from '../common/errors';
+import { ENV, type Env } from '../config/env';
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -15,9 +16,11 @@ const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export const operationId = (controllerKey: string, methodKey: string) =>
   lowerFirst(controllerKey.replace(/Controller$/, '')) + upperFirst(methodKey);
 
-export function swaggerConfig(): Omit<OpenAPIObject, 'paths'> {
+export function swaggerConfig(
+  appName = 'MagniVision',
+): Omit<OpenAPIObject, 'paths'> {
   return new DocumentBuilder()
-    .setTitle('Zoo Vision API')
+    .setTitle(`${appName} API`)
     .setVersion('1')
     .addCookieAuth(
       'zoo_session',
@@ -109,7 +112,8 @@ function addErrorResponses(doc: OpenAPIObject, publicIds: Set<string>): void {
 }
 
 export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
-  const doc = SwaggerModule.createDocument(app, swaggerConfig(), {
+  const appName = app.get<Env>(ENV).APP_NAME;
+  const doc = SwaggerModule.createDocument(app, swaggerConfig(appName), {
     operationIdFactory: operationId,
     extraModels: [ApiErrorBody],
   });

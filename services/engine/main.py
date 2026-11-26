@@ -53,9 +53,10 @@ def run(env: EngineEnv, stop: threading.Event, *, loader=None, preview: bool = F
         pool = ModelPool(env.device, env.models_dir, max_batch=env.max_batch, loader=loader)
         nx_client = NxClient(mock_mode=True)  # bookmarks are only logged until the API's nx output module exists
 
-        boxes_client = redis.Redis.from_url(env.redis_url, socket_timeout=2, socket_connect_timeout=2)
-        boxes_pub = BoxPublisher(boxes_client)
-        boxes_pub.start()
+        if env.publish_boxes:
+            boxes_client = redis.Redis.from_url(env.redis_url, socket_timeout=2, socket_connect_timeout=2)
+            boxes_pub = BoxPublisher(boxes_client)
+            boxes_pub.start()
 
         api = EngineApi(env.api_url, env.engine_token, env.engine_group)
         deps = WorkerDeps(pool=pool, events=events, snapshots=snapshots, nx_client=nx_client, device=env.device, boxes=boxes_pub)
@@ -122,7 +123,7 @@ def _run_with_windows(supervisor: Supervisor, stop: threading.Event) -> None:
             for camera_id, pipeline in supervisor.pipelines().items():
                 frame = pipeline.latest_frame()
                 if frame is not None:
-                    cv2.imshow(f"Zoo Vision - {pipeline.camera_name}", frame)
+                    cv2.imshow(f"MagniVision - {pipeline.camera_name}", frame)
             if cv2.waitKey(30) & 0xFF == ord("q"):
                 stop.set()
     finally:
@@ -150,7 +151,7 @@ def _stop_on_signals(stop: threading.Event) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Zoo Vision engine")
+    parser = argparse.ArgumentParser(description="MagniVision engine")
     parser.add_argument("--preview", action="store_true", help="show an OpenCV window per camera")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] (%(name)s) %(message)s",

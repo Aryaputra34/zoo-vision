@@ -181,6 +181,39 @@
         "security": []
       }
     },
+    "/api/v1/site-settings/branding": {
+      "get": {
+        "operationId": "siteSettingsBranding",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteBrandingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "500 INTERNAL or 503 UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Public: the login page loads the site's name, subtitle and logo before authentication.",
+        "tags": [
+          "SiteSettings"
+        ],
+        "security": []
+      }
+    },
     "/api/v1/site-settings": {
       "get": {
         "operationId": "siteSettingsGet",
@@ -5166,7 +5199,7 @@
     }
   },
   "info": {
-    "title": "Zoo Vision API",
+    "title": "MagniVision API",
     "description": "",
     "version": "1",
     "contact": {}
@@ -5187,11 +5220,42 @@
       }
     },
     "schemas": {
+      "SiteBrandingDto": {
+        "type": "object",
+        "properties": {
+          "siteName": {
+            "type": "string"
+          },
+          "brandSubtitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "brandLogoUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Relative path (/...) or http(s) URL to the site logo"
+          }
+        },
+        "required": [
+          "siteName",
+          "brandSubtitle",
+          "brandLogoUrl"
+        ]
+      },
       "SiteSettingsDto": {
         "type": "object",
         "properties": {
           "siteName": {
             "type": "string"
+          },
+          "brandSubtitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "brandLogoUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Relative path (/...) or http(s) URL to the site logo"
           },
           "timeZone": {
             "type": "string",
@@ -5221,6 +5285,8 @@
         },
         "required": [
           "siteName",
+          "brandSubtitle",
+          "brandLogoUrl",
           "timeZone",
           "recordingRetentionDays",
           "snapshotRetentionDays",
@@ -5235,6 +5301,18 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 100
+          },
+          "brandSubtitle": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "brandLogoUrl": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500,
+            "description": "Relative path (/...) or http(s) URL; null clears the logo"
           },
           "timeZone": {
             "type": "string",

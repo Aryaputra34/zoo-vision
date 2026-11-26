@@ -70,6 +70,10 @@ describe('OpenAPI document', () => {
     expect(missing).toEqual([]);
   });
 
+  it('uses APP_NAME for the OpenAPI title (default MagniVision API)', () => {
+    expect(doc.info.title).toBe('MagniVision API');
+  });
+
   it('no path starts with /internal', () => {
     expect(
       Object.keys(doc.paths).filter((p) => p.startsWith('/internal')),
